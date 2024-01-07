@@ -28,7 +28,7 @@ Table of Content:
 
 The following is an example of _ANON_ with base data types, such as _String_, _Integer number_, _Floating point number_, _Boolean_ and _Date_, as well as _Array (List)_, _Tuple_ and nested _Object_.
 
-```json
+```json5
 {
     string: "hello world"
     int: 123
@@ -67,7 +67,7 @@ The following is an example of _ANON_ with base data types, such as _String_, _I
         name: "leaf"
     }
 
-    // inline comma
+    // inline commas
     a:"a", b:"b", c:"c",
 
     // optional tailing commas
