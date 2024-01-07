@@ -1,0 +1,20 @@
+{
+    number_list: [1,2,3]
+    string_list: ["one", "two", "three"]
+    list_with_trailing_comma: [1,2,3,4,]
+    mulitline_list: [
+        1
+        2
+        3
+    ]
+    mulitline_list_with_commas: [
+        1,
+        2,
+        3
+    ]
+    mulitline_list_with_trailing_comma: [
+        1,
+        2,
+        3,
+    ]
+}

@@ -1,0 +1,5 @@
+{
+    single_quotes: 'hello world',
+    null_value: null,
+    hex_escape: "ascii\x41 unicode\u6CB3"
+}

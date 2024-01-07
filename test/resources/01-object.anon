@@ -1,0 +1,70 @@
+{
+    string: "hello world"
+    long_string: "one\
+        two\
+        three"
+    multiline_string: "one
+        two
+        three"
+    escape_chars: "double quote:\"
+        slash:\\
+        tab:\t
+        line feed:\n
+        unicode:\u{6CB3}\u{9A6C}\u{26}\u{8431}"
+    raw_string: r"hello"
+    raw_string_variant: r#"hello "programming" world"#
+    auto_trimmed_string:
+    r|"
+    header 1
+    header 2
+    "|
+    i18n: "中文🍀emoji👋🏻"
+
+    int: 123
+    long: 456@i64
+    negative: -111
+    positive: +222
+
+    hex: 0xbeef
+    bin: 0b1001
+
+    float: 3.14
+    double: 6.626@f64
+
+    exp: 6.022e23
+    exp_double: 6.6738e-11@f64
+
+    metric_suffix_big: 123M     // auto i32/i64
+    metric_suffix_small: 456u   // auto f32/f64
+    byte_suffix: 1024MiB
+    metric_suffix_and_type: 123M@u64
+
+    bool: true
+    date: d"2023-03-24"
+    time: d"10:15:00"
+    data_time: d"2023-03-24 10:15:00"
+
+    "quote name": "quote value"
+    new_line:
+        "the value starts on a new line"
+    space   :   "there are spaces between key and value"
+
+    // line comment
+    line_comment: 1
+    line_comment_in_tail: 2 // trailing comment
+    block_comment: /* block comment */ 4
+    /*
+     * multiline block comment
+     */
+    multiline_block_comment: 3
+    """
+    document comment
+    """
+    document_comment: 4
+
+    inline_comma_1: "inline comma", inline_comma_2: 444, inline_comma_3: false
+
+    tail_comma_1: "tail comma",
+    tail_comma_2: 555,
+    tail_comma_3: true
+}
