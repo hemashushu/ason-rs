@@ -54,7 +54,7 @@ pub enum Token {
 // 1.23e4
 // -1.23e-4
 // 123K         // with suffix
-// 123Mi        // with 1024-base suffix, equivalent to 123MB
+// 123Mi        // with 1024-base suffix, equivalent to `123MB`
 // 123m         // with fractional suffix
 // -123n        // with minus sign
 // 123u@double  // with fractional suffix and data type
@@ -517,7 +517,7 @@ fn lex_number_decimal(
         }
     };
 
-    let mut num_token: NumberToken;
+    let num_token: NumberToken;
 
     if let Some(ty) = num_type {
         if has_integer_unit_prefix(num_prefix) && ty.as_str() != "ulong" {
@@ -875,7 +875,300 @@ fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, ParseErr
     }
 }
 
-fn lex_number_binary(iter: &mut PeekableIterator<char>, is_neg: bool) -> Result<Token, ParseError> {
+fn lex_number_hex(
+    iter: &mut PeekableIterator<char>,
+    is_negative: bool,
+) -> Result<Token, ParseError> {
+    // 0xaabbT  //
+    // ^     ^__// to here
+    // |________// current char
+    //
+    // T = terminator chars
+
+    // consume '0x'
+    iter.next();
+    iter.next();
+
+    let mut num_string = String::new();
+    let mut num_type: Option<String> = None;
+
+    let mut found_point: bool = false;
+    let mut found_p: bool = false;
+
+    while let Some(current_char) = iter.peek(0) {
+        match *current_char {
+            '0'..='9' | 'a'..='f' | 'A'..='F' => {
+                // valid digits for hex number
+                num_string.push(*current_char);
+                iter.next();
+            }
+            '_' => {
+                iter.next();
+            }
+            '.' if !found_point => {
+                // it is hex floating point literal
+                found_point = true;
+                num_string.push(*current_char);
+                iter.next();
+            }
+            'p' if !found_p => {
+                // it is hex floating point literal
+                found_p = true;
+
+                // 0x0.123p45
+                // 0x0.123p+45
+                // 0x0.123p-45
+                if iter.look_ahead_equals(1, &'-') {
+                    num_string.push_str("p-");
+                    iter.next();
+                    iter.next();
+                } else if iter.look_ahead_equals(1, &'+') {
+                    num_string.push_str("p+");
+                    iter.next();
+                    iter.next();
+                } else {
+                    num_string.push(*current_char);
+                    iter.next();
+                }
+            }
+            '@' if num_type.is_none() => {
+                num_type.replace(lex_number_type(iter)?);
+            }
+            ' ' | '\t' | '\r' | '\n' | '(' | ')' | '{' | '}' | '[' | ']' | ',' | ':' | '/'
+            | '\'' | '"' => {
+                // terminator chars
+                break;
+            }
+            _ => {
+                return Err(ParseError::new(&format!(
+                    "Invalid char for hexadecimal number: {}",
+                    *current_char
+                )))
+            }
+        }
+    }
+
+    if num_string.is_empty() {
+        return Err(ParseError::new("Incomplete hexadecimal number"));
+    }
+
+    let num_token: NumberToken;
+
+    if found_point || found_p {
+        let mut to_double = false;
+
+        if let Some(ty) = num_type {
+            match ty.as_str() {
+                "float" => {
+                    // default
+                }
+                "double" => {
+                    to_double = true;
+                }
+                _=> {
+                    return Err(ParseError::new(&format!(
+                        "Only number type \"float\" and \"double\" are allowed for hexadecimal floating-point numbers, current type: {}",
+                        ty
+                    )))
+                }
+            }
+        }
+
+        num_string.insert_str(0, "0x");
+
+        if to_double {
+            let v = hexfloat2::parse::<f64>(&num_string).map_err(|_| {
+                ParseError::new(&format!(
+                    "Can not convert \"{}\" to floating-point number.",
+                    num_string
+                ))
+            })?;
+
+            if is_negative {
+                if v == 0f64 {
+                    num_token = NumberToken::Double(0f64)
+                } else {
+                    num_token = NumberToken::Double(v.copysign(-1f64))
+                }
+            } else {
+                num_token = NumberToken::Double(v)
+            }
+        } else {
+            let v = hexfloat2::parse::<f32>(&num_string).map_err(|_| {
+                ParseError::new(&format!(
+                    "Can not convert \"{}\" to floating-point number.",
+                    num_string
+                ))
+            })?;
+
+            if is_negative {
+                if v == 0f32 {
+                    num_token = NumberToken::Float(0f32)
+                } else {
+                    num_token = NumberToken::Float(v.copysign(-1f32))
+                }
+            } else {
+                num_token = NumberToken::Float(v)
+            }
+        };
+    } else {
+        if let Some(ty) = num_type {
+            match ty.as_str() {
+                "float" | "double" => {
+                    return Err(ParseError::new(&format!(
+                        "Invalid hexadecimal floating point number: {}",
+                        num_string
+                    )))
+                }
+                "byte" => {
+                    if is_negative {
+                        num_string.insert(0, '-');
+                    }
+
+                    let v = i8::from_str_radix(&num_string, 16).map_err(|e| {
+                        ParseError::new(&format!(
+                            "Can not convert \"{}\" to integer number, error: {}",
+                            num_string, e
+                        ))
+                    })?;
+
+                    num_token = NumberToken::Byte(v);
+                }
+                "ubyte" => {
+                    if is_negative {
+                        return Err(ParseError::new(
+                            "Unsigned number with minus sign is not allowed.",
+                        ));
+                    }
+
+                    let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
+                        ParseError::new(&format!(
+                            "Can not convert \"{}\" to integer number, error: {}",
+                            num_string, e
+                        ))
+                    })?;
+
+                    num_token = NumberToken::UByte(v);
+                }
+                "short" => {
+                    if is_negative {
+                        num_string.insert(0, '-');
+                    }
+
+                    let v = i16::from_str_radix(&num_string, 16).map_err(|e| {
+                        ParseError::new(&format!(
+                            "Can not convert \"{}\" to integer number, error: {}",
+                            num_string, e
+                        ))
+                    })?;
+
+                    num_token = NumberToken::Short(v);
+                }
+                "ushort" => {
+                    if is_negative {
+                        return Err(ParseError::new(
+                            "Unsigned number with minus sign is not allowed.",
+                        ));
+                    }
+
+                    let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
+                        ParseError::new(&format!(
+                            "Can not convert \"{}\" to integer number, error: {}",
+                            num_string, e
+                        ))
+                    })?;
+
+                    num_token = NumberToken::UShort(v);
+                }
+                "int" => {
+                    if is_negative {
+                        num_string.insert(0, '-');
+                    }
+
+                    let v = i32::from_str_radix(&num_string, 16).map_err(|e| {
+                        ParseError::new(&format!(
+                            "Can not convert \"{}\" to integer number, error: {}",
+                            num_string, e
+                        ))
+                    })?;
+
+                    num_token = NumberToken::Int(v);
+                }
+                "uint" => {
+                    if is_negative {
+                        return Err(ParseError::new(
+                            "Unsigned number with minus sign is not allowed.",
+                        ));
+                    }
+
+                    let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
+                        ParseError::new(&format!(
+                            "Can not convert \"{}\" to integer number, error: {}",
+                            num_string, e
+                        ))
+                    })?;
+
+                    num_token = NumberToken::UInt(v);
+                }
+                "long" => {
+                    if is_negative {
+                        num_string.insert(0, '-');
+                    }
+
+                    let v = i64::from_str_radix(&num_string, 16).map_err(|e| {
+                        ParseError::new(&format!(
+                            "Can not convert \"{}\" to integer number, error: {}",
+                            num_string, e
+                        ))
+                    })?;
+
+                    num_token = NumberToken::Long(v);
+                }
+                "ulong" => {
+                    if is_negative {
+                        return Err(ParseError::new(
+                            "Unsigned number with minus sign is not allowed.",
+                        ));
+                    }
+
+                    let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
+                        ParseError::new(&format!(
+                            "Can not convert \"{}\" to integer number, error: {}",
+                            num_string, e
+                        ))
+                    })?;
+
+                    num_token = NumberToken::ULong(v);
+                }
+                _ => {
+                    unreachable!()
+                }
+            }
+        } else {
+            // default, convert to i32
+
+            if is_negative {
+                num_string.insert(0, '-');
+            }
+
+            let v = i32::from_str_radix(&num_string, 16).map_err(|e| {
+                ParseError::new(&format!(
+                    "Can not convert \"{}\" to integer number, error: {}",
+                    num_string, e
+                ))
+            })?;
+
+            num_token = NumberToken::Int(v);
+        }
+    }
+
+    Ok(Token::Number(num_token))
+}
+
+fn lex_number_binary(
+    iter: &mut PeekableIterator<char>,
+    is_negative: bool,
+) -> Result<Token, ParseError> {
     // 0b1010T  //
     // ^     ^__// to here
     // |________// current char
@@ -887,19 +1180,23 @@ fn lex_number_binary(iter: &mut PeekableIterator<char>, is_neg: bool) -> Result<
     iter.next();
 
     let mut num_string = String::new();
-
-    if is_neg {
-        num_string.push('-');
-    }
+    let mut num_type: Option<String> = None;
 
     while let Some(current_char) = iter.peek(0) {
         match *current_char {
-            '0' | '1' | '_' => {
+            '0' | '1' => {
                 // valid digits for binary number
                 num_string.push(*current_char);
                 iter.next();
             }
-            ' ' | '\t' | '\r' | '\n' | '(' | ')' | '/' | '"' => {
+            '_' => {
+                iter.next();
+            }
+            '@' if num_type.is_none() => {
+                num_type.replace(lex_number_type(iter)?);
+            }
+            ' ' | '\t' | '\r' | '\n' | '(' | ')' | '{' | '}' | '[' | ']' | ',' | ':' | '/'
+            | '\'' | '"' => {
                 // terminator chars
                 break;
             }
@@ -913,80 +1210,161 @@ fn lex_number_binary(iter: &mut PeekableIterator<char>, is_neg: bool) -> Result<
     }
 
     if num_string.is_empty() {
-        Err(ParseError::new("Incomplete binary number"))
-    } else {
-        // Ok(Token::Number(NumberToken::Binary(num_string)))
-        // todo
-        Ok(Token::Number(NumberToken::Int(0)))
+        return Err(ParseError::new("Incomplete binary number"));
     }
-}
 
-fn lex_number_hex(iter: &mut PeekableIterator<char>, is_neg: bool) -> Result<Token, ParseError> {
-    // 0xaabbT  //
-    // ^     ^__// to here
-    // |________// current char
-    //
-    // T = terminator chars
+    let num_token: NumberToken;
 
-    // consume '0x'
-    iter.next();
-    iter.next();
-
-    let mut is_floating_point_number: bool = false;
-    let mut num_string = String::new();
-
-    while let Some(current_char) = iter.peek(0) {
-        match *current_char {
-            '0'..='9' | 'a'..='f' | 'A'..='F' | '_' => {
-                // valid digits for hex number
-                num_string.push(*current_char);
-                iter.next();
-            }
-            '.' | 'p' => {
-                // it is hex floating point literal
-                is_floating_point_number = true;
-                num_string.push(*current_char);
-                iter.next();
-            }
-            '+' | '-' if is_floating_point_number => {
-                num_string.push(*current_char);
-                iter.next();
-            }
-            ' ' | '\t' | '\r' | '\n' | '(' | ')' | '/' | '"' => {
-                // terminator chars
-                break;
-            }
-            _ => {
+    if let Some(ty) = num_type {
+        match ty.as_str() {
+            "float" | "double" => {
                 return Err(ParseError::new(&format!(
-                    "Invalid char for hexadecimal number: {}",
-                    *current_char
+                    "Does not support binary floating point number: {}",
+                    num_string
                 )))
             }
+            "byte" => {
+                if is_negative {
+                    num_string.insert(0, '-');
+                }
+
+                let v = i8::from_str_radix(&num_string, 2).map_err(|e| {
+                    ParseError::new(&format!(
+                        "Can not convert \"{}\" to integer number, error: {}",
+                        num_string, e
+                    ))
+                })?;
+
+                num_token = NumberToken::Byte(v);
+            }
+            "ubyte" => {
+                if is_negative {
+                    return Err(ParseError::new(
+                        "Unsigned number with minus sign is not allowed.",
+                    ));
+                }
+
+                let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
+                    ParseError::new(&format!(
+                        "Can not convert \"{}\" to integer number, error: {}",
+                        num_string, e
+                    ))
+                })?;
+
+                num_token = NumberToken::UByte(v);
+            }
+            "short" => {
+                if is_negative {
+                    num_string.insert(0, '-');
+                }
+
+                let v = i16::from_str_radix(&num_string, 2).map_err(|e| {
+                    ParseError::new(&format!(
+                        "Can not convert \"{}\" to integer number, error: {}",
+                        num_string, e
+                    ))
+                })?;
+
+                num_token = NumberToken::Short(v);
+            }
+            "ushort" => {
+                if is_negative {
+                    return Err(ParseError::new(
+                        "Unsigned number with minus sign is not allowed.",
+                    ));
+                }
+
+                let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
+                    ParseError::new(&format!(
+                        "Can not convert \"{}\" to integer number, error: {}",
+                        num_string, e
+                    ))
+                })?;
+
+                num_token = NumberToken::UShort(v);
+            }
+            "int" => {
+                if is_negative {
+                    num_string.insert(0, '-');
+                }
+
+                let v = i32::from_str_radix(&num_string, 2).map_err(|e| {
+                    ParseError::new(&format!(
+                        "Can not convert \"{}\" to integer number, error: {}",
+                        num_string, e
+                    ))
+                })?;
+
+                num_token = NumberToken::Int(v);
+            }
+            "uint" => {
+                if is_negative {
+                    return Err(ParseError::new(
+                        "Unsigned number with minus sign is not allowed.",
+                    ));
+                }
+
+                let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
+                    ParseError::new(&format!(
+                        "Can not convert \"{}\" to integer number, error: {}",
+                        num_string, e
+                    ))
+                })?;
+
+                num_token = NumberToken::UInt(v);
+            }
+            "long" => {
+                if is_negative {
+                    num_string.insert(0, '-');
+                }
+
+                let v = i64::from_str_radix(&num_string, 2).map_err(|e| {
+                    ParseError::new(&format!(
+                        "Can not convert \"{}\" to integer number, error: {}",
+                        num_string, e
+                    ))
+                })?;
+
+                num_token = NumberToken::Long(v);
+            }
+            "ulong" => {
+                if is_negative {
+                    return Err(ParseError::new(
+                        "Unsigned number with minus sign is not allowed.",
+                    ));
+                }
+
+                let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
+                    ParseError::new(&format!(
+                        "Can not convert \"{}\" to integer number, error: {}",
+                        num_string, e
+                    ))
+                })?;
+
+                num_token = NumberToken::ULong(v);
+            }
+            _ => {
+                unreachable!()
+            }
         }
+    } else {
+        // default, convert to i32
+
+        if is_negative {
+            num_string.insert(0, '-');
+        }
+
+        let v = i32::from_str_radix(&num_string, 2).map_err(|e| {
+            ParseError::new(&format!(
+                "Can not convert \"{}\" to integer number, error: {}",
+                num_string, e
+            ))
+        })?;
+
+        num_token = NumberToken::Int(v);
     }
 
-    // todo
-    // if num_string.is_empty() {
-    //     Err(ParseError::new("Incomplete hex number"))
-    // } else {
-    //     #[allow(clippy::collapsible_else_if)]
-    //     let num = if is_floating_point_number {
-    //         if is_neg {
-    //             NumberToken::HexFloat(format!("-0x{}", num_string))
-    //         } else {
-    //             NumberToken::HexFloat(format!("0x{}", num_string))
-    //         }
-    //     } else {
-    //         if is_neg {
-    //             NumberToken::Hex(format!("-{}", num_string))
-    //         } else {
-    //             NumberToken::Hex(num_string)
-    //         }
-    //     };
-    //     Ok(Token::Number(num))
-    // }
-
-    Ok(Token::Number(NumberToken::Int(0)))
+    Ok(Token::Number(num_token))
 }
 
 fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
@@ -1778,83 +2156,6 @@ mod tests {
             lex_from_str("123e"),
             Err(ParseError { message: _ })
         ));
-
-        //         // 3.1415927f32
-        //         assert_eq!(
-        //             lex_from_str("0x1.921fb6p1").unwrap(),
-        //             vec![Token::new_hex_float_number("0x1.921fb6p1")]
-        //         );
-        //
-        //         // 2.718281828459045f64
-        //         assert_eq!(
-        //             lex_from_str("0x1.5bf0a8b145769p+1").unwrap(),
-        //             vec![Token::new_hex_float_number("0x1.5bf0a8b145769p+1")]
-        //         );
-        //         assert_eq!(
-        //             lex_from_str("0x1.23p-4").unwrap(),
-        //             vec![Token::new_hex_float_number("0x1.23p-4")]
-        //         );
-        //
-
-        //
-        //         assert_eq!(
-        //             lex_from_str("0x1234abcd").unwrap(),
-        //             vec![Token::new_hex_number("1234abcd")]
-        //         );
-        //
-        //         assert_eq!(
-        //             lex_from_str("0b00110101").unwrap(),
-        //             vec![Token::new_bin_number("00110101")]
-        //         );
-        //
-        //         assert_eq!(
-        //             lex_from_str("11 0x11 0b11").unwrap(),
-        //             vec![
-        //                 Token::new_dec_number("11"),
-        //                 Token::new_hex_number("11"),
-        //                 Token::new_bin_number("11")
-        //             ]
-        //         );
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0xaabb").unwrap(),
-        //             vec![Token::new_hex_number("-aabb")]
-        //         );
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0b1010").unwrap(),
-        //             vec![Token::new_bin_number("-1010")]
-        //         );
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0x1.921fb6p1").unwrap(),
-        //             vec![Token::new_hex_float_number("-0x1.921fb6p1")]
-        //         );
-
-        //
-        //         // err: incomplete hex number
-        //         assert!(matches!(lex_from_str("0x"), Err(ParseError { message: _ })));
-        //
-        //         // err: invalid char for hex number
-        //         assert!(matches!(
-        //             lex_from_str("0x123xyz"),
-        //             Err(ParseError { message: _ })
-        //         ));
-        //
-        //         // err: incomplete binary number
-        //         assert!(matches!(lex_from_str("0b"), Err(ParseError { message: _ })));
-        //
-        //         // err: invalid char for binary number
-        //         assert!(matches!(
-        //             lex_from_str("0b1234"),
-        //             Err(ParseError { message: _ })
-        //         ));
-        //
-        //         // err: unsupported binary number expression
-        //         assert!(matches!(
-        //             lex_from_str("0b00_11.0101"),
-        //             Err(ParseError { message: _ })
-        //         ));
     }
 
     #[test]
@@ -2258,6 +2559,389 @@ mod tests {
         // err: incorrect type
         assert!(matches!(
             lex_from_str("1m@double"),
+            Err(ParseError { message: _ })
+        ));
+    }
+
+    #[test]
+    fn test_lex_hex_number() {
+        assert_eq!(
+            lex_from_str("0xabcd").unwrap(),
+            vec![Token::Number(NumberToken::Int(0xabcd))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0xabcd").unwrap(),
+            vec![Token::Number(NumberToken::Int(-0xabcd))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0x8000_0000"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: invalid hex char
+        assert!(matches!(
+            lex_from_str("0x1234xyz"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: incomplete hex number
+        assert!(matches!(lex_from_str("0x"), Err(ParseError { message: _ })));
+
+        assert_eq!(
+            lex_from_str("0x7f@byte").unwrap(),
+            vec![Token::Number(NumberToken::Byte(0x7f_i8))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0x80@byte").unwrap(),
+            vec![Token::Number(NumberToken::Byte(-0x80_i8))]
+        );
+
+        assert_eq!(
+            lex_from_str("0xff@ubyte").unwrap(),
+            vec![Token::Number(NumberToken::UByte(0xff_u8))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0x80@byte"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned overflow
+        assert!(matches!(
+            lex_from_str("0x1_ff@ubyte"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned with minus sign
+        assert!(matches!(
+            lex_from_str("-0xaa@ubyte"),
+            Err(ParseError { message: _ })
+        ));
+
+        assert_eq!(
+            lex_from_str("0x7fff@short").unwrap(),
+            vec![Token::Number(NumberToken::Short(0x7fff_i16))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0x8000@short").unwrap(),
+            vec![Token::Number(NumberToken::Short(-0x8000_i16))]
+        );
+
+        assert_eq!(
+            lex_from_str("0xffff@ushort").unwrap(),
+            vec![Token::Number(NumberToken::UShort(0xffff_u16))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0x8000@short"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned overflow
+        assert!(matches!(
+            lex_from_str("0x1_ffff@ushort"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned with minus sign
+        assert!(matches!(
+            lex_from_str("-0xaaaa@ushort"),
+            Err(ParseError { message: _ })
+        ));
+
+        assert_eq!(
+            lex_from_str("0x7fff_ffff@int").unwrap(),
+            vec![Token::Number(NumberToken::Int(0x7fff_ffff_i32))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0x8000_0000@int").unwrap(),
+            vec![Token::Number(NumberToken::Int(-0x8000_0000_i32))]
+        );
+
+        assert_eq!(
+            lex_from_str("0xffff_ffff@uint").unwrap(),
+            vec![Token::Number(NumberToken::UInt(0xffff_ffff_u32))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0x8000_0000@int"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned overflow
+        assert!(matches!(
+            lex_from_str("0x1_ffff_ffff@uint"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned with minus sign
+        assert!(matches!(
+            lex_from_str("-0xaaaa_aaaa@uint"),
+            Err(ParseError { message: _ })
+        ));
+
+        assert_eq!(
+            lex_from_str("0x7fff_ffff_ffff_ffff@long").unwrap(),
+            vec![Token::Number(NumberToken::Long(0x7fff_ffff_ffff_ffff_i64))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0x8000_0000_0000_0000@long").unwrap(),
+            vec![Token::Number(NumberToken::Long(-0x8000_0000_0000_0000_i64))]
+        );
+
+        assert_eq!(
+            lex_from_str("0xffff_ffff_ffff_ffff@ulong").unwrap(),
+            vec![Token::Number(NumberToken::ULong(0xffff_ffff_ffff_ffff_u64))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0x8000_0000_0000_0000@long"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned overflow
+        assert!(matches!(
+            lex_from_str("0x1_ffff_ffff_ffff_ffff@ulong"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned with minus sign
+        assert!(matches!(
+            lex_from_str("-0xaaaa_aaaa_aaaa_aaaa@ulong"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: invalid hex floating pointer number
+        assert!(matches!(
+            lex_from_str("0xaa@float"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: invalid hex floating pointer number
+        assert!(matches!(
+            lex_from_str("0xaa@double"),
+            Err(ParseError { message: _ })
+        ));
+    }
+
+    #[test]
+    fn test_lex_hex_floating_point_number() {
+        // 3.1415927f32
+        assert_eq!(
+            lex_from_str("0x1.921fb6p1").unwrap(),
+            vec![Token::Number(NumberToken::Float(std::f32::consts::PI))]
+        );
+
+        // -3.1415927f32
+        assert_eq!(
+            lex_from_str("-0x1.921fb6p1").unwrap(),
+            vec![Token::Number(NumberToken::Float(-std::f32::consts::PI))]
+        );
+
+        // 2.718281828459045f64
+        assert_eq!(
+            lex_from_str("0x1.5bf0a8b145769p+1@double").unwrap(),
+            vec![Token::Number(NumberToken::Double(std::f64::consts::E))]
+        );
+
+        // https://observablehq.com/@jrus/hexfloat
+        assert_eq!(
+            lex_from_str("0x1.62e42fefa39efp-1@double").unwrap(),
+            vec![Token::Number(NumberToken::Double(std::f64::consts::LN_2))]
+        );
+
+        // err: incorrect number type
+        assert!(matches!(
+            lex_from_str("0x1.23p4@int"),
+            Err(ParseError { message: _ })
+        ));
+    }
+
+    #[test]
+    fn test_lex_binary_number() {
+        assert_eq!(
+            lex_from_str("0b1100").unwrap(),
+            vec![Token::Number(NumberToken::Int(0b1100))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0b1010").unwrap(),
+            vec![Token::Number(NumberToken::Int(-0b1010))]
+        );
+
+        // err: unsupport binary floating point
+        assert!(matches!(
+            lex_from_str("0b11.1"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0b1_0000_0000_0000_0000_0000_0000_0000_0000"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: invalid binary char
+        assert!(matches!(
+            lex_from_str("0b10xyz"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: incomplete hex number
+        assert!(matches!(lex_from_str("0b"), Err(ParseError { message: _ })));
+
+        assert_eq!(
+            lex_from_str("0b0111_1111@byte").unwrap(),
+            vec![Token::Number(NumberToken::Byte(0x7f_i8))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0b1000_0000@byte").unwrap(),
+            vec![Token::Number(NumberToken::Byte(-0x80_i8))]
+        );
+
+        assert_eq!(
+            lex_from_str("0b1111_1111@ubyte").unwrap(),
+            vec![Token::Number(NumberToken::UByte(0xff_u8))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0b1000_0000@byte"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned overflow
+        assert!(matches!(
+            lex_from_str("0b1_1111_1111@ubyte"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned with minus sign
+        assert!(matches!(
+            lex_from_str("-0b11@ubyte"),
+            Err(ParseError { message: _ })
+        ));
+
+        assert_eq!(
+            lex_from_str("0b0111_1111_1111_1111@short").unwrap(),
+            vec![Token::Number(NumberToken::Short(0x7fff_i16))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0b1000_0000_0000_0000@short").unwrap(),
+            vec![Token::Number(NumberToken::Short(-0x8000_i16))]
+        );
+
+        assert_eq!(
+            lex_from_str("0b1111_1111_1111_1111@ushort").unwrap(),
+            vec![Token::Number(NumberToken::UShort(0xffff_u16))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0b1000_0000_0000_0000@short"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned overflow
+        assert!(matches!(
+            lex_from_str("0b1_1111_1111_1111_1111@ushort"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned with minus sign
+        assert!(matches!(
+            lex_from_str("-0b1111@ushort"),
+            Err(ParseError { message: _ })
+        ));
+
+        assert_eq!(
+            lex_from_str("0b0111_1111_1111_1111__1111_1111_1111_1111@int").unwrap(),
+            vec![Token::Number(NumberToken::Int(0x7fff_ffff_i32))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0b1000_0000_0000_0000__0000_0000_0000_0000@int").unwrap(),
+            vec![Token::Number(NumberToken::Int(-0x8000_0000_i32))]
+        );
+
+        assert_eq!(
+            lex_from_str("0b1111_1111_1111_1111__1111_1111_1111_1111@uint").unwrap(),
+            vec![Token::Number(NumberToken::UInt(0xffff_ffff_u32))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0b1000_0000_0000_0000__0000_0000_0000_0000@int"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned overflow
+        assert!(matches!(
+            lex_from_str("0b1_1111_1111_1111_1111__1111_1111_1111_1111@uint"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned with minus sign
+        assert!(matches!(
+            lex_from_str("-0b1111_1111@uint"),
+            Err(ParseError { message: _ })
+        ));
+
+        assert_eq!(
+            lex_from_str("0b0111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@long").unwrap(),
+            vec![Token::Number(NumberToken::Long(0x7fff_ffff_ffff_ffff_i64))]
+        );
+
+        assert_eq!(
+            lex_from_str("-0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000@long").unwrap(),
+            vec![Token::Number(NumberToken::Long(-0x8000_0000_0000_0000_i64))]
+        );
+
+        assert_eq!(
+            lex_from_str("0b1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@ulong").unwrap(),
+            vec![Token::Number(NumberToken::ULong(0xffff_ffff_ffff_ffff_u64))]
+        );
+
+        // err: overflow
+        assert!(matches!(
+            lex_from_str("0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000@long"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned overflow
+        assert!(matches!(
+            lex_from_str("0b1_1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@ulong"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: unsigned with minus sign
+        assert!(matches!(
+            lex_from_str("-0b1111_1111_1111_1111@ulong"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: invalid hex floating pointer number
+        assert!(matches!(
+            lex_from_str("0b11@float"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: invalid hex floating pointer number
+        assert!(matches!(
+            lex_from_str("0b11@double"),
             Err(ParseError { message: _ })
         ));
     }
