@@ -1,104 +1,56 @@
 # XiaoXuan Script Object Notation
 
-The _XiaoXuan Script Object Notation_ (code _ASON_) is an easy-to-read and write data representation format used primarily as configuration file for application, also for data transfer.
+_XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy for humans to read and write. it is similar to _JSON_, but with some key differences. _ASON_ is primarily used as a configuration file for applications, but it can also be used as a data transfer format.
 
-Features:
+**Features**
 
-- Simple, strict and consistent.
-- Compatible with most of the syntax of _JSON_ and _JSON5_, familiar with _JSON_ means familiar _ASON_.
-- Consistent with _XiaoXuan Lang_ data expression.
+- Compatible with most of the syntax of _JSON_ and _JSON5_.
+  If you are already familiar with _JSON_, you can read and write _ASON_ without having to learning anything new.
+- Simple, rigorous and consistent.
+  _ASON_ improves and ehances _JSON_. For example, _ASON_ numbers have data types, support comments, key names do not require double quotes, `Boolean`, `Date` and `Tuple` types are added. In addition, the `null` value that often causes ambiguity is removed.
 
-- - -
+**Table of Content**
 
-Table of Content:
-
-<!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
+<!-- @import "[TOC]" {cmd="toc" depthFrom=2 depthTo=6 orderedList=false} -->
 
 <!-- code_chunk_output -->
 
-- [XiaoXuan Object Notation](#xiaoxuan-object-notation)
-  - [Example](#example)
-  - [Comparing with _JSON_](#comparing-with-json)
-  - [File Extension Name](#file-extension-name)
-  - [License](#license)
+- [Example](#example)
+- [Documentation](#documentation)
+- [File Extension](#file-extension)
+- [License](#license)
 
 <!-- /code_chunk_output -->
 
 ## Example
 
-The following is an example of _ASON_ with base data types, such as _String_, _Integer number_, _Floating point number_, _Boolean_ and _Date_, as well as _Array (List)_, _Tuple_ and nested _Object_.
-
-```json5
+```json
 {
     string: "hello world"
-    int: 123
-    int_with_minus: -456
-    int_with_data_type_name: 789_u32
-    long: 123456
-    long_with_data_type_name: 456789_u64
-
+    raw_string: r"[a-z]+"
+    number: 123
+    number_with_data_type_name: 123_456_789@long
     float: 3.14
-    double: 6.626e-34_f64
-
-    // number data types:
-    //
-    // integer type names:
-    // - i32 (or int)
-    // - u32 (or uint)
-    // - i64 (or long)
-    // - u64 (or ulong)
-    //
-    // floating point type names:
-    // - f32 (or float)
-    // - f64 (or double)
-
+    double: 6.626e-34@double
     bool: true
-    date: d"2023-03-24"
-    time: d"10:15:00"
-    data_time: d"2023-03-24 10:15:00"
-
-    // array
+    date: d"2023-03-24 12:30:00+08:00"
     array: [1,2,3,]
-
-    // tuple
     tuple: (1, "foo", true)
-
-    // nested object
     object: {
         id: 123
         name: "leaf"
     }
-
-    // inline commas
-    a:"a", b:"b", c:"c",
-
-    // optional tailing commas
-    x:"x",
-    y:"y",
-    z:"z",
+    "backwards compatible with": "JSON"
 }
 ```
 
-Check out the documents for more syntax.
+## Documentation
 
-## Comparing with _JSON_
+See the [document](https://hemashushu.github.io/works/xiaoxuan-script-object-notation) for more information.
 
-_ASON_ is similar in appearance to JSON, but with the following differences:
+## File Extension
 
-- Numbers have an explicit datatype.
-- _null_ value is not allowed.
-- Floating point number do not support `Inf`, `-Inf`, `-0` and `NaN`.
-- Single-quoted strings are not supported.
-- Comments are supported.
-- _Array_ requires all elements to be of the same datatype.
-- Added _Date_ datatype.
-- Added _Tuple_ datatype.
-- Double quotes can be omitted from key names.
-- Commas can be ommitted between items.
-
-## File Extension Name
-
-The extension name of the _ASON_ file is `*.ason`.
+The file extension for _ASON_ is `*.ason`.
 
 ## License
 
