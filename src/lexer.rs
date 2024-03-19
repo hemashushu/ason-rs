@@ -460,12 +460,13 @@ fn lex_number_decimal(
     let num_token: NumberLiteral;
 
     if let Some(ty) = num_type {
-        if has_integer_unit_prefix(num_prefix) && ty.as_str() != "ulong" {
-            return Err(ParseError::new(&format!("Only \"ulong\" type numbers can contain integer unit prefix, the current number type: {}", ty)));
+        if has_integer_unit_prefix(num_prefix) && ty.as_str() != "long" && ty.as_str() != "ulong" {
+            return Err(ParseError::new(&format!("Only \"long/ulong\" type numbers can contain integer unit prefix, the current number type: {}", ty)));
         }
 
-        if has_fraction_unit_prefix(num_prefix) && ty.as_str() != "float" {
-            return Err(ParseError::new(&format!("Only \"float\" type numbers can contain fraction unit prefix, the current number type: {}", ty)));
+        if has_fraction_unit_prefix(num_prefix) && ty.as_str() != "float" && ty.as_str() != "double"
+        {
+            return Err(ParseError::new(&format!("Only \"float/double\" type numbers can contain fraction unit prefix, the current number type: {}", ty)));
         }
 
         match ty.as_str() {
@@ -561,12 +562,22 @@ fn lex_number_decimal(
                     num_string.insert(0, '-');
                 }
 
-                let v = num_string.parse::<i64>().map_err(|e| {
+                let mut v = num_string.parse::<i64>().map_err(|e| {
                     ParseError::new(&format!(
                         "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
                     ))
                 })?;
+
+                if has_integer_unit_prefix(num_prefix) {
+                    v = v
+                        .checked_mul(get_integer_unit_prefix_value(num_prefix) as i64)
+                        .ok_or(ParseError::new(&format!(
+                            "Long integer number is overflow: {}{}",
+                            num_string,
+                            num_prefix.unwrap()
+                        )))?;
+                }
 
                 num_token = NumberLiteral::Long(v);
             }
@@ -640,7 +651,7 @@ fn lex_number_decimal(
                     num_string.insert(0, '-');
                 }
 
-                let v = num_string.parse::<f64>().map_err(|e| {
+                let mut v = num_string.parse::<f64>().map_err(|e| {
                     ParseError::new(&format!(
                         "Can not convert \"{}\" to double precision floating-point number, error: {}",
                         num_string, e
@@ -657,10 +668,19 @@ fn lex_number_decimal(
                     ));
                 }
 
+                // note: -0.0 == 0f64 and +0.0 == 0f64
                 if is_negative && v == 0f64 {
                     return Err(ParseError::new(
                         "Negative floating-point number 0 is not allowed.",
                     ));
+                }
+
+                if has_fraction_unit_prefix(num_prefix) {
+                    v /= get_fraction_unit_prefix_value(num_prefix) as f64;
+                }
+
+                if is_negative && v == 0f64 {
+                    v = 0f64;
                 }
 
                 num_token = NumberLiteral::Double(v);
@@ -2550,6 +2570,11 @@ mod tests {
         );
 
         assert_eq!(
+            lex_from_str("1K@long").unwrap(),
+            vec![Token::Number(NumberLiteral::Long(1000)),]
+        );
+
+        assert_eq!(
             lex_from_str("1Ki@ulong").unwrap(),
             vec![Token::Number(NumberLiteral::ULong(1024)),]
         );
@@ -2559,24 +2584,23 @@ mod tests {
             vec![Token::Number(NumberLiteral::Float(0.001)),]
         );
 
+        assert_eq!(
+            lex_from_str("1m@double").unwrap(),
+            vec![Token::Number(NumberLiteral::Double(0.001)),]
+        );
+
         // err: invalid prefix
         assert!(matches!(lex_from_str("1Z"), Err(ParseError { message: _ })));
 
         // err: incorrect type
         assert!(matches!(
-            lex_from_str("1K@int"),
+            lex_from_str("1M@int"),
             Err(ParseError { message: _ })
         ));
 
         // err: incorrect type
         assert!(matches!(
-            lex_from_str("1Ki@short"),
-            Err(ParseError { message: _ })
-        ));
-
-        // err: incorrect type
-        assert!(matches!(
-            lex_from_str("1m@double"),
+            lex_from_str("1m@int"),
             Err(ParseError { message: _ })
         ));
     }

@@ -1,70 +1,160 @@
 {
+    // the default number type is 'int'
+
+    int: 123
+    int_negative: -123
+
+    // integer numbers
+
+    byte: 11@byte
+    ubyte: 13@ubyte
+    short: 17@short
+    ushort: 19@ushort
+    int: 23@int
+    uint: 29@uint
+    long: 31@long
+    ulong: 37@ulong
+
+    // floating point numbers
+
+    floating_point: 3.14
+    float: 3.14@float
+    double: 6.626@double
+    float_with_exp: 6.022e23
+    float_with_exp_negative: 6.6738e-11
+
+    // metric suffix
+    // auto number type 'ulong'
+
+    suffix_K: 101K
+    suffix_M: 103M
+    suffix_G: 107G
+    suffix_T: 109T
+    suffix_P: 113P
+    suffix_E: 127E
+
+    // auto number type 'float'
+
+    suffix_m: 1m
+    suffix_u: 1u
+    suffix_n: 1n
+    suffix_p: 1p
+    suffix_f: 1f
+    suffix_a: 1a
+
+    // binary metric suffix
+    // auto number type 'ulong'
+
+    suffix_Ki: 1Ki
+    suffix_Mi: 1Mi
+    suffix_Gi: 1Gi
+    suffix_Ti: 1Ti
+    suffix_Pi: 1Pi
+    suffix_Ei: 1Ei
+
+    both_metric_suffix_and_type_long: 11G@long
+    both_metric_suffix_and_type_double: 1u@double
+
+    hex_integer: 0xbeef
+    hex_integer_negative: -0xdead
+    hex_floating_point: 0x1.921fb6p1
+
+    hex_byte: 0x80@byte
+    hex_ubyte: 0xff@ubyte
+    hex_short: 0x8000@short
+    hex_ushort: 0xffff@ushort
+    hex_int: 0x8000_0000@int
+    hex_uint: 0xffff_ffff@uint
+    hex_long: 0x8000_0000_0000_0000@long
+    hex_ulong: 0xffff_ffff_ffff_ffff@ulong
+    hex_float: 0x1.921fb6p1@float
+    hex_double: 0x1.5bf0a8b145769p+1@double
+
+    bin_integer: 0b1001
+    bin_integer_negative: 0b1001
+
+    bin_byte: 0b0111_1111@byte
+    bin_ubyte: 0b1111_1111@ubyte
+    bin_short: 0b0111_1111_1111_1111@short
+    bin_ushort: 0b1111_1111_1111_1111@ushort
+    bin_int: 0b0111_1111_1111_1111_1111_1111_1111_1111@int
+    bin_uint: 0b1111_1111_1111_1111_1111_1111_1111_1111@uint
+    bin_long: 0b0111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111@long
+    bin_ulong: 0b1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111@ulong
+
+    bool_true: true
+    bool_false: false
+
+    data_time: d"2023-02-23 10:23:45"
+    data_time_tz: d"2023-02-23 10:23:45+08:00"
+
+    char: 'c'
+    char_unicode: '文'
+    char_escape: '\n'
+    char_escape_zero: '\0'
+    char_escape_unicode: '\u{6CB3}'
+
     string: "hello world"
-    long_string: "one\
-        two\
-        three"
+    string_unicode: "中文🍀emoji👋🏻"
     multiline_string: "one
         two
         three"
-    escape_chars: "double quote:\"
+    multiline_string_with_new_line_escape: "one\
+        two\
+        three"
+    string_escape_chars: "\
+        double quote:\"
+        single quote:\'
         slash:\\
         tab:\t
-        line feed:\n
-        unicode:\u{6CB3}\u{9A6C}\u{26}\u{8431}"
+        carriage return:\r
+        new line:\n"
+    string_escape_unicode: "\u{6CB3}\u{9A6C}\u{26}\u{8431}"
     raw_string: r"hello"
     raw_string_variant: r#"hello "programming" world"#
-    auto_trimmed_string:
-    r|"
-    header 1
-    header 2
-    "|
-    i18n: "中文🍀emoji👋🏻"
+    auto_trimmed_string: r|"
+        heading 1
+          heading 2
+            heading 3
+        "|
 
-    int: 123
-    long: 456@i64
-    negative: -111
-    positive: +222
+    "quote name": "value1" // backwards compatible with JSON
 
-    hex: 0xbeef
-    bin: 0b1001
-
-    float: 3.14
-    double: 6.626@f64
-
-    exp: 6.022e23
-    exp_double: 6.6738e-11@f64
-
-    metric_suffix_big: 123M     // auto i32/i64
-    metric_suffix_small: 456u   // auto f32/f64
-    byte_suffix: 1024MiB
-    metric_suffix_and_type: 123M@u64
-
-    bool: true
-    date: d"2023-03-24"
-    time: d"10:15:00"
-    data_time: d"2023-03-24 10:15:00"
-
-    "quote name": "quote value"
+    // the value starts on a new line
     new_line:
-        "the value starts on a new line"
-    space   :   "there are spaces between key and value"
+        "value2"
+
+    // both the colon and value starts on a new line
+    new_line_variant
+    :
+    "value3"
+
+    // there are spaces between the key and value
+    space   :   "value4"
 
     // line comment
     line_comment: 1
     line_comment_in_tail: 2 // trailing comment
-    block_comment: /* block comment */ 4
+
+    block_comment: /* block comment */ 3
+
     /*
      * multiline block comment
      */
-    multiline_block_comment: 3
+    multiline_block_comment: 4
+
     """
     document comment
+    # heading 1
+    ## heading 2
+    ### heading 3
     """
-    document_comment: 4
 
-    inline_comma_1: "inline comma", inline_comma_2: 444, inline_comma_3: false
+    document_comment: 5
 
-    tail_comma_1: "tail comma",
-    tail_comma_2: 555,
-    tail_comma_3: true
+    inline_comma_1: 211, inline_comma_2: 223, inline_comma_3: 227
+
+    tail_comma_1: 229,
+    tail_comma_2: 233,
+    tail_comma_3: 239
 }

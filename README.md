@@ -40,7 +40,6 @@ _XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy 
         id: 123
         name: "leaf"
     }
-    "backwards compatible with": "JSON"
 }
 ```
 

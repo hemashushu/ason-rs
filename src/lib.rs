@@ -12,6 +12,7 @@ mod peekable_iterator;
 use std::fmt::Display;
 
 use chrono::{DateTime, FixedOffset};
+use formatter::format;
 use lexer::lex;
 use parser::parse;
 use peekable_iterator::PeekableIterator;
@@ -123,4 +124,8 @@ pub fn parse_from_str(s: &str) -> Result<AsonNode, ParseError> {
     let mut token_iter = tokens.into_iter();
     let mut peekable_token_iter = PeekableIterator::new(&mut token_iter, 2);
     parse(&mut peekable_token_iter)
+}
+
+pub fn format_to_string(n: &AsonNode) -> String {
+    format(n)
 }

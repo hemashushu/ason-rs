@@ -4,108 +4,132 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use std::fmt::Display;
-
 use crate::{AsonNode, NameValuePair, NumberLiteral};
 
-impl Display for NumberLiteral {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NumberLiteral::Byte(v) => {
-                write!(f, "{}@byte", v)
-            }
-            NumberLiteral::UByte(v) => {
-                write!(f, "{}@ubyte", v)
-            }
-            NumberLiteral::Short(v) => {
-                write!(f, "{}@short", v)
-            }
-            NumberLiteral::UShort(v) => {
-                write!(f, "{}@ushort", v)
-            }
-            NumberLiteral::Int(v) => {
-                write!(f, "{}", v)
-            }
-            NumberLiteral::UInt(v) => {
-                write!(f, "{}@uint", v)
-            }
-            NumberLiteral::Long(v) => {
-                write!(f, "{}@long", v)
-            }
-            NumberLiteral::ULong(v) => {
-                write!(f, "{}@ulong", v)
-            }
-            NumberLiteral::Float(v) => {
-                write!(f, "{}", v)
-            }
-            NumberLiteral::Double(v) => {
-                write!(f, "{}@double", v)
-            }
+pub const INDENT_SPACES: &'static str = "    ";
+
+fn format_number_literal(number_literal: &NumberLiteral) -> String {
+    match number_literal {
+        NumberLiteral::Byte(v) => {
+            format!("{}@byte", v)
+        }
+        NumberLiteral::UByte(v) => {
+            format!("{}@ubyte", v)
+        }
+        NumberLiteral::Short(v) => {
+            format!("{}@short", v)
+        }
+        NumberLiteral::UShort(v) => {
+            format!("{}@ushort", v)
+        }
+        NumberLiteral::Int(v) => {
+            // default integer number type
+            format!("{}", v)
+        }
+        NumberLiteral::UInt(v) => {
+            format!("{}@uint", v)
+        }
+        NumberLiteral::Long(v) => {
+            format!("{}@long", v)
+        }
+        NumberLiteral::ULong(v) => {
+            format!("{}@ulong", v)
+        }
+        NumberLiteral::Float(v) => {
+            // default floating-point number type
+            format!("{}", v)
+        }
+        NumberLiteral::Double(v) => {
+            format!("{}@double", v)
         }
     }
 }
 
-impl Display for NameValuePair {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.name.contains(' ') {
-            write!(f, "\"{}\": {}", self.name, self.value)
-        } else {
-            write!(f, "{}: {}", self.name, self.value)
-        }
+fn format_name_value_pair(name_value_pair: &NameValuePair, level: usize) -> String {
+    let sub_level = level + 1;
+    let leading_space = INDENT_SPACES.repeat(sub_level);
+    format!(
+        "{}{}: {}",
+        leading_space,
+        name_value_pair.name,
+        format_ason_node(&name_value_pair.value, sub_level)
+    )
+}
+
+fn format_ason_node(node: &AsonNode, level: usize) -> String {
+    match node {
+        AsonNode::Number(v) => format_number_literal(v),
+        AsonNode::Boolean(v) => match v {
+            true => "true".to_owned(),
+            false => "false".to_owned(),
+        },
+        AsonNode::Char(v) => format!("'{}'", escape(*v, true)),
+        AsonNode::String_(v) => format!(
+            "\"{}\"",
+            v.chars()
+                .map(|c| escape(c, false))
+                .collect::<Vec<String>>()
+                .join("")
+        ),
+        AsonNode::Date(v) => format!("d\"{}\"", v.to_rfc3339()),
+        AsonNode::ByteData(v) => format!(
+            "h\"{}\"",
+            v.iter()
+                .map(|item| format!("{:02x}", item))
+                .collect::<Vec<String>>()
+                .join(":")
+        ),
+        AsonNode::Array(v) => format!(
+            "[{}]",
+            v.iter()
+                .map(|item| format_ason_node(item, level))
+                .collect::<Vec<String>>()
+                .join(",")
+        ),
+        AsonNode::Tuple(v) => format!(
+            "({})",
+            v.iter()
+                .map(|item| format_ason_node(item, level))
+                .collect::<Vec<String>>()
+                .join(",")
+        ),
+        AsonNode::Object(v) => format!(
+            "{{\n{}\n}}",
+            v.iter()
+                .map(|item| format_name_value_pair(item, level))
+                .collect::<Vec<String>>()
+                .join("\n")
+        ),
     }
 }
 
-impl Display for AsonNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AsonNode::Number(v) => {
-                write!(f, "{}", v)
-            }
-            AsonNode::Boolean(v) => match v {
-                true => write!(f, "true"),
-                false => write!(f, "false"),
-            },
-            AsonNode::Char(v) => write!(f, "{}", v),
-            AsonNode::String_(v) => write!(f, "{}", v),
-            AsonNode::Date(v) => write!(f, "{}", v.to_rfc3339()),
-            AsonNode::ByteData(v) => write!(
-                f,
-                "{}",
-                v.iter()
-                    .map(|item| format!("{:02x}", item))
-                    .collect::<Vec<String>>()
-                    .join(":")
-            ),
-            AsonNode::Array(v) => write!(
-                f,
-                "[{}]",
-                v.iter()
-                    .map(|item| item.to_string())
-                    .collect::<Vec<String>>()
-                    .join(",")
-            ),
-            AsonNode::Tuple(v) => write!(
-                f,
-                "({})",
-                v.iter()
-                    .map(|item| item.to_string())
-                    .collect::<Vec<String>>()
-                    .join(",")
-            ),
-            AsonNode::Object(v) => write!(
-                f,
-                "{{{}}}",
-                v.iter()
-                    .map(|item| item.to_string())
-                    .collect::<Vec<String>>()
-                    .join("\n")
-            ),
+fn escape(c: char, escape_single_char: bool) -> String {
+    match c {
+        '\\' => "\\\\".to_owned(),
+        '\'' if escape_single_char => "\\'".to_owned(),
+        '"' => "\\\"".to_owned(),
+        '\t' => {
+            // horizontal tabulation
+            "\\t".to_owned()
         }
+        '\r' if escape_single_char => {
+            // carriage return, jump to the beginning of the line (CR)
+            "\\r".to_owned()
+        }
+        '\n' if escape_single_char => {
+            // new line/line feed (LF)
+            "\\n".to_owned()
+        }
+        '\0' => {
+            // null char
+            "\\0".to_owned()
+        }
+        _ => c.to_string(),
     }
 }
 
 pub fn format(node: &AsonNode) -> String {
-    node.to_string()
+    format_ason_node(node, 0)
 }
 
 #[cfg(test)]
@@ -132,12 +156,103 @@ mod tests {
 
     #[test]
     fn test_format_single_value() {
-        let s = format_to_str_from_str(
-            r#"
-        123
-        "#,
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            123
+            "#
+            ),
+            "123"
         );
 
-        println!("{}", s);
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            true
+            "#
+            ),
+            "true"
+        );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            '🍒'
+            "#
+            ),
+            "'🍒'"
+        );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            '\n'
+            "#
+            ),
+            "'\\n'"
+        );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            "hello\"world"
+            "#
+            ),
+            "\"hello\\\"world\""
+        );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            d"2024-03-17 10:01:11+08:00"
+            "#
+            ),
+            "d\"2024-03-17T10:01:11+08:00\""
+        );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            h"11:13:17:19"
+            "#
+            ),
+            "h\"11:13:17:19\""
+        );
+    }
+
+    #[test]
+    fn test_format_object() {
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            {id:123,name:"foo"}
+            "#
+            ),
+            "{\n    id: 123\n    name: \"foo\"\n}"
+        );
+    }
+
+    #[test]
+    fn test_format_array() {
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            [123,456,789]
+            "#
+            ),
+            "[123,456,789]"
+        );
+    }
+
+    #[test]
+    fn test_format_tuple() {
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            (123,"foo",true)
+            "#
+            ),
+            "(123,\"foo\",true)"
+        );
     }
 }
