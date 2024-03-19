@@ -106,11 +106,11 @@ fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErr
                 iter.next();
                 v
             }
-            Some(Token::String_(s)) => {
-                let v = s.to_owned();
-                iter.next();
-                v
-            }
+            // Some(Token::String_(s)) => {
+            //     let v = s.to_owned();
+            //     iter.next();
+            //     v
+            // }
             _ => return Err(ParseError::new("Expect a key name for the object.")),
         };
 
@@ -421,8 +421,8 @@ mod tests {
             expect_object1
         );
 
-        // key name with quote
-        assert_eq!(
+        // err: key name with quote
+        assert!(matches!(
             parse_from_str(
                 r#"
             {
@@ -430,10 +430,9 @@ mod tests {
                 "name": "foo",
             }
             "#
-            )
-            .unwrap(),
-            expect_object1
-        );
+            ),
+            Err(ParseError { message: _ })
+        ));
     }
 
     #[test]
