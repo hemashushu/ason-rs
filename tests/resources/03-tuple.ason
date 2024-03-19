@@ -1,0 +1,19 @@
+{
+    tuple: (1,"foo",true)
+    tuple_with_trailing_comma: (1,"foo",true,)
+    mulitline_tuple: (
+        1
+        "foo"
+        true
+    )
+    mulitline_tuple_with_commas: (
+        1,
+        "foo",
+        true
+    )
+    mulitline_tuple_with_trailing_comma: (
+        1,
+        "foo",
+        true,
+    )
+}

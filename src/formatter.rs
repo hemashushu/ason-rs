@@ -6,7 +6,7 @@
 
 use crate::{AsonNode, NameValuePair, NumberLiteral};
 
-pub const INDENT_SPACES: &'static str = "    ";
+pub const INDENT_SPACES: &str = "    ";
 
 fn format_number_literal(number_literal: &NumberLiteral) -> String {
     match number_literal {
@@ -37,7 +37,11 @@ fn format_number_literal(number_literal: &NumberLiteral) -> String {
         }
         NumberLiteral::Float(v) => {
             // default floating-point number type
-            format!("{}", v)
+            let mut s = v.to_string();
+            if !s.contains('.') {
+                s.push_str(".0");
+            }
+            s
         }
         NumberLiteral::Double(v) => {
             format!("{}@double", v)
@@ -94,11 +98,12 @@ fn format_ason_node(node: &AsonNode, level: usize) -> String {
                 .join(",")
         ),
         AsonNode::Object(v) => format!(
-            "{{\n{}\n}}",
+            "{{\n{}\n{}}}",
             v.iter()
                 .map(|item| format_name_value_pair(item, level))
                 .collect::<Vec<String>>()
-                .join("\n")
+                .join("\n"),
+            INDENT_SPACES.repeat(level),
         ),
     }
 }
@@ -168,6 +173,24 @@ mod tests {
         assert_eq!(
             format_to_str_from_str(
                 r#"
+            1.23
+            "#
+            ),
+            "1.23"
+        );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            123@float
+            "#
+            ),
+            "123.0"
+        );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
             true
             "#
             ),
@@ -230,6 +253,21 @@ mod tests {
             ),
             "{\n    id: 123\n    name: \"foo\"\n}"
         );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            {id:123,name:{first:"foo", last:"bar"}}
+            "#
+            ),
+            r#"{
+    id: 123
+    name: {
+        first: "foo"
+        last: "bar"
+    }
+}"#
+        );
     }
 
     #[test]
@@ -241,6 +279,24 @@ mod tests {
             "#
             ),
             "[123,456,789]"
+        );
+
+        assert_eq!(
+            format_to_str_from_str(
+                r#"
+            [{id:123, name:"abc"},{id:456, name:"def"},{id:789,name:"xyz"}]
+            "#
+            ),
+            r#"[{
+    id: 123
+    name: "abc"
+},{
+    id: 456
+    name: "def"
+},{
+    id: 789
+    name: "xyz"
+}]"#
         );
     }
 

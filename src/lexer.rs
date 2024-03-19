@@ -937,7 +937,7 @@ fn lex_number_hex(
         if to_double {
             let v = hexfloat2::parse::<f64>(&num_string).map_err(|_| {
                 ParseError::new(&format!(
-                    "Can not convert \"{}\" to floating-point number.",
+                    "Can not convert \"{}\" to double precision floating-point number.",
                     num_string
                 ))
             })?;
@@ -984,7 +984,7 @@ fn lex_number_hex(
 
                 let v = i8::from_str_radix(&num_string, 16).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to byte integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1000,7 +1000,7 @@ fn lex_number_hex(
 
                 let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to unsigned byte integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1014,7 +1014,7 @@ fn lex_number_hex(
 
                 let v = i16::from_str_radix(&num_string, 16).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to short integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1030,7 +1030,7 @@ fn lex_number_hex(
 
                 let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to unsigned short integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1060,7 +1060,7 @@ fn lex_number_hex(
 
                 let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to unsigned integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1074,7 +1074,7 @@ fn lex_number_hex(
 
                 let v = i64::from_str_radix(&num_string, 16).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1090,7 +1090,7 @@ fn lex_number_hex(
 
                 let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to unsigned long integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1186,7 +1186,7 @@ fn lex_number_binary(
 
                 let v = i8::from_str_radix(&num_string, 2).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to byte integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1202,7 +1202,7 @@ fn lex_number_binary(
 
                 let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to unsigned byte integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1216,7 +1216,7 @@ fn lex_number_binary(
 
                 let v = i16::from_str_radix(&num_string, 2).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to short integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1232,7 +1232,7 @@ fn lex_number_binary(
 
                 let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to unsigned short integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1262,7 +1262,7 @@ fn lex_number_binary(
 
                 let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to unsigned integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1276,7 +1276,7 @@ fn lex_number_binary(
 
                 let v = i64::from_str_radix(&num_string, 2).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
                     ))
                 })?;
@@ -1292,7 +1292,7 @@ fn lex_number_binary(
 
                 let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
                     ParseError::new(&format!(
-                        "Can not convert \"{}\" to integer number, error: {}",
+                        "Can not convert \"{}\" to unsigned long integer number, error: {}",
                         num_string, e
                     ))
                 })?;

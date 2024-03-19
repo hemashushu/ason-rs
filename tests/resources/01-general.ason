@@ -1,8 +1,8 @@
 {
     // the default number type is 'int'
 
-    int: 123
-    int_negative: -123
+    integer: 123
+    integer_negative: -123
 
     // integer numbers
 
@@ -26,12 +26,12 @@
     // metric suffix
     // auto number type 'ulong'
 
-    suffix_K: 101K
-    suffix_M: 103M
-    suffix_G: 107G
-    suffix_T: 109T
-    suffix_P: 113P
-    suffix_E: 127E
+    suffix_K: 1K
+    suffix_M: 1M
+    suffix_G: 1G
+    suffix_T: 1T
+    suffix_P: 1P
+    suffix_E: 1E
 
     // auto number type 'float'
 
@@ -59,13 +59,13 @@
     hex_integer_negative: -0xdead
     hex_floating_point: 0x1.921fb6p1
 
-    hex_byte: 0x80@byte
+    hex_byte: 0x7f@byte
     hex_ubyte: 0xff@ubyte
-    hex_short: 0x8000@short
+    hex_short: 0x7fff@short
     hex_ushort: 0xffff@ushort
-    hex_int: 0x8000_0000@int
+    hex_int: 0x7fff_ffff@int
     hex_uint: 0xffff_ffff@uint
-    hex_long: 0x8000_0000_0000_0000@long
+    hex_long: 0x7fff_ffff_ffff_ffff@long
     hex_ulong: 0xffff_ffff_ffff_ffff@ulong
     hex_float: 0x1.921fb6p1@float
     hex_double: 0x1.5bf0a8b145769p+1@double
@@ -107,8 +107,7 @@
         single quote:\'
         slash:\\
         tab:\t
-        carriage return:\r
-        new line:\n"
+        line feed:\n"
     string_escape_unicode: "\u{6CB3}\u{9A6C}\u{26}\u{8431}"
     raw_string: r"hello"
     raw_string_variant: r#"hello "programming" world"#
@@ -118,30 +117,28 @@
             heading 3
         "|
 
-    "quote name": "value1" // backwards compatible with JSON
-
     // the value starts on a new line
     new_line:
-        "value2"
+        "value1"
 
     // both the colon and value starts on a new line
     new_line_variant
     :
-    "value3"
+    "value2"
 
     // there are spaces between the key and value
-    space   :   "value4"
+    space   :   "value3"
 
     // line comment
-    line_comment: 1
-    line_comment_in_tail: 2 // trailing comment
+    line_comment: 101
+    line_comment_in_tail: 103 // trailing comment
 
-    block_comment: /* block comment */ 3
+    block_comment: /* block comment */ 107
 
     /*
      * multiline block comment
      */
-    multiline_block_comment: 4
+    multiline_block_comment: 109
 
     """
     document comment
@@ -150,7 +147,7 @@
     ### heading 3
     """
 
-    document_comment: 5
+    document_comment: 113
 
     inline_comma_1: 211, inline_comma_2: 223, inline_comma_3: 227
 

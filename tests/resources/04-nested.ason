@@ -1,0 +1,15 @@
+{
+    id:123
+    name:"hello"
+    orders: [
+        (1, "foo", true)
+        (2, "bar", false)
+    ]
+    group: {
+        active: true
+        permissions:[
+            {number:11, title: "read"}
+            {number:13, title: "write"}
+        ]
+    }
+}
