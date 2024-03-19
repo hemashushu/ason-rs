@@ -3,7 +3,14 @@ name = "ason"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MPL-2.0"
+description = "A data format designed to be easy for humans to read and write."
+homepage = "https://hemashushu.github.io/works/xiaoxuan-script-object-notation"
+documentation = "https://hemashushu.github.io/works/xiaoxuan-script-object-notation"
+repository = "https://github.com/hemashushu/xiaoxuan-script-object-notation"
+readme = "README.md"
+keywords = ["ason", "parser", "json", "serde", "xiaoxuan"]
+categories = ["encoding", "parser-implementations"]
 
 [dependencies]
 chrono = "0.4.35"
