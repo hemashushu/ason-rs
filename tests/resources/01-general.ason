@@ -24,14 +24,24 @@
     float_with_exp_negative: 6.6738e-11
 
     // metric suffix
-    // auto number type 'ulong'
+    // auto number type 'int'
 
     suffix_K: 1K
     suffix_M: 1M
     suffix_G: 1G
-    suffix_T: 1T
-    suffix_P: 1P
-    suffix_E: 1E
+    suffix_T: 1T@long
+    suffix_P: 1P@long
+    suffix_E: 1E@long
+
+    // binary metric suffix
+    // auto number type 'int'
+
+    suffix_Ki: 1Ki
+    suffix_Mi: 1Mi
+    suffix_Gi: 1Gi
+    suffix_Ti: 1Ti@long
+    suffix_Pi: 1Pi@long
+    suffix_Ei: 1Ei@long
 
     // auto number type 'float'
 
@@ -42,17 +52,7 @@
     suffix_f: 1f
     suffix_a: 1a
 
-    // binary metric suffix
-    // auto number type 'ulong'
-
-    suffix_Ki: 1Ki
-    suffix_Mi: 1Mi
-    suffix_Gi: 1Gi
-    suffix_Ti: 1Ti
-    suffix_Pi: 1Pi
-    suffix_Ei: 1Ei
-
-    both_metric_suffix_and_type_long: 11G@long
+    both_metric_suffix_and_type_long: 1G@long
     both_metric_suffix_and_type_double: 1u@double
 
     hex_integer: 0xbeef

@@ -50,25 +50,25 @@ fn test_parse_file_01() {
     double: 6.626@double
     float_with_exp: 602200000000000000000000.0
     float_with_exp_negative: 0.000000000066738
-    suffix_K: 1000@ulong
-    suffix_M: 1000000@ulong
-    suffix_G: 1000000000@ulong
-    suffix_T: 1000000000000@ulong
-    suffix_P: 1000000000000000@ulong
-    suffix_E: 1000000000000000000@ulong
+    suffix_K: 1000
+    suffix_M: 1000000
+    suffix_G: 1000000000
+    suffix_T: 1000000000000@long
+    suffix_P: 1000000000000000@long
+    suffix_E: 1000000000000000000@long
+    suffix_Ki: 1024
+    suffix_Mi: 1048576
+    suffix_Gi: 1073741824
+    suffix_Ti: 1099511627776@long
+    suffix_Pi: 1125899906842624@long
+    suffix_Ei: 1152921504606846976@long
     suffix_m: 0.001
     suffix_u: 0.000001
     suffix_n: 0.000000001
     suffix_p: 0.000000000001
     suffix_f: 0.000000000000001
     suffix_a: 0.0000000000000000009999999
-    suffix_Ki: 1024@ulong
-    suffix_Mi: 1048576@ulong
-    suffix_Gi: 1073741824@ulong
-    suffix_Ti: 1099511627776@ulong
-    suffix_Pi: 1125899906842624@ulong
-    suffix_Ei: 1152921504606846976@ulong
-    both_metric_suffix_and_type_long: 11000000000@long
+    both_metric_suffix_and_type_long: 1000000000@long
     both_metric_suffix_and_type_double: 0.000001@double
     hex_integer: 48879
     hex_integer_negative: -57005

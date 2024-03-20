@@ -460,13 +460,34 @@ fn lex_number_decimal(
     let num_token: NumberLiteral;
 
     if let Some(ty) = num_type {
-        if has_integer_unit_prefix(num_prefix) && ty.as_str() != "long" && ty.as_str() != "ulong" {
-            return Err(ParseError::new(&format!("Only \"long/ulong\" type numbers can contain integer unit prefix, the current number type: {}", ty)));
+        if has_integer_unit_prefix(num_prefix) {
+            match ty.as_str() {
+                "int" | "uint" | "long" | "ulong" => {
+                    // pass
+                }
+                _ => {
+                    return Err(ParseError::new(&format!(
+                        "Only int, uint, long and ulong type numbers can add integer unit prefix, \
+                            the current number type is: {}",
+                        ty
+                    )));
+                }
+            }
         }
 
-        if has_fraction_unit_prefix(num_prefix) && ty.as_str() != "float" && ty.as_str() != "double"
-        {
-            return Err(ParseError::new(&format!("Only \"float/double\" type numbers can contain fraction unit prefix, the current number type: {}", ty)));
+        if has_fraction_unit_prefix(num_prefix) {
+            match ty.as_str() {
+                "float" | "double" => {
+                    // pass
+                }
+                _ => {
+                    return Err(ParseError::new(&format!(
+                        "Only float and double type numbers can add fraction metric prefix, \
+                        the current number type is: {}",
+                        ty
+                    )));
+                }
+            }
         }
 
         match ty.as_str() {
@@ -533,12 +554,34 @@ fn lex_number_decimal(
                     num_string.insert(0, '-');
                 }
 
-                let v = num_string.parse::<i32>().map_err(|e| {
+                let mut v = num_string.parse::<i32>().map_err(|e| {
                     ParseError::new(&format!(
                         "Can not convert \"{}\" to integer number, error: {}",
                         num_string, e
                     ))
                 })?;
+
+                if has_integer_unit_prefix(num_prefix) {
+                    match num_prefix {
+                        Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+                            return Err(ParseError::new(&format!(
+                                "The unit prefix {} is out of range for integer numbers, consider adding @long or @ulong types.",
+                                num_prefix.unwrap()
+                            )));
+                        }
+                        _ => {
+                            // pass
+                        }
+                    }
+
+                    v = v
+                        .checked_mul(get_integer_unit_prefix_value(num_prefix) as i32)
+                        .ok_or(ParseError::new(&format!(
+                            "Integer number is overflow: {}{}",
+                            num_string,
+                            num_prefix.unwrap()
+                        )))?;
+                }
 
                 num_token = NumberLiteral::Int(v);
             }
@@ -549,12 +592,35 @@ fn lex_number_decimal(
                     ));
                 }
 
-                let v = num_string.parse::<u32>().map_err(|e| {
+                let mut v = num_string.parse::<u32>().map_err(|e| {
                     ParseError::new(&format!(
                         "Can not convert \"{}\" to unsigned integer number, error: {}",
                         num_string, e
                     ))
                 })?;
+
+                if has_integer_unit_prefix(num_prefix) {
+                    match num_prefix {
+                        Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+                            return Err(ParseError::new(&format!(
+                                "The unit prefix {} is out of range for integer numbers, consider adding @long or @ulong types.",
+                                num_prefix.unwrap()
+                            )));
+                        }
+                        _ => {
+                            // pass
+                        }
+                    }
+
+                    v = v
+                        .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
+                        .ok_or(ParseError::new(&format!(
+                            "Integer number is overflow: {}{}",
+                            num_string,
+                            num_prefix.unwrap()
+                        )))?;
+                }
+
                 num_token = NumberLiteral::UInt(v);
             }
             "long" => {
@@ -690,29 +756,41 @@ fn lex_number_decimal(
             }
         }
     } else if has_integer_unit_prefix(num_prefix) {
-        // u64
+        // i32
         if is_negative {
             return Err(ParseError::new(
                 "Number with both minus sign and unit prefix is not allowed.",
             ));
         }
 
-        let mut v = num_string.parse::<u64>().map_err(|e| {
+        let mut v = num_string.parse::<i32>().map_err(|e| {
             ParseError::new(&format!(
-                "Can not convert \"{}\" to unsigned long integer number, error: {}",
+                "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
             ))
         })?;
 
+        match num_prefix {
+            Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+                return Err(ParseError::new(&format!(
+                    "The unit prefix {} is out of range for integer numbers, consider adding @long or @ulong types.",
+                    num_prefix.unwrap()
+                )));
+            }
+            _ => {
+                // pass
+            }
+        }
+
         v = v
-            .checked_mul(get_integer_unit_prefix_value(num_prefix))
+            .checked_mul(get_integer_unit_prefix_value(num_prefix) as i32)
             .ok_or(ParseError::new(&format!(
-                "Unsigned long integer number is overflow: {}{}",
+                "Integer number is overflow: {}{}",
                 num_string,
                 num_prefix.unwrap()
             )))?;
 
-        num_token = NumberLiteral::ULong(v);
+        num_token = NumberLiteral::Int(v);
     } else if has_fraction_unit_prefix(num_prefix) {
         // f32
         if is_negative {
@@ -2456,82 +2534,59 @@ mod tests {
     }
 
     #[test]
-    fn test_lex_decimal_number_with_metric_prefix() {
+    fn test_lex_decimal_number_with_unit_prefix() {
+        // metric prefix
+
         assert_eq!(
             lex_from_str("1K").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(3))),]
+            vec![Token::Number(NumberLiteral::Int(10_i32.pow(3))),]
         );
 
         assert_eq!(
             lex_from_str("1M").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(6))),]
+            vec![Token::Number(NumberLiteral::Int(10_i32.pow(6))),]
         );
 
         assert_eq!(
             lex_from_str("1G").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(9))),]
+            vec![Token::Number(NumberLiteral::Int(10_i32.pow(9))),]
         );
 
-        assert_eq!(
-            lex_from_str("1T").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(12))),]
-        );
-
-        assert_eq!(
-            lex_from_str("1P").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(15))),]
-        );
-
-        assert_eq!(
-            lex_from_str("1E").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(18))),]
-        );
-
-        // binary prefix
+        // binary unit prefix
 
         assert_eq!(
             lex_from_str("1Ki").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(10))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(10))),]
         );
 
         assert_eq!(
             lex_from_str("1Mi").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(20))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(20))),]
         );
 
         assert_eq!(
             lex_from_str("1Gi").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(30))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(30))),]
         );
 
-        assert_eq!(
-            lex_from_str("1Ti").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(40))),]
-        );
-
-        assert_eq!(
-            lex_from_str("1Pi").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(50))),]
-        );
-
-        assert_eq!(
-            lex_from_str("1Ei").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(60))),]
-        );
-
-        // alternative binary prefix
+        // alternative binary unit prefix
 
         assert_eq!(
             lex_from_str("1KB").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(10))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(10))),]
         );
 
         assert_eq!(
             lex_from_str("1MB").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(20))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(20))),]
         );
 
-        // fraction prefix
+        assert_eq!(
+            lex_from_str("1GB").unwrap(),
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(30))),]
+        );
+
+        // fraction metric prefix
 
         assert_eq!(
             lex_from_str("1m").unwrap(),
@@ -2563,20 +2618,66 @@ mod tests {
             vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(18))),]
         );
 
-        // both prefix and number type
-        assert_eq!(
-            lex_from_str("1K@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(1000)),]
-        );
+        // both unit prefix and number type
 
         assert_eq!(
             lex_from_str("1K@long").unwrap(),
-            vec![Token::Number(NumberLiteral::Long(1000)),]
+            vec![Token::Number(NumberLiteral::Long(10_i64.pow(3))),]
         );
 
         assert_eq!(
-            lex_from_str("1Ki@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(1024)),]
+            lex_from_str("1M@long").unwrap(),
+            vec![Token::Number(NumberLiteral::Long(10_i64.pow(6))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1G@long").unwrap(),
+            vec![Token::Number(NumberLiteral::Long(10_i64.pow(9))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1T@ulong").unwrap(),
+            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(12))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1P@ulong").unwrap(),
+            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(15))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1E@ulong").unwrap(),
+            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(18))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1Ki@long").unwrap(),
+            vec![Token::Number(NumberLiteral::Long(2_i64.pow(10))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1Mi@long").unwrap(),
+            vec![Token::Number(NumberLiteral::Long(2_i64.pow(20))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1Gi@long").unwrap(),
+            vec![Token::Number(NumberLiteral::Long(2_i64.pow(30))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1Ti@ulong").unwrap(),
+            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(40))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1Pi@ulong").unwrap(),
+            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(50))),]
+        );
+
+        assert_eq!(
+            lex_from_str("1Ei@ulong").unwrap(),
+            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(60))),]
         );
 
         assert_eq!(
@@ -2589,16 +2690,28 @@ mod tests {
             vec![Token::Number(NumberLiteral::Double(0.001)),]
         );
 
-        // err: invalid prefix
+        // err: invalid unit prefix
         assert!(matches!(lex_from_str("1Z"), Err(ParseError { message: _ })));
 
-        // err: incorrect type
+        // err: out of range
+        assert!(matches!(lex_from_str("8G"), Err(ParseError { message: _ })));
+
+        // err: out of range
+        assert!(matches!(lex_from_str("1T"), Err(ParseError { message: _ })));
+
+        // err: out of range
+        assert!(matches!(lex_from_str("1P"), Err(ParseError { message: _ })));
+
+        // err: out of range
+        assert!(matches!(lex_from_str("1E"), Err(ParseError { message: _ })));
+
+        // err: invalid type
         assert!(matches!(
-            lex_from_str("1M@int"),
+            lex_from_str("1K@short"),
             Err(ParseError { message: _ })
         ));
 
-        // err: incorrect type
+        // err: invalid type
         assert!(matches!(
             lex_from_str("1m@int"),
             Err(ParseError { message: _ })
