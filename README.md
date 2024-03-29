@@ -1,13 +1,11 @@
 # XiaoXuan Script Object Notation
 
-_XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy for humans to read and write. it is similar to _JSON_, but with some key differences. _ASON_ is primarily used as a configuration file for applications, but it can also be used as a data transfer format.
+_XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy for humans to read and write. it is similar to _JSON_, but with many improvements and enhancements. _ASON_ is mainly used as a configuration file for applications, but can also be used for data transmission.
 
 **Features**
 
-- Compatible with most of the syntax of _JSON_ and _JSON5_.
-  If you are already familiar with _JSON_, you can read and write _ASON_ without having to learning anything new.
-- Simple, rigorous and consistent.
-  _ASON_ improves and ehances _JSON_. For example, _ASON_ numbers have data types, support comments, key names do not require double quotes, `Boolean`, `Date` and `Tuple` types are added. In addition, the `null` value that often causes ambiguity is removed.
+- **Compatible with most of the syntax of _JSON_ and _JSON5_.** If you are already familiar with _JSON_, you may not need to learn anything new to read and write _ASON_.
+- **Simple, rigorous and consistent syntax.** The syntax style of _ASON_ is close to that of programming languages. For example, numbers have data types, multiple types comments and strings are supported, key names do not require double quotes, and so on. These features make it easy for users to write accurate ASON documents, and are also beneficial for modification and maintenance.
 
 **Table of Content**
 
@@ -24,7 +22,7 @@ _XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy 
 
 ## Example
 
-```json
+```json5
 {
     string: "hello world"
     raw_string: r"[a-z]+"

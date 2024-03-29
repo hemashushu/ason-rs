@@ -459,9 +459,9 @@ fn lex_number_decimal(
 
     let num_token: NumberLiteral;
 
-    if let Some(ty) = num_type {
+    if let Some(type_name) = num_type {
         if has_integer_unit_prefix(num_prefix) {
-            match ty.as_str() {
+            match type_name.as_str() {
                 "int" | "uint" | "long" | "ulong" => {
                     // pass
                 }
@@ -469,14 +469,14 @@ fn lex_number_decimal(
                     return Err(ParseError::new(&format!(
                         "Only int, uint, long and ulong type numbers can add integer unit prefix, \
                             the current number type is: {}",
-                        ty
+                        type_name
                     )));
                 }
             }
         }
 
         if has_fraction_unit_prefix(num_prefix) {
-            match ty.as_str() {
+            match type_name.as_str() {
                 "float" | "double" => {
                     // pass
                 }
@@ -484,13 +484,13 @@ fn lex_number_decimal(
                     return Err(ParseError::new(&format!(
                         "Only float and double type numbers can add fraction metric prefix, \
                         the current number type is: {}",
-                        ty
+                        type_name
                     )));
                 }
             }
         }
 
-        match ty.as_str() {
+        match type_name.as_str() {
             "byte" => {
                 if is_negative {
                     num_string.insert(0, '-');
@@ -890,7 +890,7 @@ fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, ParseErr
 
     while let Some(current_char) = iter.peek(0) {
         match *current_char {
-            'a'..='z' => {
+            'a'..='z' | '0'..='9' => {
                 // valid char for type name
                 num_type.push(*current_char);
                 iter.next();
@@ -904,6 +904,16 @@ fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, ParseErr
     match num_type.as_str() {
         "int" | "uint" | "long" | "ulong" | "byte" | "ubyte" | "short" | "ushort" | "float"
         | "double" => Ok(num_type),
+        "i32" => Ok("int".to_owned()),
+        "u32" => Ok("uint".to_owned()),
+        "i64" => Ok("long".to_owned()),
+        "u64" => Ok("ulong".to_owned()),
+        "i8" => Ok("byte".to_owned()),
+        "u8" => Ok("ubyte".to_owned()),
+        "i16" => Ok("short".to_owned()),
+        "u16" => Ok("ushort".to_owned()),
+        "f32" => Ok("float".to_owned()),
+        "f64" => Ok("double".to_owned()),
         _ => Err(ParseError::new(&format!(
             "Invalid number type: {}",
             num_type
@@ -1047,8 +1057,8 @@ fn lex_number_hex(
                 num_token = NumberLiteral::Float(v)
             }
         };
-    } else if let Some(ty) = num_type {
-        match ty.as_str() {
+    } else if let Some(type_name) = num_type {
+        match type_name.as_str() {
             "float" | "double" => {
                 return Err(ParseError::new(&format!(
                     "Invalid hexadecimal floating point number: {}",
@@ -2531,6 +2541,59 @@ mod tests {
             lex_from_str("-Inf@double"),
             Err(ParseError { message: _ })
         ));
+    }
+
+    #[test]
+    fn test_lex_decimal_number_with_alternative_type_name() {
+        assert_eq!(
+            lex_from_str("11@i8").unwrap(),
+            vec![Token::Number(NumberLiteral::Byte(11))]
+        );
+
+        assert_eq!(
+            lex_from_str("13@u8").unwrap(),
+            vec![Token::Number(NumberLiteral::UByte(13))]
+        );
+
+        assert_eq!(
+            lex_from_str("17@i16").unwrap(),
+            vec![Token::Number(NumberLiteral::Short(17))]
+        );
+
+        assert_eq!(
+            lex_from_str("19@u16").unwrap(),
+            vec![Token::Number(NumberLiteral::UShort(19))]
+        );
+
+        assert_eq!(
+            lex_from_str("23@i32").unwrap(),
+            vec![Token::Number(NumberLiteral::Int(23))]
+        );
+
+        assert_eq!(
+            lex_from_str("29@u32").unwrap(),
+            vec![Token::Number(NumberLiteral::UInt(29))]
+        );
+
+        assert_eq!(
+            lex_from_str("31@i64").unwrap(),
+            vec![Token::Number(NumberLiteral::Long(31))]
+        );
+
+        assert_eq!(
+            lex_from_str("37@u64").unwrap(),
+            vec![Token::Number(NumberLiteral::ULong(37))]
+        );
+
+        assert_eq!(
+            lex_from_str("1.23@f32").unwrap(),
+            vec![Token::Number(NumberLiteral::Float(1.23))]
+        );
+
+        assert_eq!(
+            lex_from_str("1.23@f64").unwrap(),
+            vec![Token::Number(NumberLiteral::Double(1.23))]
+        );
     }
 
     #[test]
