@@ -21,7 +21,8 @@ pub enum Token {
     Comma,   // ,
     Colon,   // :
 
-    Name(String), // [a-zA-Z0-9_]
+    KeyName(String), // [a-zA-Z0-9_] and '\u{a0}' - '\u{d7ff}' and '\u{e000}' - '\u{10ffff}'
+    VariantName(String), // key name and "::"
     Number(NumberLiteral),
     Boolean(bool),
     Char(char),
@@ -29,20 +30,6 @@ pub enum Token {
     Date(DateTime<FixedOffset>),
     ByteData(Vec<u8>),
 
-    // avaliable in XiaoXuan Lang but not in ASON:
-    //
-    // - complex numbers:
-    //   - 1+2i
-    //   - 3i
-    //
-    // - rational numbers:
-    //   - r1/3
-    //   - r7/22
-    //
-    // - bits:
-    //   - 4'b1010
-    //   - 8'd170 (=8'b1010_1010)
-    //   - 16'xaabb
     Comment(CommentToken),
 }
 
@@ -189,6 +176,7 @@ fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Parse
     // T = terminator chars
 
     let mut name_string = String::new();
+    let mut found_separator = false;
 
     while let Some(current_char) = iter.peek(0) {
         match *current_char {
@@ -196,11 +184,12 @@ fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Parse
                 name_string.push(*current_char);
                 iter.next();
             }
-            // ':' if iter.look_ahead_equals(1, &':') => {
-            //     name_string.push_str("::");
-            //     iter.next();
-            //     iter.next();
-            // }
+            ':' if iter.look_ahead_equals(1, &':') => {
+                found_separator = true;
+                name_string.push_str("::");
+                iter.next();
+                iter.next();
+            }
             '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
                 // A char is a ‘Unicode scalar value’, which is any ‘Unicode code point’ other than a surrogate code point.
                 // This has a fixed numerical definition: code points are in the range 0 to 0x10FFFF,
@@ -251,34 +240,86 @@ fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Parse
         }
     }
 
-    let token = match name_string.as_str() {
-        "true" => Token::Boolean(true),
-        "false" => Token::Boolean(false),
-        _ => Token::Name(name_string),
+    let token = if found_separator {
+        Token::VariantName(name_string)
+    } else {
+        match name_string.as_str() {
+            "true" => Token::Boolean(true),
+            "false" => Token::Boolean(false),
+            _ => Token::KeyName(name_string),
+        }
     };
 
     Ok(token)
 }
 
+// decimal numbers:
+//
+// 123
+// 123.456
+// -123
+// 1.23e4
+// 1.23e+4
+// 1.23e-4
+// -1.23e4
+// 123K         // with metric suffix
+// 123Mi        // with binary metric suffix, equivalent to `123MB`
+// 123m         // with fractional metric suffix
+// -123n        // with minus sign
+// 123u@double  // with fractional metric suffix and number type name
+//
+// hex numbers:
+//
+// 0xabcd
+// -0xaabb
+// 0xabcd@uint
+//
+// hex floating-point numbers:
+//
+// 0x1.23p4
+// 0x1.23p+4
+// 0x1.23p-4
+// -0x1.23
+// 0x1.23p4@double
+//
+// binary numbers:
+//
+// 0b0011
+// -0b1100
+// 0b0011@ushort
+//
+// default integer numbers type: int (i32)
+// default floating-point numbers type: float (f32)
+//
+// number type names:
+// - int,   uint,   i32, u32
+// - long,  ulong,  i64, u64
+// - byte,  ubyte,  i8,  u8
+// - short, ushort, i16, u16
+// - float, double, f32, f64
+//
+// avaliable in XiaoXuan Lang but not in ASON:
+//
+// - complex numbers:
+//   - 1+2i
+//   - 3i
+//
+// - rational numbers:
+//   - r1/3
+//   - r7/22
+//
+// - bits:
+//   - 4'b1010
+//   - 8'd170 (=8'b1010_1010)
+//   - 16'xaabb
+//
+// - types:
+//   - imem
+//   - umem
 fn lex_number(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
     // 123456T  //
     // ^     ^__// to here
     // |________// current char
-    //
-    //
-    // floating-point number
-    //
-    // 3.14
-    // 2.99e8
-    // 2.99e+8
-    // 6.672e-34
-    //
-    // the number may also be hex or binary, e.g.
-    // 0b1100
-    // 0xaabb
-    // 0x1.23p4
-    // 0x1.23p+4
-    // 0x1.23p-4
 
     let is_negative = if let Some('-') = iter.peek(0) {
         // consume the minus sign '-'
@@ -2052,13 +2093,53 @@ fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
     Ok(Token::Comment(CommentToken::Block(comment_string)))
 }
 
+// - remove all comments.
+// - combine multiple continuous newlines and commas into a single newline.
+pub fn filter(tokens: Vec<Token>) -> Vec<Token> {
+    let mut effective_tokens = vec![];
+
+    let mut is_new_line = false;
+    let mut iter = tokens.into_iter();
+    while let Some(t) = iter.next() {
+        match t {
+            Token::Comment(_) => {
+                // skip
+            }
+            Token::NewLine | Token::Comma => {
+                // combine
+                if !is_new_line {
+                    is_new_line = true;
+                    effective_tokens.push(Token::NewLine);
+                }
+            }
+            _ => {
+                is_new_line = false;
+                effective_tokens.push(t)
+            }
+        }
+    }
+
+    // note that it is still possible to have a newline token at the
+    // beginning and end of the token list after filtering.
+
+    if let Some(Token::NewLine) = effective_tokens.first() {
+        effective_tokens.remove(0);
+    }
+
+    if let Some(Token::NewLine) = effective_tokens.last() {
+        effective_tokens.pop();
+    }
+
+    effective_tokens
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::DateTime;
     use pretty_assertions::assert_eq;
 
     use crate::{
-        lexer::{CommentToken, NumberLiteral, Token},
+        lexer::{filter, CommentToken, NumberLiteral, Token},
         peekable_iterator::PeekableIterator,
         ParseError,
     };
@@ -2066,8 +2147,12 @@ mod tests {
     use super::lex;
 
     impl Token {
-        pub fn new_name(s: &str) -> Self {
-            Token::Name(s.to_owned())
+        pub fn new_key_name(s: &str) -> Self {
+            Token::KeyName(s.to_owned())
+        }
+
+        pub fn new_variant_name(s: &str) -> Self {
+            Token::VariantName(s.to_owned())
         }
 
         pub fn new_string(s: &str) -> Self {
@@ -2126,34 +2211,45 @@ mod tests {
 
     #[test]
     fn test_lex_key_name() {
-        assert_eq!(lex_from_str("name").unwrap(), vec![Token::new_name("name")]);
+        assert_eq!(
+            lex_from_str("name").unwrap(),
+            vec![Token::new_key_name("name")]
+        );
 
         assert_eq!(
             lex_from_str("(name)").unwrap(),
-            vec![Token::LeftParen, Token::new_name("name"), Token::RightParen]
+            vec![
+                Token::LeftParen,
+                Token::new_key_name("name"),
+                Token::RightParen
+            ]
         );
 
         assert_eq!(
             lex_from_str("( a )").unwrap(),
-            vec![Token::LeftParen, Token::new_name("a"), Token::RightParen]
+            vec![
+                Token::LeftParen,
+                Token::new_key_name("a"),
+                Token::RightParen
+            ]
         );
 
         assert_eq!(
             lex_from_str("a__b__c").unwrap(),
-            vec![Token::new_name("a__b__c"),]
+            vec![Token::new_key_name("a__b__c"),]
         );
 
         assert_eq!(
             lex_from_str("foo bar").unwrap(),
-            vec![Token::new_name("foo"), Token::new_name("bar"),]
+            vec![Token::new_key_name("foo"), Token::new_key_name("bar"),]
         );
 
         assert_eq!(
             lex_from_str("αβγ 文字 🍞🥛").unwrap(),
             vec![
-                Token::new_name("αβγ"),
-                Token::new_name("文字"),
-                Token::new_name("🍞🥛"),
+                Token::new_key_name("αβγ"),
+                Token::new_key_name("文字"),
+                Token::new_key_name("🍞🥛"),
             ]
         );
 
@@ -2168,6 +2264,36 @@ mod tests {
             lex_from_str("abc&xyz"),
             Err(ParseError { message: _ })
         ));
+    }
+
+    #[test]
+    fn test_lex_variant_name() {
+        assert_eq!(
+            lex_from_str("Option::None").unwrap(),
+            vec![Token::new_variant_name("Option::None")]
+        );
+
+        assert_eq!(
+            lex_from_str("Option::Some(123)").unwrap(),
+            vec![
+                Token::new_variant_name("Option::Some"),
+                Token::LeftParen,
+                Token::Number(NumberLiteral::Int(123)),
+                Token::RightParen
+            ]
+        );
+
+        assert_eq!(
+            lex_from_str("value: Result::Ok(456)").unwrap(),
+            vec![
+                Token::new_key_name("value"),
+                Token::Colon,
+                Token::new_variant_name("Result::Ok"),
+                Token::LeftParen,
+                Token::Number(NumberLiteral::Int(456)),
+                Token::RightParen
+            ]
+        );
     }
 
     #[test]
@@ -4026,11 +4152,11 @@ mod tests {
             vec![
                 Token::NewLine,
                 Token::LeftBrace,
-                Token::new_name("id"),
+                Token::new_key_name("id"),
                 Token::Colon,
                 Token::Number(NumberLiteral::Int(123)),
                 Token::Comma,
-                Token::new_name("name"),
+                Token::new_key_name("name"),
                 Token::Colon,
                 Token::new_string("foo"),
                 Token::RightBrace,
@@ -4092,7 +4218,7 @@ mod tests {
                 Token::NewLine,
                 Token::LeftBrace, // {
                 Token::NewLine,
-                Token::new_name("a"),
+                Token::new_key_name("a"),
                 Token::Colon,
                 Token::LeftBracket, // [
                 Token::Number(NumberLiteral::Int(1)),
@@ -4102,7 +4228,7 @@ mod tests {
                 Token::Number(NumberLiteral::Int(3)),
                 Token::RightBracket, // ]
                 Token::NewLine,
-                Token::new_name("b"),
+                Token::new_key_name("b"),
                 Token::Colon,
                 Token::LeftParen, // (
                 Token::Boolean(false),
@@ -4110,16 +4236,75 @@ mod tests {
                 Token::Date(DateTime::parse_from_rfc3339("2000-01-01 10:10:10Z").unwrap()),
                 Token::RightParen, // )
                 Token::NewLine,
-                Token::new_name("c"),
+                Token::new_key_name("c"),
                 Token::Colon,
                 Token::LeftBrace, // {
-                Token::new_name("id"),
+                Token::new_key_name("id"),
                 Token::Colon,
                 Token::Number(NumberLiteral::Int(11)),
                 Token::RightBrace, // }
                 Token::NewLine,
                 Token::RightBrace, // }
                 Token::NewLine,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_filter() {
+        assert_eq!(
+            lex_from_str(
+                r#"
+                [1,2,
+
+                3
+
+
+                ]
+                "#
+            )
+            .unwrap(),
+            vec![
+                Token::NewLine,
+                Token::LeftBracket,
+                Token::Number(NumberLiteral::Int(1)),
+                Token::Comma,
+                Token::Number(NumberLiteral::Int(2)),
+                Token::Comma,
+                Token::NewLine,
+                Token::NewLine,
+                Token::Number(NumberLiteral::Int(3)),
+                Token::NewLine,
+                Token::NewLine,
+                Token::NewLine,
+                Token::RightBracket,
+                Token::NewLine,
+            ]
+        );
+
+        assert_eq!(
+            filter(
+                lex_from_str(
+                    r#"
+                    [1,2,
+
+                    3
+
+
+                    ]
+                    "#
+                )
+                .unwrap()
+            ),
+            vec![
+                Token::LeftBracket,
+                Token::Number(NumberLiteral::Int(1)),
+                Token::NewLine,
+                Token::Number(NumberLiteral::Int(2)),
+                Token::NewLine,
+                Token::Number(NumberLiteral::Int(3)),
+                Token::NewLine,
+                Token::RightBracket,
             ]
         );
     }

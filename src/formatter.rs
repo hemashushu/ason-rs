@@ -4,7 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{AsonNode, NameValuePair, NumberLiteral};
+use crate::{AsonNode, NameValuePair, NumberLiteral, VariantItem};
 
 pub const INDENT_SPACES: &str = "    ";
 
@@ -76,6 +76,13 @@ fn format_ason_node(node: &AsonNode, level: usize) -> String {
                 .join("")
         ),
         AsonNode::Date(v) => format!("d\"{}\"", v.to_rfc3339()),
+        AsonNode::Variant(i) => {
+            if let Some(v) = &i.value {
+                format!("{}({})", i.name, format_ason_node(v, level))
+            } else {
+                i.name.to_owned()
+            }
+        }
         AsonNode::ByteData(v) => format!(
             "h\"{}\"",
             v.iter()
@@ -139,30 +146,19 @@ pub fn format(node: &AsonNode) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        lexer::lex, parser::parse, peekable_iterator::PeekableIterator, AsonNode, ParseError,
-    };
+    use crate::parse_from_str;
 
     use super::format;
 
-    fn parse_from_str(s: &str) -> Result<AsonNode, ParseError> {
-        let mut chars = s.chars();
-        let mut char_iter = PeekableIterator::new(&mut chars, 3);
-        let tokens = lex(&mut char_iter)?;
-        let mut token_iter = tokens.into_iter();
-        let mut peekable_token_iter = PeekableIterator::new(&mut token_iter, 2);
-        parse(&mut peekable_token_iter)
-    }
-
-    fn format_to_str_from_str(s: &str) -> String {
+    fn format_ason_document(s: &str) -> String {
         let node = parse_from_str(s).unwrap();
         format(&node)
     }
 
     #[test]
-    fn test_format_single_value() {
+    fn test_format_simple_value() {
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             123
             "#
@@ -171,7 +167,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             1.23
             "#
@@ -180,7 +176,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             123@float
             "#
@@ -189,7 +185,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             true
             "#
@@ -198,7 +194,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             '🍒'
             "#
@@ -207,7 +203,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             '\n'
             "#
@@ -216,7 +212,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             "hello\"world"
             "#
@@ -225,7 +221,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             d"2024-03-17 10:01:11+08:00"
             "#
@@ -233,8 +229,28 @@ mod tests {
             "d\"2024-03-17T10:01:11+08:00\""
         );
 
+        // todo
+
+        //         assert_eq!(
+        //             format_ason_document(
+        //                 r#"
+        //             Option::None
+        //             "#
+        //             ),
+        //             "Option::None"
+        //         );
+        //
+        //         assert_eq!(
+        //             format_ason_document(
+        //                 r#"
+        //             Option::Some(123)
+        //             "#
+        //             ),
+        //             "Option::Some(123)"
+        //         );
+
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             h"11:13:17:19"
             "#
@@ -246,7 +262,7 @@ mod tests {
     #[test]
     fn test_format_object() {
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             {id:123,name:"foo"}
             "#
@@ -255,7 +271,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             {id:123,name:{first:"foo", last:"bar"}}
             "#
@@ -268,12 +284,30 @@ mod tests {
     }
 }"#
         );
+
+        // todo
+
+        //         assert_eq!(
+        //             format_ason_document(
+        //                 r#"
+        //             {id:123,name:Option::Some({first:"foo", last:"bar"}),result:Result::Ok(456)}
+        //             "#
+        //             ),
+        //             r#"{
+        //     id: 123
+        //     name: Option::Some({
+        //         first: "foo"
+        //         last: "bar"
+        //     })
+        //     result: Result::Ok(456)
+        // }"#
+        //         );
     }
 
     #[test]
     fn test_format_array() {
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             [123,456,789]
             "#
@@ -282,7 +316,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             [{id:123, name:"abc"},{id:456, name:"def"},{id:789,name:"xyz"}]
             "#
@@ -303,7 +337,7 @@ mod tests {
     #[test]
     fn test_format_tuple() {
         assert_eq!(
-            format_to_str_from_str(
+            format_ason_document(
                 r#"
             (123,"foo",true)
             "#

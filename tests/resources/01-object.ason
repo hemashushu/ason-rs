@@ -1,10 +1,10 @@
 {
-    // the default number type is 'int'
+    // integer numbers
 
     integer: 123
     integer_negative: -123
 
-    // integer numbers
+    // integer number with type names
 
     byte: 11@byte
     ubyte: 13@ubyte
@@ -24,7 +24,6 @@
     float_with_exp_negative: 6.6738e-11
 
     // metric suffix
-    // auto number type 'int'
 
     suffix_K: 1K
     suffix_M: 1M
@@ -33,8 +32,14 @@
     suffix_P: 1P@long
     suffix_E: 1E@long
 
+    suffix_m: 1m
+    suffix_u: 1u
+    suffix_n: 1n
+    suffix_p: 1p
+    suffix_f: 1f
+    suffix_a: 1a
+
     // binary metric suffix
-    // auto number type 'int'
 
     suffix_Ki: 1Ki
     suffix_Mi: 1Mi
@@ -43,14 +48,7 @@
     suffix_Pi: 1Pi@long
     suffix_Ei: 1Ei@long
 
-    // auto number type 'float'
-
-    suffix_m: 1m
-    suffix_u: 1u
-    suffix_n: 1n
-    suffix_p: 1p
-    suffix_f: 1f
-    suffix_a: 1a
+    // both metric suffix and number type names
 
     both_metric_suffix_and_type_long: 1G@long
     both_metric_suffix_and_type_double: 1u@double

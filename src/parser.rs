@@ -10,25 +10,19 @@ use crate::{
 
 pub fn parse(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
     let root = parse_node(iter)?;
-    while let Some(current_token) = iter.peek(0) {
-        match current_token {
-            Token::Comment(_) | Token::NewLine => {
-                iter.next();
-            }
-            _ => return Err(ParseError::new("The ASON document does not end properly.")),
-        }
+
+    if let Some(_) = iter.peek(0) {
+        return Err(ParseError::new("The ASON document does not end properly."));
     }
+
     Ok(root)
 }
 
 fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
     while let Some(current_token) = iter.peek(0) {
         let node = match current_token {
-            Token::Comment(_) => {
-                iter.next();
-                continue;
-            }
             Token::NewLine => {
+                // it is possible to have a newline token after the ']', '}', ')' symbols.
                 iter.next();
                 continue;
             }
@@ -56,6 +50,10 @@ fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError
                 let v = AsonNode::Date(*d);
                 iter.next();
                 v
+            }
+            Token::VariantName(v) => {
+                // todo
+                todo!()
             }
             Token::ByteData(b) => {
                 let v = AsonNode::ByteData(b.to_owned());
@@ -93,43 +91,31 @@ fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErr
     let mut entries: Vec<NameValuePair> = vec![];
 
     loop {
-        skip_new_lines(iter);
+        consume_new_line_if_exist(iter);
 
         if iter.look_ahead_equals(0, &Token::RightBrace) {
             iter.next(); // consume '}'
             break;
         }
 
-        let name = match iter.peek(0) {
-            Some(Token::Name(n)) => {
-                let v = n.to_owned();
-                iter.next();
-                v
-            }
-            // Some(Token::String_(s)) => {
-            //     let v = s.to_owned();
-            //     iter.next();
-            //     v
-            // }
-            _ => return Err(ParseError::new("Expect a key name for the object.")),
+        let name = if let Some(Token::KeyName(n)) = iter.peek(0) {
+            let v = n.to_owned();
+            iter.next();
+            v
+        } else {
+            return Err(ParseError::new("Expect a key name for the object."));
         };
 
-        skip_new_lines(iter);
+        consume_new_line_if_exist(iter);
         consume_colon(iter)?;
+        consume_new_line_if_exist(iter);
+
         let value = parse_node(iter)?;
-        let name_value = NameValuePair {
+        let name_value_pair = NameValuePair {
             name,
             value: Box::new(value),
         };
-        entries.push(name_value);
-
-        let exist_splitter = consume_optional_splitter(iter);
-
-        if !exist_splitter {
-            skip_new_lines(iter);
-            consume_right_brace(iter)?;
-            break;
-        }
+        entries.push(name_value_pair);
     }
 
     Ok(AsonNode::Object(entries))
@@ -145,7 +131,7 @@ fn parse_array(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErro
     let mut items: Vec<AsonNode> = vec![];
 
     loop {
-        skip_new_lines(iter);
+        consume_new_line_if_exist(iter);
 
         if iter.look_ahead_equals(0, &Token::RightBracket) {
             iter.next(); // consume ']'
@@ -154,14 +140,6 @@ fn parse_array(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErro
 
         let value = parse_node(iter)?;
         items.push(value);
-
-        let exist_splitter = consume_optional_splitter(iter);
-
-        if !exist_splitter {
-            skip_new_lines(iter);
-            consume_right_bracket(iter)?;
-            break;
-        }
     }
 
     Ok(AsonNode::Array(items))
@@ -177,7 +155,7 @@ fn parse_tuple(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErro
     let mut items: Vec<AsonNode> = vec![];
 
     loop {
-        skip_new_lines(iter);
+        consume_new_line_if_exist(iter);
 
         if iter.look_ahead_equals(0, &Token::RightParen) {
             iter.next(); // consume ')'
@@ -186,14 +164,6 @@ fn parse_tuple(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErro
 
         let value = parse_node(iter)?;
         items.push(value);
-
-        let exist_splitter = consume_optional_splitter(iter);
-
-        if !exist_splitter {
-            skip_new_lines(iter);
-            consume_right_paren(iter)?;
-            break;
-        }
     }
 
     Ok(AsonNode::Tuple(items))
@@ -221,58 +191,14 @@ fn consume_token(
     }
 }
 
-// consume ')'
-fn consume_right_paren(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
-    consume_token(iter, Token::RightParen)
-}
-
-// consume ']'
-fn consume_right_bracket(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
-    consume_token(iter, Token::RightBracket)
-}
-
-// consume '}'
-fn consume_right_brace(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
-    consume_token(iter, Token::RightBrace)
-}
-
 // consume ':'
 fn consume_colon(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
     consume_token(iter, Token::Colon)
 }
 
-fn consume_optional_splitter(iter: &mut PeekableIterator<Token>) -> bool {
-    while let Some(t) = iter.peek(0) {
-        match t {
-            Token::Comment(_) => {
-                iter.next();
-            }
-            Token::Comma | Token::NewLine => {
-                iter.next();
-                return true;
-            }
-            _ => {
-                return false;
-            }
-        }
-    }
-
-    false
-}
-
-fn skip_new_lines(iter: &mut PeekableIterator<Token>) {
-    while let Some(t) = iter.peek(0) {
-        match t {
-            Token::Comment(_) => {
-                iter.next();
-            }
-            Token::NewLine => {
-                iter.next();
-            }
-            _ => {
-                break;
-            }
-        }
+fn consume_new_line_if_exist(iter: &mut PeekableIterator<Token>) {
+    if let Some(Token::NewLine) = iter.peek(0) {
+        iter.next(); // consume '\n'
     }
 }
 
@@ -280,24 +206,12 @@ fn skip_new_lines(iter: &mut PeekableIterator<Token>) {
 mod tests {
     use chrono::DateTime;
 
-    use crate::{
-        lexer::lex, parser::NameValuePair, peekable_iterator::PeekableIterator, NumberLiteral,
-        ParseError,
-    };
+    use crate::{parse_from_str, parser::NameValuePair, NumberLiteral, ParseError};
 
-    use super::{parse, AsonNode};
-
-    fn parse_from_str(s: &str) -> Result<AsonNode, ParseError> {
-        let mut chars = s.chars();
-        let mut char_iter = PeekableIterator::new(&mut chars, 3);
-        let tokens = lex(&mut char_iter)?;
-        let mut token_iter = tokens.into_iter();
-        let mut peekable_token_iter = PeekableIterator::new(&mut token_iter, 2);
-        parse(&mut peekable_token_iter)
-    }
+    use super::AsonNode;
 
     #[test]
-    fn test_parse_single_value() {
+    fn test_parse_simple_value() {
         assert_eq!(
             parse_from_str(
                 r#"
@@ -347,6 +261,8 @@ mod tests {
             .unwrap(),
             AsonNode::Date(DateTime::parse_from_rfc3339("2024-03-17 10:01:11+08:00").unwrap())
         );
+
+        // todo variant value
 
         assert_eq!(
             parse_from_str(
