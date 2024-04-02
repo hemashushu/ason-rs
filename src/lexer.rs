@@ -10,19 +10,28 @@ use crate::{peekable_iterator::PeekableIterator, NumberLiteral, ParseError};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-    LeftBrace,    // {
-    RightBrace,   // }
-    LeftBracket,  // [
-    RightBracket, // ]
-    LeftParen,    // (
+    LeftBrace,
+    // {
+    RightBrace,
+    // }
+    LeftBracket,
+    // [
+    RightBracket,
+    // ]
+    LeftParen,
+    // (
     RightParen,   // )
 
-    NewLine, // \n, \r\n, \r
-    Comma,   // ,
+    NewLine,
+    // \n, \r\n, \r
+    Comma,
+    // ,
     Colon,   // :
 
-    KeyName(String), // [a-zA-Z0-9_] and '\u{a0}' - '\u{d7ff}' and '\u{e000}' - '\u{10ffff}'
-    VariantName(String), // key name and "::"
+    KeyName(String),
+    // [a-zA-Z0-9_] and '\u{a0}' - '\u{d7ff}' and '\u{e000}' - '\u{10ffff}'
+    VariantName(String),
+    // key name and "::"
     Number(NumberLiteral),
     Boolean(bool),
     Char(char),
@@ -160,7 +169,7 @@ pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, ParseError> 
                 return Err(ParseError::new(&format!(
                     "Unexpected char: {}",
                     current_char
-                )))
+                )));
             }
         }
     }
@@ -235,7 +244,7 @@ fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Parse
                 return Err(ParseError::new(&format!(
                     "Invalid char for key name: {}",
                     *current_char
-                )))
+                )));
             }
         }
     }
@@ -431,7 +440,7 @@ fn lex_number_decimal(
                 return Err(ParseError::new(&format!(
                     "Invalid char for decimal number: {}",
                     *current_char
-                )))
+                )));
             }
         }
     }
@@ -945,16 +954,16 @@ fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, ParseErr
     match num_type.as_str() {
         "int" | "uint" | "long" | "ulong" | "byte" | "ubyte" | "short" | "ushort" | "float"
         | "double" => Ok(num_type),
-        "i32" => Ok("int".to_owned()),
-        "u32" => Ok("uint".to_owned()),
-        "i64" => Ok("long".to_owned()),
-        "u64" => Ok("ulong".to_owned()),
-        "i8" => Ok("byte".to_owned()),
-        "u8" => Ok("ubyte".to_owned()),
-        "i16" => Ok("short".to_owned()),
-        "u16" => Ok("ushort".to_owned()),
-        "f32" => Ok("float".to_owned()),
-        "f64" => Ok("double".to_owned()),
+        "i32" => Ok("int".to_string()),
+        "u32" => Ok("uint".to_string()),
+        "i64" => Ok("long".to_string()),
+        "u64" => Ok("ulong".to_string()),
+        "i8" => Ok("byte".to_string()),
+        "u8" => Ok("ubyte".to_string()),
+        "i16" => Ok("short".to_string()),
+        "u16" => Ok("ushort".to_string()),
+        "f32" => Ok("float".to_string()),
+        "f64" => Ok("double".to_string()),
         _ => Err(ParseError::new(&format!(
             "Invalid number type: {}",
             num_type
@@ -1030,7 +1039,7 @@ fn lex_number_hex(
                 return Err(ParseError::new(&format!(
                     "Invalid char for hexadecimal number: {}",
                     *current_char
-                )))
+                )));
             }
         }
     }
@@ -1052,11 +1061,11 @@ fn lex_number_hex(
                 "double" => {
                     to_double = true;
                 }
-                _=> {
+                _ => {
                     return Err(ParseError::new(&format!(
                         "Only number type \"float\" and \"double\" are allowed for hexadecimal floating-point numbers, current type: {}",
                         ty
-                    )))
+                    )));
                 }
             }
         }
@@ -1104,7 +1113,7 @@ fn lex_number_hex(
                 return Err(ParseError::new(&format!(
                     "Invalid hexadecimal floating point number: {}",
                     num_string
-                )))
+                )));
             }
             "byte" => {
                 if is_negative {
@@ -1289,7 +1298,7 @@ fn lex_number_binary(
                 return Err(ParseError::new(&format!(
                     "Invalid char for binary number: {}",
                     *current_char
-                )))
+                )));
             }
         }
     }
@@ -1306,7 +1315,7 @@ fn lex_number_binary(
                 return Err(ParseError::new(&format!(
                     "Does not support binary floating point number: {}",
                     num_string
-                )))
+                )));
             }
             "byte" => {
                 if is_negative {
@@ -1507,7 +1516,7 @@ fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                                 return Err(ParseError::new(&format!(
                                     "Unsupported escape char: \"{}\"",
                                     current_char
-                                )))
+                                )));
                             }
                         }
                     }
@@ -1592,7 +1601,7 @@ fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                                     return Err(ParseError::new(&format!(
                                         "Unsupported escape char: \"{}\"",
                                         current_char
-                                    )))
+                                    )));
                                 }
                             }
                         }
@@ -1670,13 +1679,13 @@ fn lex_string_unescape_unicode(iter: &mut PeekableIterator<char>) -> Result<char
                     return Err(ParseError::new(&format!(
                         "Invalid character for unicode escape sequence: {}",
                         previous_char
-                    )))
+                    )));
                 }
             },
             None => {
                 return Err(ParseError::new(
                     "Missing right brace for unicode escape sequence.",
-                ))
+                ));
             }
         }
 
@@ -1816,7 +1825,7 @@ fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, P
             None => {
                 return Err(ParseError::new(
                     "Missing the ending marker for the auto-trimmed string.",
-                ))
+                ));
             }
         }
     }
@@ -1870,29 +1879,29 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Pars
                     '"' if line_leading.trim().is_empty()
                         && iter.look_ahead_equals(0, &'"')
                         && iter.look_ahead_equals(1, &'"') =>
-                    {
-                        iter.next(); // consume '"'
-                        iter.next(); // consume '"'
-
-                        // only (""") which occupies a single line, is considered to be
-                        // the ending mark of a paragraph string.
-                        // note that the ending marker includes the new line symbol (\n or \r\n),
-                        // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
-                        // the ending marker.
-                        if iter.look_ahead_equals(0, &'\n') {
-                            iter.next();
-                            break;
-                        } else if iter.look_ahead_equals(0, &'\r')
-                            && iter.look_ahead_equals(1, &'\n')
                         {
-                            iter.next();
-                            iter.next();
-                            break;
-                        } else {
-                            // it's not a valid ending mark.
-                            comment_string.push_str("\"\"\"");
+                            iter.next(); // consume '"'
+                            iter.next(); // consume '"'
+
+                            // only (""") which occupies a single line, is considered to be
+                            // the ending mark of a paragraph string.
+                            // note that the ending marker includes the new line symbol (\n or \r\n),
+                            // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
+                            // the ending marker.
+                            if iter.look_ahead_equals(0, &'\n') {
+                                iter.next();
+                                break;
+                            } else if iter.look_ahead_equals(0, &'\r')
+                                && iter.look_ahead_equals(1, &'\n')
+                            {
+                                iter.next();
+                                iter.next();
+                                break;
+                            } else {
+                                // it's not a valid ending mark.
+                                comment_string.push_str("\"\"\"");
+                            }
                         }
-                    }
                     _ => {
                         comment_string.push(previous_char);
                         line_leading.push(previous_char);
@@ -1902,7 +1911,7 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Pars
             None => {
                 return Err(ParseError::new(
                     "Missing the ending marker for the paragraph string.",
-                ))
+                ));
             }
         }
     }
@@ -2002,7 +2011,7 @@ fn lex_hex_byte_data(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
                         return Err(ParseError::new(&format!(
                             "Invalid char for byte string: {}",
                             previous_char
-                        )))
+                        )));
                     }
                 }
             }
@@ -2099,8 +2108,9 @@ pub fn filter(tokens: Vec<Token>) -> Vec<Token> {
     let mut effective_tokens = vec![];
 
     let mut is_new_line = false;
-    let mut iter = tokens.into_iter();
-    while let Some(t) = iter.next() {
+    let iter = tokens.into_iter();
+
+    for t in iter {
         match t {
             Token::Comment(_) => {
                 // skip
@@ -2187,7 +2197,7 @@ mod tests {
                 Token::NewLine,
                 Token::NewLine,
                 Token::NewLine,
-                Token::RightParen
+                Token::RightParen,
             ]
         );
     }
@@ -2204,7 +2214,7 @@ mod tests {
                 Token::Comma,
                 Token::LeftParen,
                 Token::RightParen,
-                Token::RightBrace
+                Token::RightBrace,
             ]
         );
     }
@@ -2221,7 +2231,7 @@ mod tests {
             vec![
                 Token::LeftParen,
                 Token::new_key_name("name"),
-                Token::RightParen
+                Token::RightParen,
             ]
         );
 
@@ -2230,18 +2240,18 @@ mod tests {
             vec![
                 Token::LeftParen,
                 Token::new_key_name("a"),
-                Token::RightParen
+                Token::RightParen,
             ]
         );
 
         assert_eq!(
             lex_from_str("a__b__c").unwrap(),
-            vec![Token::new_key_name("a__b__c"),]
+            vec![Token::new_key_name("a__b__c")]
         );
 
         assert_eq!(
             lex_from_str("foo bar").unwrap(),
-            vec![Token::new_key_name("foo"), Token::new_key_name("bar"),]
+            vec![Token::new_key_name("foo"), Token::new_key_name("bar")]
         );
 
         assert_eq!(
@@ -2279,7 +2289,7 @@ mod tests {
                 Token::new_variant_name("Option::Some"),
                 Token::LeftParen,
                 Token::Number(NumberLiteral::Int(123)),
-                Token::RightParen
+                Token::RightParen,
             ]
         );
 
@@ -2291,7 +2301,7 @@ mod tests {
                 Token::new_variant_name("Result::Ok"),
                 Token::LeftParen,
                 Token::Number(NumberLiteral::Int(456)),
-                Token::RightParen
+                Token::RightParen,
             ]
         );
     }
@@ -2316,18 +2326,18 @@ mod tests {
             vec![
                 Token::LeftParen,
                 Token::Number(NumberLiteral::Int(211)),
-                Token::RightParen
+                Token::RightParen,
             ]
         );
 
         assert_eq!(
             lex_from_str("211").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(211)),]
+            vec![Token::Number(NumberLiteral::Int(211))]
         );
 
         assert_eq!(
             lex_from_str("-2017").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(-2017)),]
+            vec![Token::Number(NumberLiteral::Int(-2017))]
         );
 
         assert_eq!(
@@ -2339,7 +2349,7 @@ mod tests {
             lex_from_str("223 211").unwrap(),
             vec![
                 Token::Number(NumberLiteral::Int(223)),
-                Token::Number(NumberLiteral::Int(211))
+                Token::Number(NumberLiteral::Int(211)),
             ]
         );
 
@@ -2414,17 +2424,17 @@ mod tests {
     fn test_lex_decimal_number_with_type() {
         assert_eq!(
             lex_from_str("127@byte").unwrap(),
-            vec![Token::Number(NumberLiteral::Byte(127)),]
+            vec![Token::Number(NumberLiteral::Byte(127))]
         );
 
         assert_eq!(
             lex_from_str("-128@byte").unwrap(),
-            vec![Token::Number(NumberLiteral::Byte(-128)),]
+            vec![Token::Number(NumberLiteral::Byte(-128))]
         );
 
         assert_eq!(
             lex_from_str("255@ubyte").unwrap(),
-            vec![Token::Number(NumberLiteral::UByte(255)),]
+            vec![Token::Number(NumberLiteral::UByte(255))]
         );
 
         // err: overflow
@@ -2453,17 +2463,17 @@ mod tests {
 
         assert_eq!(
             lex_from_str("32767@short").unwrap(),
-            vec![Token::Number(NumberLiteral::Short(32767)),]
+            vec![Token::Number(NumberLiteral::Short(32767))]
         );
 
         assert_eq!(
             lex_from_str("-32768@short").unwrap(),
-            vec![Token::Number(NumberLiteral::Short(-32768)),]
+            vec![Token::Number(NumberLiteral::Short(-32768))]
         );
 
         assert_eq!(
             lex_from_str("65535@ushort").unwrap(),
-            vec![Token::Number(NumberLiteral::UShort(65535)),]
+            vec![Token::Number(NumberLiteral::UShort(65535))]
         );
 
         // err: overflow
@@ -2492,17 +2502,17 @@ mod tests {
 
         assert_eq!(
             lex_from_str("2_147_483_647@int").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(2_147_483_647i32)),]
+            vec![Token::Number(NumberLiteral::Int(2_147_483_647i32))]
         );
 
         assert_eq!(
             lex_from_str("-2_147_483_648@int").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(-2_147_483_648i32)),]
+            vec![Token::Number(NumberLiteral::Int(-2_147_483_648i32))]
         );
 
         assert_eq!(
             lex_from_str("4_294_967_295@uint").unwrap(),
-            vec![Token::Number(NumberLiteral::UInt(std::u32::MAX)),]
+            vec![Token::Number(NumberLiteral::UInt(std::u32::MAX))]
         );
 
         // err: overflow
@@ -2533,19 +2543,19 @@ mod tests {
             lex_from_str("9_223_372_036_854_775_807@long").unwrap(),
             vec![Token::Number(NumberLiteral::Long(
                 9_223_372_036_854_775_807i64
-            )),]
+            )), ]
         );
 
         assert_eq!(
             lex_from_str("-9_223_372_036_854_775_808@long").unwrap(),
             vec![Token::Number(NumberLiteral::Long(
                 -9_223_372_036_854_775_808i64
-            )),]
+            )), ]
         );
 
         assert_eq!(
             lex_from_str("18_446_744_073_709_551_615@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(std::u64::MAX)),]
+            vec![Token::Number(NumberLiteral::ULong(std::u64::MAX))]
         );
 
         // err: overflow
@@ -2574,17 +2584,17 @@ mod tests {
 
         assert_eq!(
             lex_from_str("3.402_823_5e+38@float").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(3.402_823_5e38f32)),]
+            vec![Token::Number(NumberLiteral::Float(3.402_823_5e38f32))]
         );
 
         assert_eq!(
             lex_from_str("-3.402_823_5e+38@float").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(-3.402_823_5e38f32)),]
+            vec![Token::Number(NumberLiteral::Float(-3.402_823_5e38f32))]
         );
 
         assert_eq!(
             lex_from_str("1.175_494_4e-38@float").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(1.175_494_4e-38f32)),]
+            vec![Token::Number(NumberLiteral::Float(1.175_494_4e-38f32))]
         );
 
         // err: overflow
@@ -2621,21 +2631,21 @@ mod tests {
             lex_from_str("1.797_693_134_862_315_7e+308@double").unwrap(),
             vec![Token::Number(NumberLiteral::Double(
                 1.797_693_134_862_315_7e308_f64
-            )),]
+            )), ]
         );
 
         assert_eq!(
             lex_from_str("-1.797_693_134_862_315_7e+308@double").unwrap(),
             vec![Token::Number(NumberLiteral::Double(
                 -1.797_693_134_862_315_7e308_f64
-            )),]
+            )), ]
         );
 
         assert_eq!(
             lex_from_str("2.2250738585072014e-308@double").unwrap(),
             vec![Token::Number(NumberLiteral::Double(
                 2.2250738585072014e-308f64
-            )),]
+            )), ]
         );
 
         // err: overflow
@@ -2728,155 +2738,155 @@ mod tests {
 
         assert_eq!(
             lex_from_str("1K").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(10_i32.pow(3))),]
+            vec![Token::Number(NumberLiteral::Int(10_i32.pow(3)))]
         );
 
         assert_eq!(
             lex_from_str("1M").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(10_i32.pow(6))),]
+            vec![Token::Number(NumberLiteral::Int(10_i32.pow(6)))]
         );
 
         assert_eq!(
             lex_from_str("1G").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(10_i32.pow(9))),]
+            vec![Token::Number(NumberLiteral::Int(10_i32.pow(9)))]
         );
 
         // binary unit prefix
 
         assert_eq!(
             lex_from_str("1Ki").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(2_i32.pow(10))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(10)))]
         );
 
         assert_eq!(
             lex_from_str("1Mi").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(2_i32.pow(20))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(20)))]
         );
 
         assert_eq!(
             lex_from_str("1Gi").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(2_i32.pow(30))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(30)))]
         );
 
         // alternative binary unit prefix
 
         assert_eq!(
             lex_from_str("1KB").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(2_i32.pow(10))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(10)))]
         );
 
         assert_eq!(
             lex_from_str("1MB").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(2_i32.pow(20))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(20)))]
         );
 
         assert_eq!(
             lex_from_str("1GB").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(2_i32.pow(30))),]
+            vec![Token::Number(NumberLiteral::Int(2_i32.pow(30)))]
         );
 
         // fraction metric prefix
 
         assert_eq!(
             lex_from_str("1m").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(3))),]
+            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(3)))]
         );
 
         assert_eq!(
             lex_from_str("1u").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(6))),]
+            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(6)))]
         );
 
         assert_eq!(
             lex_from_str("1n").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(9))),]
+            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(9)))]
         );
 
         assert_eq!(
             lex_from_str("1p").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(12))),]
+            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(12)))]
         );
 
         assert_eq!(
             lex_from_str("1f").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(15))),]
+            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(15)))]
         );
 
         assert_eq!(
             lex_from_str("1a").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(18))),]
+            vec![Token::Number(NumberLiteral::Float(1_f32 / 10_f32.powi(18)))]
         );
 
         // both unit prefix and number type
 
         assert_eq!(
             lex_from_str("1K@long").unwrap(),
-            vec![Token::Number(NumberLiteral::Long(10_i64.pow(3))),]
+            vec![Token::Number(NumberLiteral::Long(10_i64.pow(3)))]
         );
 
         assert_eq!(
             lex_from_str("1M@long").unwrap(),
-            vec![Token::Number(NumberLiteral::Long(10_i64.pow(6))),]
+            vec![Token::Number(NumberLiteral::Long(10_i64.pow(6)))]
         );
 
         assert_eq!(
             lex_from_str("1G@long").unwrap(),
-            vec![Token::Number(NumberLiteral::Long(10_i64.pow(9))),]
+            vec![Token::Number(NumberLiteral::Long(10_i64.pow(9)))]
         );
 
         assert_eq!(
             lex_from_str("1T@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(12))),]
+            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(12)))]
         );
 
         assert_eq!(
             lex_from_str("1P@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(15))),]
+            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(15)))]
         );
 
         assert_eq!(
             lex_from_str("1E@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(18))),]
+            vec![Token::Number(NumberLiteral::ULong(10_u64.pow(18)))]
         );
 
         assert_eq!(
             lex_from_str("1Ki@long").unwrap(),
-            vec![Token::Number(NumberLiteral::Long(2_i64.pow(10))),]
+            vec![Token::Number(NumberLiteral::Long(2_i64.pow(10)))]
         );
 
         assert_eq!(
             lex_from_str("1Mi@long").unwrap(),
-            vec![Token::Number(NumberLiteral::Long(2_i64.pow(20))),]
+            vec![Token::Number(NumberLiteral::Long(2_i64.pow(20)))]
         );
 
         assert_eq!(
             lex_from_str("1Gi@long").unwrap(),
-            vec![Token::Number(NumberLiteral::Long(2_i64.pow(30))),]
+            vec![Token::Number(NumberLiteral::Long(2_i64.pow(30)))]
         );
 
         assert_eq!(
             lex_from_str("1Ti@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(40))),]
+            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(40)))]
         );
 
         assert_eq!(
             lex_from_str("1Pi@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(50))),]
+            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(50)))]
         );
 
         assert_eq!(
             lex_from_str("1Ei@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(60))),]
+            vec![Token::Number(NumberLiteral::ULong(2_u64.pow(60)))]
         );
 
         assert_eq!(
             lex_from_str("1m@float").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(0.001)),]
+            vec![Token::Number(NumberLiteral::Float(0.001))]
         );
 
         assert_eq!(
             lex_from_str("1m@double").unwrap(),
-            vec![Token::Number(NumberLiteral::Double(0.001)),]
+            vec![Token::Number(NumberLiteral::Double(0.001))]
         );
 
         // err: invalid unit prefix
@@ -3307,41 +3317,41 @@ mod tests {
 
         assert_eq!(
             lex_from_str("'a' 'z'").unwrap(),
-            vec![Token::Char('a'), Token::Char('z'),]
+            vec![Token::Char('a'), Token::Char('z')]
         );
 
         // CJK
         assert_eq!(lex_from_str("'文'").unwrap(), vec![Token::Char('文')]);
 
         // emoji
-        assert_eq!(lex_from_str("'😊'").unwrap(), vec![Token::Char('😊'),]);
+        assert_eq!(lex_from_str("'😊'").unwrap(), vec![Token::Char('😊')]);
 
         // escape char
-        assert_eq!(lex_from_str("'\\r'").unwrap(), vec![Token::Char('\r'),]);
+        assert_eq!(lex_from_str("'\\r'").unwrap(), vec![Token::Char('\r')]);
 
         // escape char
-        assert_eq!(lex_from_str("'\\n'").unwrap(), vec![Token::Char('\n'),]);
+        assert_eq!(lex_from_str("'\\n'").unwrap(), vec![Token::Char('\n')]);
 
         // escape char
-        assert_eq!(lex_from_str("'\\t'").unwrap(), vec![Token::Char('\t'),]);
+        assert_eq!(lex_from_str("'\\t'").unwrap(), vec![Token::Char('\t')]);
 
         // escape char
-        assert_eq!(lex_from_str("'\\\\'").unwrap(), vec![Token::Char('\\'),]);
+        assert_eq!(lex_from_str("'\\\\'").unwrap(), vec![Token::Char('\\')]);
 
         // escape char
-        assert_eq!(lex_from_str("'\\\''").unwrap(), vec![Token::Char('\''),]);
+        assert_eq!(lex_from_str("'\\\''").unwrap(), vec![Token::Char('\'')]);
 
         // escape char, unicode
-        assert_eq!(lex_from_str("'\\u{2d}'").unwrap(), vec![Token::Char('-'),]);
+        assert_eq!(lex_from_str("'\\u{2d}'").unwrap(), vec![Token::Char('-')]);
 
         // escape char, unicode
         assert_eq!(
             lex_from_str("'\\u{6587}'").unwrap(),
-            vec![Token::Char('文'),]
+            vec![Token::Char('文')]
         );
 
         // escape char, unicode
-        assert_eq!(lex_from_str("'\\0'").unwrap(), vec![Token::Char('\0'),]);
+        assert_eq!(lex_from_str("'\\0'").unwrap(), vec![Token::Char('\0')]);
 
         // err: unsupported escape char \v
         assert!(matches!(
@@ -3403,13 +3413,13 @@ mod tests {
             vec![
                 Token::LeftParen,
                 Token::new_string("abc"),
-                Token::RightParen
+                Token::RightParen,
             ]
         );
 
         assert_eq!(
             lex_from_str("\"abc\" \"xyz\"").unwrap(),
-            vec![Token::new_string("abc"), Token::new_string("xyz"),]
+            vec![Token::new_string("abc"), Token::new_string("xyz")]
         );
 
         assert_eq!(
@@ -3429,7 +3439,7 @@ mod tests {
                 "abc文字😊"
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("abc文字😊"),
@@ -3444,11 +3454,11 @@ mod tests {
                 "\r\n\t\\\"\u{2d}\u{6587}\0"
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("\r\n\t\\\"-文\0"),
-                Token::NewLine
+                Token::NewLine,
             ]
         );
 
@@ -3555,7 +3565,7 @@ mod tests {
             lex_from_str(
                 "r\"abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz\""
             )
-            .unwrap(),
+                .unwrap(),
             vec![Token::new_string(
                 "abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz"
             )]
@@ -3571,14 +3581,14 @@ mod tests {
     #[test]
     fn test_lex_law_string_varaint() {
         assert_eq!(
-                lex_from_str(
-                    "r#\"abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz quote: \"foo\"\"#"
-                )
+            lex_from_str(
+                "r#\"abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz quote: \"foo\"\"#"
+            )
                 .unwrap(),
-                vec![Token::new_string(
-                    "abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz quote: \"foo\""
-                )]
-            );
+            vec![Token::new_string(
+                "abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz quote: \"foo\""
+            )]
+        );
 
         // err: missing the ending marker
         assert!(matches!(
@@ -3600,7 +3610,7 @@ mod tests {
                 "|
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("one\n  two\n    three\nend"),
@@ -3619,11 +3629,11 @@ mod tests {
                 "|
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("one\ntwo\nthree\nend"),
-                Token::NewLine
+                Token::NewLine,
             ]
         );
 
@@ -3637,7 +3647,7 @@ mod tests {
                 "|
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("one\\\\\\\"\\t\\r\\n\\u{1234}\n\nend"),
@@ -3656,7 +3666,7 @@ mod tests {
                 "|
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("one\"|\ntwo"),
@@ -3673,7 +3683,7 @@ mod tests {
                 "| 13
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(11)),
@@ -3724,8 +3734,8 @@ mod tests {
                 h""
                 "#
             )
-            .unwrap(),
-            vec![Token::NewLine, Token::ByteData(vec![]), Token::NewLine,]
+                .unwrap(),
+            vec![Token::NewLine, Token::ByteData(vec![]), Token::NewLine]
         );
 
         assert_eq!(
@@ -3734,7 +3744,7 @@ mod tests {
                 h"11131719"
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3748,7 +3758,7 @@ mod tests {
                 h"11 13 1719"
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3762,7 +3772,7 @@ mod tests {
                 h"11-13-1719"
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3776,7 +3786,7 @@ mod tests {
                 h"11:13:1719"
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3790,7 +3800,7 @@ mod tests {
                 h\"1113\n17\t19\"
                 "
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3840,17 +3850,17 @@ mod tests {
                 31// 37
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
-                Token::Comment(CommentToken::Line("11".to_owned())),
+                Token::Comment(CommentToken::Line("11".to_string())),
                 Token::Number(NumberLiteral::Int(13)),
                 Token::Number(NumberLiteral::Int(17)),
-                Token::Comment(CommentToken::Line(" 19 23".to_owned())),
-                Token::Comment(CommentToken::Line(" 29".to_owned())),
+                Token::Comment(CommentToken::Line(" 19 23".to_string())),
+                Token::Comment(CommentToken::Line(" 29".to_string())),
                 Token::Number(NumberLiteral::Int(31)),
-                Token::Comment(CommentToken::Line(" 37".to_owned())),
+                Token::Comment(CommentToken::Line(" 37".to_string())),
                 // note that the line comment includes the ending new line symbol (\n or \r\n),
                 // so there is NO `Token::NewLine` follows the line comment.
             ]
@@ -3865,11 +3875,11 @@ mod tests {
                 7 /* 11 13 */ 17
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
-                Token::Comment(CommentToken::Block(" 11 13 ".to_owned())),
+                Token::Comment(CommentToken::Block(" 11 13 ".to_string())),
                 Token::Number(NumberLiteral::Int(17)),
                 Token::NewLine,
             ]
@@ -3882,11 +3892,11 @@ mod tests {
                 7 /* 11 /* 13 */ 17 */ 19
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
-                Token::Comment(CommentToken::Block(" 11 /* 13 */ 17 ".to_owned())),
+                Token::Comment(CommentToken::Block(" 11 /* 13 */ 17 ".to_string())),
                 Token::Number(NumberLiteral::Int(19)),
                 Token::NewLine,
             ]
@@ -3899,11 +3909,11 @@ mod tests {
                 7 /* 11 // 13 17 */ 19
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
-                Token::Comment(CommentToken::Block(" 11 // 13 17 ".to_owned())),
+                Token::Comment(CommentToken::Block(" 11 // 13 17 ".to_string())),
                 Token::Number(NumberLiteral::Int(19)),
                 Token::NewLine,
             ]
@@ -3919,19 +3929,19 @@ mod tests {
                 """
                 13 */ 19
                 "#
-                .lines()
-                .map(&str::trim_start)
-                .map(&str::to_owned)
-                .collect::<Vec<String>>()
-                .join("\n")
-                .as_str()
+                    .lines()
+                    .map(&str::trim_start)
+                    .map(&str::to_owned)
+                    .collect::<Vec<String>>()
+                    .join("\n")
+                    .as_str()
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
                 Token::Comment(CommentToken::Block(
-                    " 11\n\"\"\"\nabc\n\"\"\"\n13 ".to_owned()
+                    " 11\n\"\"\"\nabc\n\"\"\"\n13 ".to_string()
                 )),
                 Token::Number(NumberLiteral::Int(19)),
                 Token::NewLine,
@@ -3972,11 +3982,11 @@ mod tests {
                 """
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
-                    "one\n  two\n    three\nend".to_owned()
+                    "one\n  two\n    three\nend".to_string()
                 )),
                 // note that the ending marker includes the new line symbol (\n or \r\n),
                 // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
@@ -3995,10 +4005,10 @@ mod tests {
                 """
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
-                Token::Comment(CommentToken::Document("one\ntwo\nthree\nend".to_owned()))
+                Token::Comment(CommentToken::Document("one\ntwo\nthree\nend".to_string())),
             ]
         );
 
@@ -4012,12 +4022,12 @@ mod tests {
                 """
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
-                    "one\\\\\\\"\\t\\r\\n\\u{1234}\n\nend".to_owned()
-                ))
+                    "one\\\\\\\"\\t\\r\\n\\u{1234}\n\nend".to_string()
+                )),
             ]
         );
 
@@ -4032,12 +4042,12 @@ mod tests {
                 """
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
-                    "one\"\"\"\n\"\"\"two\n\"\"\"\"\nend".to_owned()
-                ))
+                    "one\"\"\"\n\"\"\"two\n\"\"\"\"\nend".to_string()
+                )),
             ]
         );
 
@@ -4148,7 +4158,7 @@ mod tests {
                 {id: 123, name: "foo"}
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftBrace,
@@ -4170,7 +4180,7 @@ mod tests {
                 [123,456,789,]
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftBracket,
@@ -4191,7 +4201,7 @@ mod tests {
                 (123 "foo" true) // line comment
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftParen,
@@ -4199,7 +4209,7 @@ mod tests {
                 Token::new_string("foo"),
                 Token::Boolean(true),
                 Token::RightParen,
-                Token::Comment(CommentToken::Line(" line comment".to_owned())),
+                Token::Comment(CommentToken::Line(" line comment".to_string())),
             ]
         );
 
@@ -4213,7 +4223,7 @@ mod tests {
                 }
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftBrace, // {
@@ -4263,7 +4273,7 @@ mod tests {
                 ]
                 "#
             )
-            .unwrap(),
+                .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftBracket,
@@ -4294,7 +4304,7 @@ mod tests {
                     ]
                     "#
                 )
-                .unwrap()
+                    .unwrap()
             ),
             vec![
                 Token::LeftBracket,

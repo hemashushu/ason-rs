@@ -115,6 +115,13 @@
             heading 3
         "|
 
+    // variants
+    variant_none: Option::None
+    variant_some: Option::Some(123)
+    variant_object: Option::Some({
+        id: 123
+    })
+
     // the value starts on a new line
     new_line:
         "value1"

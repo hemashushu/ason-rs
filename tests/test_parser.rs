@@ -120,6 +120,11 @@ fn test_parse_file_01() {
     auto_trimmed_string: "heading 1
   heading 2
     heading 3"
+    variant_none: Option::None
+    variant_some: Option::Some(123)
+    variant_object: Option::Some({
+        id: 123
+    })
     new_line: "value1"
     new_line_variant: "value2"
     space: "value3"

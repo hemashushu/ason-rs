@@ -4,14 +4,12 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{
-    lexer::Token, peekable_iterator::PeekableIterator, AsonNode, NameValuePair, ParseError,
-};
+use crate::{lexer::Token, peekable_iterator::PeekableIterator, AsonNode, NameValuePair, ParseError, VariantItem};
 
 pub fn parse(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
     let root = parse_node(iter)?;
 
-    if let Some(_) = iter.peek(0) {
+    if iter.peek(0).is_some() {
         return Err(ParseError::new("The ASON document does not end properly."));
     }
 
@@ -52,8 +50,16 @@ fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError
                 v
             }
             Token::VariantName(v) => {
-                // todo
-                todo!()
+                if iter.look_ahead_equals(1, &Token::LeftParen) {
+                    parse_variant_item(iter)?
+                } else {
+                    let v = AsonNode::Variant(VariantItem {
+                        name: v.to_owned(),
+                        value: None,
+                    });
+                    iter.next();
+                    v
+                }
             }
             Token::ByteData(b) => {
                 let v = AsonNode::ByteData(b.to_owned());
@@ -79,6 +85,34 @@ fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError
     }
 
     Err(ParseError::new("Incomplete ASON document."))
+}
+
+fn parse_variant_item(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
+    // name(...)?  //
+    // ^        ^__// to here
+    // |-----------// current token
+
+    let name = if let Some(Token::VariantName(n)) = iter.peek(0) {
+        let v = n.to_owned();
+        iter.next();
+        v
+    } else {
+        unreachable!()
+    };
+
+    consume_left_paren(iter)?;
+    consume_new_line_if_exist(iter);
+
+    let value = parse_node(iter)?;
+    let variant_item = VariantItem {
+        name,
+        value: Some(Box::new(value)),
+    };
+
+    consume_new_line_if_exist(iter);
+    consume_right_paren(iter)?;
+
+    Ok(AsonNode::Variant(variant_item))
 }
 
 fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
@@ -196,6 +230,14 @@ fn consume_colon(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
     consume_token(iter, Token::Colon)
 }
 
+fn consume_left_paren(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
+    consume_token(iter, Token::LeftParen)
+}
+
+fn consume_right_paren(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
+    consume_token(iter, Token::RightParen)
+}
+
 fn consume_new_line_if_exist(iter: &mut PeekableIterator<Token>) {
     if let Some(Token::NewLine) = iter.peek(0) {
         iter.next(); // consume '\n'
@@ -206,7 +248,7 @@ fn consume_new_line_if_exist(iter: &mut PeekableIterator<Token>) {
 mod tests {
     use chrono::DateTime;
 
-    use crate::{parse_from_str, parser::NameValuePair, NumberLiteral, ParseError};
+    use crate::{parse_from_str, parser::NameValuePair, NumberLiteral, ParseError, VariantItem};
 
     use super::AsonNode;
 
@@ -218,7 +260,7 @@ mod tests {
             123
             "#
             )
-            .unwrap(),
+                .unwrap(),
             AsonNode::Number(NumberLiteral::Int(123))
         );
 
@@ -228,7 +270,7 @@ mod tests {
             true
             "#
             )
-            .unwrap(),
+                .unwrap(),
             AsonNode::Boolean(true)
         );
 
@@ -238,7 +280,7 @@ mod tests {
             '🍒'
             "#
             )
-            .unwrap(),
+                .unwrap(),
             AsonNode::Char('🍒')
         );
 
@@ -248,8 +290,8 @@ mod tests {
             "hello"
             "#
             )
-            .unwrap(),
-            AsonNode::String_("hello".to_owned())
+                .unwrap(),
+            AsonNode::String_("hello".to_string())
         );
 
         assert_eq!(
@@ -258,11 +300,35 @@ mod tests {
             d"2024-03-17 10:01:11+08:00"
             "#
             )
-            .unwrap(),
+                .unwrap(),
             AsonNode::Date(DateTime::parse_from_rfc3339("2024-03-17 10:01:11+08:00").unwrap())
         );
 
-        // todo variant value
+        // variant
+        assert_eq!(
+            parse_from_str(
+                r#"
+            Option::None
+            "#
+            )
+                .unwrap(),
+            AsonNode::Variant(VariantItem { name: "Option::None".to_string(), value: None })
+        );
+
+        assert_eq!(
+            parse_from_str(
+                r#"
+            Option::Some(123)
+            "#
+            )
+                .unwrap(),
+            AsonNode::Variant(VariantItem {
+                name: "Option::Some".to_string(),
+                value: Some(Box::new(
+                    AsonNode::Number(NumberLiteral::Int(123))
+                )),
+            })
+        );
 
         assert_eq!(
             parse_from_str(
@@ -270,7 +336,7 @@ mod tests {
             h"11:13:17:19"
             "#
             )
-            .unwrap(),
+                .unwrap(),
             AsonNode::ByteData(vec![0x11u8, 0x13, 0x17, 0x19])
         );
     }
@@ -279,12 +345,12 @@ mod tests {
     fn test_parse_object() {
         let expect_object1 = AsonNode::Object(vec![
             NameValuePair {
-                name: "id".to_owned(),
+                name: "id".to_string(),
                 value: Box::new(AsonNode::Number(NumberLiteral::Int(123))),
             },
             NameValuePair {
-                name: "name".to_owned(),
-                value: Box::new(AsonNode::String_("foo".to_owned())),
+                name: "name".to_string(),
+                value: Box::new(AsonNode::String_("foo".to_string())),
             },
         ]);
 
@@ -294,7 +360,7 @@ mod tests {
             {id:123,name:"foo"}
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_object1
         );
 
@@ -307,7 +373,7 @@ mod tests {
             }
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_object1
         );
 
@@ -320,7 +386,7 @@ mod tests {
             }
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_object1
         );
 
@@ -333,8 +399,48 @@ mod tests {
             }
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_object1
+        );
+
+        assert_eq!(
+            parse_from_str(
+                r#"
+            {
+                id: 123
+                addr: Option::Some({
+                    city: "ShenZhen"
+                    street: Option::None
+                })
+            }
+            "#
+            )
+                .unwrap(),
+            AsonNode::Object(vec![
+                NameValuePair {
+                    name: "id".to_string(),
+                    value: Box::new(AsonNode::Number(NumberLiteral::Int(123))),
+                },
+                NameValuePair {
+                    name: "addr".to_string(),
+                    value: Box::new(AsonNode::Variant(VariantItem {
+                        name: "Option::Some".to_string(),
+                        value: Some(Box::new(AsonNode::Object(vec![
+                            NameValuePair {
+                                name: "city".to_string(),
+                                value: Box::new(AsonNode::String_("ShenZhen".to_string())),
+                            },
+                            NameValuePair {
+                                name: "street".to_string(),
+                                value: Box::new(AsonNode::Variant(VariantItem {
+                                    name: "Option::None".to_string(),
+                                    value: None,
+                                })),
+                            },
+                        ]))),
+                    })),
+                },
+            ])
         );
 
         // err: key name with quote
@@ -365,7 +471,7 @@ mod tests {
             [123,456,789]
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_array1
         );
 
@@ -379,7 +485,7 @@ mod tests {
             ]
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_array1
         );
 
@@ -393,7 +499,7 @@ mod tests {
             ]
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_array1
         );
 
@@ -407,7 +513,7 @@ mod tests {
             ]
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_array1
         );
     }
@@ -416,7 +522,7 @@ mod tests {
     fn test_parse_tuple() {
         let expect_tuple1 = AsonNode::Tuple(vec![
             AsonNode::Number(NumberLiteral::Int(123)),
-            AsonNode::String_("foo".to_owned()),
+            AsonNode::String_("foo".to_string()),
             AsonNode::Boolean(true),
         ]);
 
@@ -426,7 +532,7 @@ mod tests {
             (123,"foo",true)
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_tuple1
         );
 
@@ -440,7 +546,7 @@ mod tests {
             )
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_tuple1
         );
 
@@ -454,7 +560,7 @@ mod tests {
             )
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_tuple1
         );
 
@@ -468,7 +574,7 @@ mod tests {
             )
             "#
             )
-            .unwrap(),
+                .unwrap(),
             expect_tuple1
         );
     }
@@ -495,63 +601,63 @@ mod tests {
             }
             "#
             )
-            .unwrap(),
+                .unwrap(),
             AsonNode::Object(vec![
                 NameValuePair {
-                    name: "id".to_owned(),
+                    name: "id".to_string(),
                     value: Box::new(AsonNode::Number(NumberLiteral::Int(123))),
                 },
                 NameValuePair {
-                    name: "name".to_owned(),
-                    value: Box::new(AsonNode::String_("hello".to_owned())),
+                    name: "name".to_string(),
+                    value: Box::new(AsonNode::String_("hello".to_string())),
                 },
                 NameValuePair {
-                    name: "orders".to_owned(),
+                    name: "orders".to_string(),
                     value: Box::new(AsonNode::Array(vec![
                         AsonNode::Tuple(vec![
                             AsonNode::Number(NumberLiteral::Int(1)),
-                            AsonNode::String_("foo".to_owned()),
-                            AsonNode::Boolean(true)
+                            AsonNode::String_("foo".to_string()),
+                            AsonNode::Boolean(true),
                         ]),
                         AsonNode::Tuple(vec![
                             AsonNode::Number(NumberLiteral::Int(2)),
-                            AsonNode::String_("bar".to_owned()),
-                            AsonNode::Boolean(false)
+                            AsonNode::String_("bar".to_string()),
+                            AsonNode::Boolean(false),
                         ]),
-                    ]))
+                    ])),
                 },
                 NameValuePair {
-                    name: "group".to_owned(),
+                    name: "group".to_string(),
                     value: Box::new(AsonNode::Object(vec![
                         NameValuePair {
-                            name: "active".to_owned(),
-                            value: Box::new(AsonNode::Boolean(true))
+                            name: "active".to_string(),
+                            value: Box::new(AsonNode::Boolean(true)),
                         },
                         NameValuePair {
-                            name: "permissions".to_owned(),
+                            name: "permissions".to_string(),
                             value: Box::new(AsonNode::Array(vec![
                                 AsonNode::Object(vec![
                                     NameValuePair {
-                                        name: "number".to_owned(),
-                                        value: Box::new(AsonNode::Number(NumberLiteral::Int(11)))
+                                        name: "number".to_string(),
+                                        value: Box::new(AsonNode::Number(NumberLiteral::Int(11))),
                                     },
                                     NameValuePair {
-                                        name: "title".to_owned(),
-                                        value: Box::new(AsonNode::String_("read".to_owned()))
-                                    }
+                                        name: "title".to_string(),
+                                        value: Box::new(AsonNode::String_("read".to_string())),
+                                    },
                                 ]),
                                 AsonNode::Object(vec![
                                     NameValuePair {
-                                        name: "number".to_owned(),
-                                        value: Box::new(AsonNode::Number(NumberLiteral::Int(13)))
+                                        name: "number".to_string(),
+                                        value: Box::new(AsonNode::Number(NumberLiteral::Int(13))),
                                     },
                                     NameValuePair {
-                                        name: "title".to_owned(),
-                                        value: Box::new(AsonNode::String_("write".to_owned()))
-                                    }
+                                        name: "title".to_string(),
+                                        value: Box::new(AsonNode::String_("write".to_string())),
+                                    },
                                 ]),
-                            ]))
-                        }
+                            ])),
+                        },
                     ])),
                 },
             ])

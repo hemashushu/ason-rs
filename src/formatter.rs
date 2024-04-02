@@ -4,7 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{AsonNode, NameValuePair, NumberLiteral, VariantItem};
+use crate::{AsonNode, NameValuePair, NumberLiteral};
 
 pub const INDENT_SPACES: &str = "    ";
 
@@ -64,8 +64,8 @@ fn format_ason_node(node: &AsonNode, level: usize) -> String {
     match node {
         AsonNode::Number(v) => format_number_literal(v),
         AsonNode::Boolean(v) => match v {
-            true => "true".to_owned(),
-            false => "false".to_owned(),
+            true => "true".to_string(),
+            false => "false".to_string(),
         },
         AsonNode::Char(v) => format!("'{}'", escape(*v, true)),
         AsonNode::String_(v) => format!(
@@ -117,24 +117,24 @@ fn format_ason_node(node: &AsonNode, level: usize) -> String {
 
 fn escape(c: char, escape_single_char: bool) -> String {
     match c {
-        '\\' => "\\\\".to_owned(),
-        '\'' if escape_single_char => "\\'".to_owned(),
-        '"' => "\\\"".to_owned(),
+        '\\' => "\\\\".to_string(),
+        '\'' if escape_single_char => "\\'".to_string(),
+        '"' => "\\\"".to_string(),
         '\t' => {
             // horizontal tabulation
-            "\\t".to_owned()
+            "\\t".to_string()
         }
         '\r' if escape_single_char => {
             // carriage return, jump to the beginning of the line (CR)
-            "\\r".to_owned()
+            "\\r".to_string()
         }
         '\n' if escape_single_char => {
             // new line/line feed (LF)
-            "\\n".to_owned()
+            "\\n".to_string()
         }
         '\0' => {
             // null char
-            "\\0".to_owned()
+            "\\0".to_string()
         }
         _ => c.to_string(),
     }
@@ -229,25 +229,23 @@ mod tests {
             "d\"2024-03-17T10:01:11+08:00\""
         );
 
-        // todo
+        assert_eq!(
+            format_ason_document(
+                r#"
+                    Option::None
+                    "#
+            ),
+            "Option::None"
+        );
 
-        //         assert_eq!(
-        //             format_ason_document(
-        //                 r#"
-        //             Option::None
-        //             "#
-        //             ),
-        //             "Option::None"
-        //         );
-        //
-        //         assert_eq!(
-        //             format_ason_document(
-        //                 r#"
-        //             Option::Some(123)
-        //             "#
-        //             ),
-        //             "Option::Some(123)"
-        //         );
+        assert_eq!(
+            format_ason_document(
+                r#"
+                    Option::Some(123)
+                    "#
+            ),
+            "Option::Some(123)"
+        );
 
         assert_eq!(
             format_ason_document(
@@ -285,23 +283,21 @@ mod tests {
 }"#
         );
 
-        // todo
-
-        //         assert_eq!(
-        //             format_ason_document(
-        //                 r#"
-        //             {id:123,name:Option::Some({first:"foo", last:"bar"}),result:Result::Ok(456)}
-        //             "#
-        //             ),
-        //             r#"{
-        //     id: 123
-        //     name: Option::Some({
-        //         first: "foo"
-        //         last: "bar"
-        //     })
-        //     result: Result::Ok(456)
-        // }"#
-        //         );
+        assert_eq!(
+            format_ason_document(
+                r#"
+                    {id:123,name:Option::Some({first:"foo", last:"bar"}),result:Result::Ok(456)}
+                    "#
+            ),
+            r#"{
+    id: 123
+    name: Option::Some({
+        first: "foo"
+        last: "bar"
+    })
+    result: Result::Ok(456)
+}"#
+        );
     }
 
     #[test]

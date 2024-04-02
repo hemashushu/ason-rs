@@ -32,6 +32,7 @@ _XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy 
     double: 6.626e-34@double
     bool: true
     date: d"2023-03-24 12:30:00+08:00"
+    variant: Option::None
     array: [1,2,3,]
     tuple: (1, "foo", true)
     object: {
