@@ -146,12 +146,12 @@ pub fn format(node: &AsonNode) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::parse_from_str;
+    use crate::parse;
 
     use super::format;
 
     fn format_ason_document(s: &str) -> String {
-        let node = parse_from_str(s).unwrap();
+        let node = parse(s).unwrap();
         format(&node)
     }
 

@@ -4,7 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use ason::{format_to_string, parse_from_str};
+use ason::{format, parse};
 
 use pretty_assertions::assert_eq;
 
@@ -27,10 +27,10 @@ fn read_file(file_path: &str) -> String {
 }
 
 #[test]
-fn test_parse_file_01() {
+fn test_file_01() {
     let s = read_file("01-object.ason");
-    let n = parse_from_str(&s).unwrap();
-    let t = format_to_string(&n);
+    let n = parse(&s).unwrap();
+    let t = format(&n);
 
     assert_eq!(
         &t,
@@ -144,10 +144,10 @@ fn test_parse_file_01() {
 }
 
 #[test]
-fn test_parse_file_02() {
+fn test_file_02() {
     let s = read_file("02-array.ason");
-    let n = parse_from_str(&s).unwrap();
-    let t = format_to_string(&n);
+    let n = parse(&s).unwrap();
+    let t = format(&n);
 
     assert_eq!(
         t,
@@ -163,10 +163,10 @@ fn test_parse_file_02() {
 }
 
 #[test]
-fn test_parse_file_03() {
+fn test_file_03() {
     let s = read_file("03-tuple.ason");
-    let n = parse_from_str(&s).unwrap();
-    let t = format_to_string(&n);
+    let n = parse(&s).unwrap();
+    let t = format(&n);
 
     assert_eq!(
         t,
@@ -181,10 +181,10 @@ fn test_parse_file_03() {
 }
 
 #[test]
-fn test_parse_file_04() {
+fn test_file_04() {
     let s = read_file("04-nested.ason");
-    let n = parse_from_str(&s).unwrap();
-    let t = format_to_string(&n);
+    let n = parse(&s).unwrap();
+    let t = format(&n);
 
     assert_eq!(
         t,

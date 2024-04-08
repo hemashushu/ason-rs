@@ -12,9 +12,7 @@ mod peekable_iterator;
 use std::fmt::Display;
 
 use chrono::{DateTime, FixedOffset};
-use formatter::format;
 use lexer::{filter, lex};
-use parser::parse;
 use peekable_iterator::PeekableIterator;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -33,14 +31,14 @@ pub enum NumberLiteral {
 
 #[derive(Debug, PartialEq)]
 pub struct NameValuePair {
-    name: String,
-    value: Box<AsonNode>,
+    pub name: String,
+    pub value: Box<AsonNode>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct VariantItem {
-    name: String,
-    value: Option<Box<AsonNode>>,
+    pub name: String,
+    pub value: Option<Box<AsonNode>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -52,7 +50,6 @@ pub enum AsonNode {
     Date(DateTime<FixedOffset>),
     Variant(VariantItem),
     ByteData(Vec<u8>),
-    //
     Array(Vec<AsonNode>),
     Tuple(Vec<AsonNode>),
     Object(Vec<NameValuePair>),
@@ -79,16 +76,16 @@ impl Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-pub fn parse_from_str(s: &str) -> Result<AsonNode, ParseError> {
+pub fn parse(s: &str) -> Result<AsonNode, ParseError> {
     let mut chars = s.chars();
     let mut char_iter = PeekableIterator::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
     let effective_tokens = filter(tokens);
     let mut token_iter = effective_tokens.into_iter();
     let mut peekable_token_iter = PeekableIterator::new(&mut token_iter, 2);
-    parse(&mut peekable_token_iter)
+    parser::parse(&mut peekable_token_iter)
 }
 
-pub fn format_to_string(n: &AsonNode) -> String {
-    format(n)
+pub fn format(n: &AsonNode) -> String {
+    formatter::format(n)
 }

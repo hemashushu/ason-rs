@@ -13,26 +13,31 @@ _XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy 
 
 <!-- code_chunk_output -->
 
-- [Example](#example)
-- [Documentation](#documentation)
+- [ASON documentation example](#ason-documentation-example)
 - [File Extension](#file-extension)
+- [API](#api)
+  - [Serialization](#serialization)
+  - [Deserialization](#deserialization)
+- [Documentation](#documentation)
+- [Source code](#source-code)
 - [License](#license)
 
 <!-- /code_chunk_output -->
 
-## Example
+## ASON documentation example
 
 ```json5
 {
     string: "hello world"
     raw_string: r"[a-z]+"
     number: 123
-    number_with_data_type_name: 123_456_789@long
+    number_with_data_type: 123_456_789@long
     float: 3.14
     double: 6.626e-34@double
     bool: true
     date: d"2023-03-24 12:30:00+08:00"
-    variant: Option::None
+    variant_with_value: Option::Some(123)
+    variant_without_value: Option::None
     array: [1,2,3,]
     tuple: (1, "foo", true)
     object: {
@@ -42,13 +47,139 @@ _XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy 
 }
 ```
 
+## File Extension
+
+The file extension for _ASON_ is `*.ason`.
+
+## API
+
+Run the following `Cargo` command in your project directory first to add this library to your project:
+
+```bash
+$ cargo add ason
+```
+
+### Serialization
+
+```rust
+let node = AsonNode::Object(vec![
+    NameValuePair {
+        name: "name".to_string(),
+        value: Box::new(AsonNode::String_("foo".to_string())),
+    },
+    NameValuePair {
+        name: "version".to_string(),
+        value: Box::new(AsonNode::String_("0.1.0".to_string())),
+    },
+    NameValuePair {
+        name: "dependencies".to_string(),
+        value: Box::new(AsonNode::Array(vec![
+            AsonNode::Object(vec![
+                NameValuePair {
+                    name: "name".to_string(),
+                    value: Box::new(AsonNode::String_("random".to_string())),
+                },
+                NameValuePair {
+                    name: "version".to_string(),
+                    value: Box::new(AsonNode::Variant(VariantItem {
+                        name: "Option::None".to_string(),
+                        value: None,
+                    })),
+                },
+            ]),
+            AsonNode::Object(vec![
+                NameValuePair {
+                    name: "name".to_string(),
+                    value: Box::new(AsonNode::String_("regex".to_string())),
+                },
+                NameValuePair {
+                    name: "version".to_string(),
+                    value: Box::new(AsonNode::Variant(VariantItem {
+                        name: "Option::Some".to_string(),
+                        value: Some(Box::new(AsonNode::String_("1.0.1".to_string()))),
+                    })),
+                },
+            ]),
+        ])),
+    },
+]);
+
+let text = format(&node);
+println!("{}", text);
+```
+
+The output text should be:
+
+```json5
+{
+    name: "foo"
+    version: "0.1.0"
+    dependencies: [{
+        name: "random"
+        version: Option::None
+    },{
+        name: "regex"
+        version: Option::Some("1.0.1")
+    }]
+}
+```
+
+### Deserialization
+
+Assume there is an ASON text from a file or the internet:
+
+```json5
+{
+    id: 123
+    name: "foo"
+    orders: [11, 13]
+}
+```
+
+Now parse it:
+
+```rust
+let text = "..."; // the ASON text above
+
+let node = parse(text).unwrap();
+
+if let AsonNode::Object(obj) = node {
+    assert_eq!(
+        &obj[0],
+        &NameValuePair {
+            name: "id".to_string(),
+            value: Box::new(AsonNode::Number(NumberLiteral::Int(123)))
+        }
+    );
+
+    assert_eq!(
+        &obj[1],
+        &NameValuePair {
+            name: "name".to_string(),
+            value: Box::new(AsonNode::String_("foo".to_string()))
+        }
+    );
+
+    assert_eq!(
+        &obj[2],
+        &NameValuePair {
+            name: "orders".to_string(),
+            value: Box::new(AsonNode::Array(vec![
+                AsonNode::Number(NumberLiteral::Int(11)),
+                AsonNode::Number(NumberLiteral::Int(13))
+            ]))
+        }
+    );
+}
+```
+
 ## Documentation
 
 See the [document](https://hemashushu.github.io/works/xiaoxuan-script-object-notation) for more information.
 
-## File Extension
+## Source code
 
-The file extension for _ASON_ is `*.ason`.
+- [Github](https://github.com/hemashushu/xiaoxuan-script-object-notation)
 
 ## License
 
