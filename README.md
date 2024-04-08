@@ -13,7 +13,7 @@ _XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy 
 
 <!-- code_chunk_output -->
 
-- [ASON documentation example](#ason-documentation-example)
+- [ASON document example](#ason-document-example)
 - [File Extension](#file-extension)
 - [API](#api)
   - [Serialization](#serialization)
@@ -24,7 +24,7 @@ _XiaoXuan Script Object Notation_ (_ASON_) is a data format designed to be easy 
 
 <!-- /code_chunk_output -->
 
-## ASON documentation example
+## ASON document example
 
 ```json5
 {
@@ -56,10 +56,14 @@ The file extension for _ASON_ is `*.ason`.
 Run the following `Cargo` command in your project directory first to add this library to your project:
 
 ```bash
-$ cargo add ason
+cargo add ason
 ```
 
 ### Serialization
+
+`fn format(n: &AsonNode) -> String`
+
+A typical _ASON_ document is an _ASON_ object, which consists of one or more "name-value" pairs. The following demostrates an _ASON_ object consisting of the "name" and "version" fields, and then converts it to text:
 
 ```rust
 let node = AsonNode::Object(vec![
@@ -126,7 +130,9 @@ The output text should be:
 
 ### Deserialization
 
-Assume there is an ASON text from a file or the internet:
+`fn parse(s: &str) -> Result<AsonNode, ParseError>`
+
+Suppose you have an _ASON_ text as below, which may come from a file or from the internet:
 
 ```json5
 {
@@ -136,7 +142,7 @@ Assume there is an ASON text from a file or the internet:
 }
 ```
 
-Now parse it:
+Now parse it into an _ASON_ object and check each of its members:
 
 ```rust
 let text = "..."; // the ASON text above
