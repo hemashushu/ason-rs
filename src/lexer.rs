@@ -20,13 +20,13 @@ pub enum Token {
     // ]
     LeftParen,
     // (
-    RightParen,   // )
+    RightParen, // )
 
     NewLine,
     // \n, \r\n, \r
     Comma,
     // ,
-    Colon,   // :
+    Colon, // :
 
     KeyName(String),
     // [a-zA-Z0-9_] and '\u{a0}' - '\u{d7ff}' and '\u{e000}' - '\u{10ffff}'
@@ -443,6 +443,21 @@ fn lex_number_decimal(
                 )));
             }
         }
+    }
+
+    // check syntax
+    if num_string.ends_with('.') {
+        return Err(ParseError::new(&format!(
+            "A number can not ends with \".\": {}",
+            num_string
+        )));
+    }
+
+    if num_string.ends_with('e') {
+        return Err(ParseError::new(&format!(
+            "A number can not ends with \"e\": {}",
+            num_string
+        )));
     }
 
     // convert to primitive numbers
@@ -1830,6 +1845,7 @@ fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, P
         }
     }
 
+    // the actual starting mark is `r|"\n`, and the actual ending mark is `\n"|`.
     Ok(Token::String_(total_string.trim_end().to_owned()))
 }
 
@@ -1879,29 +1895,29 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Pars
                     '"' if line_leading.trim().is_empty()
                         && iter.look_ahead_equals(0, &'"')
                         && iter.look_ahead_equals(1, &'"') =>
-                        {
-                            iter.next(); // consume '"'
-                            iter.next(); // consume '"'
+                    {
+                        iter.next(); // consume '"'
+                        iter.next(); // consume '"'
 
-                            // only (""") which occupies a single line, is considered to be
-                            // the ending mark of a paragraph string.
-                            // note that the ending marker includes the new line symbol (\n or \r\n),
-                            // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
-                            // the ending marker.
-                            if iter.look_ahead_equals(0, &'\n') {
-                                iter.next();
-                                break;
-                            } else if iter.look_ahead_equals(0, &'\r')
-                                && iter.look_ahead_equals(1, &'\n')
-                            {
-                                iter.next();
-                                iter.next();
-                                break;
-                            } else {
-                                // it's not a valid ending mark.
-                                comment_string.push_str("\"\"\"");
-                            }
+                        // only (""") which occupies a single line, is considered to be
+                        // the ending mark of a paragraph string.
+                        // note that the ending marker includes the new line symbol (\n or \r\n),
+                        // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
+                        // the ending marker.
+                        if iter.look_ahead_equals(0, &'\n') {
+                            iter.next();
+                            break;
+                        } else if iter.look_ahead_equals(0, &'\r')
+                            && iter.look_ahead_equals(1, &'\n')
+                        {
+                            iter.next();
+                            iter.next();
+                            break;
+                        } else {
+                            // it's not a valid ending mark.
+                            comment_string.push_str("\"\"\"");
                         }
+                    }
                     _ => {
                         comment_string.push(previous_char);
                         line_leading.push(previous_char);
@@ -2364,11 +2380,6 @@ mod tests {
         );
 
         assert_eq!(
-            lex_from_str("123.").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(123f32))]
-        );
-
-        assert_eq!(
             lex_from_str("2.998e8").unwrap(),
             vec![Token::Number(NumberLiteral::Float(2.998e8))]
         );
@@ -2410,6 +2421,12 @@ mod tests {
         // err: multiple 'e' (exps)
         assert!(matches!(
             lex_from_str("1e2e3"),
+            Err(ParseError { message: _ })
+        ));
+
+        // err: incomplete floating point number
+        assert!(matches!(
+            lex_from_str("123."),
             Err(ParseError { message: _ })
         ));
 
@@ -2543,14 +2560,14 @@ mod tests {
             lex_from_str("9_223_372_036_854_775_807@long").unwrap(),
             vec![Token::Number(NumberLiteral::Long(
                 9_223_372_036_854_775_807i64
-            )), ]
+            )),]
         );
 
         assert_eq!(
             lex_from_str("-9_223_372_036_854_775_808@long").unwrap(),
             vec![Token::Number(NumberLiteral::Long(
                 -9_223_372_036_854_775_808i64
-            )), ]
+            )),]
         );
 
         assert_eq!(
@@ -2631,21 +2648,21 @@ mod tests {
             lex_from_str("1.797_693_134_862_315_7e+308@double").unwrap(),
             vec![Token::Number(NumberLiteral::Double(
                 1.797_693_134_862_315_7e308_f64
-            )), ]
+            )),]
         );
 
         assert_eq!(
             lex_from_str("-1.797_693_134_862_315_7e+308@double").unwrap(),
             vec![Token::Number(NumberLiteral::Double(
                 -1.797_693_134_862_315_7e308_f64
-            )), ]
+            )),]
         );
 
         assert_eq!(
             lex_from_str("2.2250738585072014e-308@double").unwrap(),
             vec![Token::Number(NumberLiteral::Double(
                 2.2250738585072014e-308f64
-            )), ]
+            )),]
         );
 
         // err: overflow
@@ -3439,7 +3456,7 @@ mod tests {
                 "abc文字😊"
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("abc文字😊"),
@@ -3454,7 +3471,7 @@ mod tests {
                 "\r\n\t\\\"\u{2d}\u{6587}\0"
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("\r\n\t\\\"-文\0"),
@@ -3565,7 +3582,7 @@ mod tests {
             lex_from_str(
                 "r\"abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz\""
             )
-                .unwrap(),
+            .unwrap(),
             vec![Token::new_string(
                 "abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz"
             )]
@@ -3610,7 +3627,7 @@ mod tests {
                 "|
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("one\n  two\n    three\nend"),
@@ -3629,7 +3646,7 @@ mod tests {
                 "|
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("one\ntwo\nthree\nend"),
@@ -3647,7 +3664,7 @@ mod tests {
                 "|
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("one\\\\\\\"\\t\\r\\n\\u{1234}\n\nend"),
@@ -3666,7 +3683,7 @@ mod tests {
                 "|
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::new_string("one\"|\ntwo"),
@@ -3683,7 +3700,7 @@ mod tests {
                 "| 13
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(11)),
@@ -3734,7 +3751,7 @@ mod tests {
                 h""
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![Token::NewLine, Token::ByteData(vec![]), Token::NewLine]
         );
 
@@ -3744,7 +3761,7 @@ mod tests {
                 h"11131719"
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3758,7 +3775,7 @@ mod tests {
                 h"11 13 1719"
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3772,7 +3789,7 @@ mod tests {
                 h"11-13-1719"
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3786,7 +3803,7 @@ mod tests {
                 h"11:13:1719"
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3800,7 +3817,7 @@ mod tests {
                 h\"1113\n17\t19\"
                 "
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
@@ -3850,7 +3867,7 @@ mod tests {
                 31// 37
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
@@ -3875,7 +3892,7 @@ mod tests {
                 7 /* 11 13 */ 17
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
@@ -3892,7 +3909,7 @@ mod tests {
                 7 /* 11 /* 13 */ 17 */ 19
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
@@ -3909,7 +3926,7 @@ mod tests {
                 7 /* 11 // 13 17 */ 19
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
@@ -3929,14 +3946,14 @@ mod tests {
                 """
                 13 */ 19
                 "#
-                    .lines()
-                    .map(&str::trim_start)
-                    .map(&str::to_owned)
-                    .collect::<Vec<String>>()
-                    .join("\n")
-                    .as_str()
+                .lines()
+                .map(&str::trim_start)
+                .map(&str::to_owned)
+                .collect::<Vec<String>>()
+                .join("\n")
+                .as_str()
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
@@ -3982,7 +3999,7 @@ mod tests {
                 """
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
@@ -4005,7 +4022,7 @@ mod tests {
                 """
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document("one\ntwo\nthree\nend".to_string())),
@@ -4022,7 +4039,7 @@ mod tests {
                 """
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
@@ -4042,7 +4059,7 @@ mod tests {
                 """
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
@@ -4158,7 +4175,7 @@ mod tests {
                 {id: 123, name: "foo"}
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftBrace,
@@ -4180,7 +4197,7 @@ mod tests {
                 [123,456,789,]
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftBracket,
@@ -4201,7 +4218,7 @@ mod tests {
                 (123 "foo" true) // line comment
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftParen,
@@ -4223,7 +4240,7 @@ mod tests {
                 }
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftBrace, // {
@@ -4273,7 +4290,7 @@ mod tests {
                 ]
                 "#
             )
-                .unwrap(),
+            .unwrap(),
             vec![
                 Token::NewLine,
                 Token::LeftBracket,
@@ -4304,7 +4321,7 @@ mod tests {
                     ]
                     "#
                 )
-                    .unwrap()
+                .unwrap()
             ),
             vec![
                 Token::LeftBracket,
