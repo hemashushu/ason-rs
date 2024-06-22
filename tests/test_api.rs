@@ -4,7 +4,8 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use ason::{format, parse, AsonNode, NameValuePair, NumberLiteral, VariantItem};
+use ason::{parse, write, AsonNode, NameValuePair, NumberLiteral, VariantItem};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn test_parse() {
@@ -47,7 +48,7 @@ fn test_parse() {
 }
 
 #[test]
-fn test_format() {
+fn test_write() {
     let node = AsonNode::Object(vec![
         NameValuePair {
             name: "name".to_string(),
@@ -90,20 +91,23 @@ fn test_format() {
         },
     ]);
 
-    let text = format(&node);
+    let text = write(&node);
 
     assert_eq!(
         text,
         r#"{
     name: "foo"
     version: "0.1.0"
-    dependencies: [{
-        name: "random"
-        version: Option::None
-    },{
-        name: "regex"
-        version: Option::Some("1.0.1")
-    }]
+    dependencies: [
+        {
+            name: "random"
+            version: Option::None
+        }
+        {
+            name: "regex"
+            version: Option::Some("1.0.1")
+        }
+    ]
 }"#
     );
 }

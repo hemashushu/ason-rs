@@ -4,10 +4,10 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-mod formatter;
 mod lexer;
 mod parser;
 mod peekable_iterator;
+mod writer;
 
 use std::fmt::Display;
 
@@ -86,6 +86,6 @@ pub fn parse(s: &str) -> Result<AsonNode, ParseError> {
     parser::parse(&mut peekable_token_iter)
 }
 
-pub fn format(n: &AsonNode) -> String {
-    formatter::format(n)
+pub fn write(n: &AsonNode) -> String {
+    writer::write(n)
 }

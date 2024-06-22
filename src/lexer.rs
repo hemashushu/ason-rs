@@ -2073,7 +2073,7 @@ fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
     // ^      ^__// to here
     // |_________// current char
     //
-    // x = '/'
+    // x == '/'
 
     iter.next(); // consume char '/'
     iter.next(); // consume char '*'
@@ -2084,15 +2084,12 @@ fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
     loop {
         match iter.next() {
             Some(previous_char) => match previous_char {
-                // '(' if iter.look_ahead_equals(0, &';') => {
                 '/' if iter.look_ahead_equals(0, &'*') => {
                     // nested block comment
-                    // ss.push_str("(;");
                     comment_string.push_str("/*");
                     iter.next();
                     pairs += 1;
                 }
-                // ';' if iter.look_ahead_equals(0, &')') => {
                 '*' if iter.look_ahead_equals(0, &'/') => {
                     iter.next();
                     pairs -= 1;
@@ -2101,12 +2098,11 @@ fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
                     if pairs == 0 {
                         break;
                     } else {
-                        // ss.push_str(";)");
                         comment_string.push_str("*/");
                     }
                 }
                 _ => {
-                    // ignore all chars except "(;" and ";)"
+                    // ignore all chars except "/*" and "*/"
                     // note that line comments within block comments are ignored.
                     comment_string.push(previous_char);
                 }
@@ -2119,7 +2115,7 @@ fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
 }
 
 // - remove all comments.
-// - combine multiple continuous newlines and commas into a single newline.
+// - combine multiple continuous newlines and commas into one single newline.
 pub fn filter(tokens: Vec<Token>) -> Vec<Token> {
     let mut effective_tokens = vec![];
 

@@ -8,7 +8,7 @@ use crate::{AsonNode, NameValuePair, NumberLiteral};
 
 pub const INDENT_SPACES: &str = "    ";
 
-fn format_number_literal(number_literal: &NumberLiteral) -> String {
+fn write_number_literal(number_literal: &NumberLiteral) -> String {
     match number_literal {
         NumberLiteral::Byte(v) => {
             format!("{}@byte", v)
@@ -49,20 +49,20 @@ fn format_number_literal(number_literal: &NumberLiteral) -> String {
     }
 }
 
-fn format_name_value_pair(name_value_pair: &NameValuePair, level: usize) -> String {
-    let sub_level = level + 1;
-    let leading_space = INDENT_SPACES.repeat(sub_level);
+fn write_name_value_pair(name_value_pair: &NameValuePair, level: usize) -> String {
+    // let sub_level = level + 1;
+    let leading_space = INDENT_SPACES.repeat(level);
     format!(
         "{}{}: {}",
         leading_space,
         name_value_pair.name,
-        format_ason_node(&name_value_pair.value, sub_level)
+        write_ason_node(&name_value_pair.value, level)
     )
 }
 
-fn format_ason_node(node: &AsonNode, level: usize) -> String {
+fn write_ason_node(node: &AsonNode, level: usize) -> String {
     match node {
-        AsonNode::Number(v) => format_number_literal(v),
+        AsonNode::Number(v) => write_number_literal(v),
         AsonNode::Boolean(v) => match v {
             true => "true".to_string(),
             false => "false".to_string(),
@@ -78,7 +78,7 @@ fn format_ason_node(node: &AsonNode, level: usize) -> String {
         AsonNode::Date(v) => format!("d\"{}\"", v.to_rfc3339()),
         AsonNode::Variant(i) => {
             if let Some(v) = &i.value {
-                format!("{}({})", i.name, format_ason_node(v, level))
+                format!("{}({})", i.name, write_ason_node(v, level))
             } else {
                 i.name.to_owned()
             }
@@ -90,28 +90,41 @@ fn format_ason_node(node: &AsonNode, level: usize) -> String {
                 .collect::<Vec<String>>()
                 .join(":")
         ),
-        AsonNode::Array(v) => format!(
-            "[{}]",
-            v.iter()
-                .map(|item| format_ason_node(item, level))
-                .collect::<Vec<String>>()
-                .join(",")
-        ),
+        AsonNode::Array(v) => {
+            let leading_space = INDENT_SPACES.repeat(level);
+            let sub_level = level + 1;
+            let element_leading_space = INDENT_SPACES.repeat(sub_level);
+            format!(
+                "[\n{}\n{}]",
+                v.iter()
+                    .map(|item| format!(
+                        "{}{}",
+                        element_leading_space,
+                        write_ason_node(item, sub_level)
+                    ))
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+                leading_space
+            )
+        }
         AsonNode::Tuple(v) => format!(
             "({})",
             v.iter()
-                .map(|item| format_ason_node(item, level))
+                .map(|item| write_ason_node(item, level))
                 .collect::<Vec<String>>()
-                .join(",")
+                .join(", ")
         ),
-        AsonNode::Object(v) => format!(
-            "{{\n{}\n{}}}",
-            v.iter()
-                .map(|item| format_name_value_pair(item, level))
-                .collect::<Vec<String>>()
-                .join("\n"),
-            INDENT_SPACES.repeat(level),
-        ),
+        AsonNode::Object(v) => {
+            let sub_level = level + 1;
+            format!(
+                "{{\n{}\n{}}}",
+                v.iter()
+                    .map(|item| write_name_value_pair(item, sub_level))
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+                INDENT_SPACES.repeat(level),
+            )
+        }
     }
 }
 
@@ -140,19 +153,20 @@ fn escape(c: char, escape_single_char: bool) -> String {
     }
 }
 
-pub fn format(node: &AsonNode) -> String {
-    format_ason_node(node, 0)
+pub fn write(node: &AsonNode) -> String {
+    write_ason_node(node, 0)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::parse;
+    use pretty_assertions::assert_eq;
 
-    use super::format;
+    use super::write;
 
     fn format_ason_document(s: &str) -> String {
         let node = parse(s).unwrap();
-        format(&node)
+        write(&node)
     }
 
     #[test]
@@ -265,7 +279,10 @@ mod tests {
             {id:123,name:"foo"}
             "#
             ),
-            "{\n    id: 123\n    name: \"foo\"\n}"
+            r#"{
+    id: 123
+    name: "foo"
+}"#
         );
 
         assert_eq!(
@@ -308,7 +325,11 @@ mod tests {
             [123,456,789]
             "#
             ),
-            "[123,456,789]"
+            r#"[
+    123
+    456
+    789
+]"#
         );
 
         assert_eq!(
@@ -317,16 +338,20 @@ mod tests {
             [{id:123, name:"abc"},{id:456, name:"def"},{id:789,name:"xyz"}]
             "#
             ),
-            r#"[{
-    id: 123
-    name: "abc"
-},{
-    id: 456
-    name: "def"
-},{
-    id: 789
-    name: "xyz"
-}]"#
+            r#"[
+    {
+        id: 123
+        name: "abc"
+    }
+    {
+        id: 456
+        name: "def"
+    }
+    {
+        id: 789
+        name: "xyz"
+    }
+]"#
         );
     }
 
@@ -338,7 +363,7 @@ mod tests {
             (123,"foo",true)
             "#
             ),
-            "(123,\"foo\",true)"
+            "(123, \"foo\", true)"
         );
     }
 }

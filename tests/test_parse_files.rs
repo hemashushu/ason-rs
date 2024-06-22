@@ -4,7 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use ason::{format, parse};
+use ason::{parse, write};
 
 use pretty_assertions::assert_eq;
 
@@ -30,7 +30,7 @@ fn read_file(file_path: &str) -> String {
 fn test_file_01() {
     let s = read_file("01-object.ason");
     let n = parse(&s).unwrap();
-    let t = format(&n);
+    let t = write(&n);
 
     assert_eq!(
         &t,
@@ -147,17 +147,42 @@ fn test_file_01() {
 fn test_file_02() {
     let s = read_file("02-array.ason");
     let n = parse(&s).unwrap();
-    let t = format(&n);
+    let t = write(&n);
 
     assert_eq!(
         t,
         r#"{
-    number_array: [1,2,3]
-    string_array: ["one","two","three"]
-    array_with_trailing_comma: [1,2,3,4]
-    mulitline_array: [1,2,3]
-    mulitline_array_with_commas: [1,2,3]
-    mulitline_array_with_trailing_comma: [1,2,3]
+    number_array: [
+        1
+        2
+        3
+    ]
+    string_array: [
+        "one"
+        "two"
+        "three"
+    ]
+    array_with_trailing_comma: [
+        1
+        2
+        3
+        4
+    ]
+    mulitline_array: [
+        1
+        2
+        3
+    ]
+    mulitline_array_with_commas: [
+        1
+        2
+        3
+    ]
+    mulitline_array_with_trailing_comma: [
+        1
+        2
+        3
+    ]
 }"#
     );
 }
@@ -166,16 +191,16 @@ fn test_file_02() {
 fn test_file_03() {
     let s = read_file("03-tuple.ason");
     let n = parse(&s).unwrap();
-    let t = format(&n);
+    let t = write(&n);
 
     assert_eq!(
         t,
         r#"{
-    tuple: (1,"foo",true)
-    tuple_with_trailing_comma: (1,"foo",true)
-    mulitline_tuple: (1,"foo",true)
-    mulitline_tuple_with_commas: (1,"foo",true)
-    mulitline_tuple_with_trailing_comma: (1,"foo",true)
+    tuple: (1, "foo", true)
+    tuple_with_trailing_comma: (1, "foo", true)
+    mulitline_tuple: (1, "foo", true)
+    mulitline_tuple_with_commas: (1, "foo", true)
+    mulitline_tuple_with_trailing_comma: (1, "foo", true)
 }"#
     );
 }
@@ -184,23 +209,29 @@ fn test_file_03() {
 fn test_file_04() {
     let s = read_file("04-nested.ason");
     let n = parse(&s).unwrap();
-    let t = format(&n);
+    let t = write(&n);
 
     assert_eq!(
         t,
         r#"{
     id: 123
     name: "hello"
-    orders: [(1,"foo",true),(2,"bar",false)]
+    orders: [
+        (1, "foo", true)
+        (2, "bar", false)
+    ]
     group: {
         active: true
-        permissions: [{
-            number: 11
-            title: "read"
-        },{
-            number: 13
-            title: "write"
-        }]
+        permissions: [
+            {
+                number: 11
+                title: "read"
+            }
+            {
+                number: 13
+                title: "write"
+            }
+        ]
     }
 }"#
     );

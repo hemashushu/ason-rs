@@ -4,7 +4,10 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{lexer::Token, peekable_iterator::PeekableIterator, AsonNode, NameValuePair, ParseError, VariantItem};
+use crate::{
+    lexer::Token, peekable_iterator::PeekableIterator, AsonNode, NameValuePair, ParseError,
+    VariantItem,
+};
 
 pub fn parse(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
     let root = parse_node(iter)?;
@@ -247,6 +250,7 @@ fn consume_new_line_if_exist(iter: &mut PeekableIterator<Token>) {
 #[cfg(test)]
 mod tests {
     use chrono::DateTime;
+    use pretty_assertions::assert_eq;
 
     use crate::{parse, parser::NameValuePair, NumberLiteral, ParseError, VariantItem};
 
@@ -260,7 +264,7 @@ mod tests {
             123
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::Number(NumberLiteral::Int(123))
         );
 
@@ -270,7 +274,7 @@ mod tests {
             true
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::Boolean(true)
         );
 
@@ -280,7 +284,7 @@ mod tests {
             '🍒'
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::Char('🍒')
         );
 
@@ -290,7 +294,7 @@ mod tests {
             "hello"
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::String_("hello".to_string())
         );
 
@@ -300,7 +304,7 @@ mod tests {
             d"2024-03-17 10:01:11+08:00"
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::Date(DateTime::parse_from_rfc3339("2024-03-17 10:01:11+08:00").unwrap())
         );
 
@@ -311,8 +315,11 @@ mod tests {
             Option::None
             "#
             )
-                .unwrap(),
-            AsonNode::Variant(VariantItem { name: "Option::None".to_string(), value: None })
+            .unwrap(),
+            AsonNode::Variant(VariantItem {
+                name: "Option::None".to_string(),
+                value: None
+            })
         );
 
         assert_eq!(
@@ -321,12 +328,10 @@ mod tests {
             Option::Some(123)
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::Variant(VariantItem {
                 name: "Option::Some".to_string(),
-                value: Some(Box::new(
-                    AsonNode::Number(NumberLiteral::Int(123))
-                )),
+                value: Some(Box::new(AsonNode::Number(NumberLiteral::Int(123)))),
             })
         );
 
@@ -336,7 +341,7 @@ mod tests {
             h"11:13:17:19"
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::ByteData(vec![0x11u8, 0x13, 0x17, 0x19])
         );
     }
@@ -360,7 +365,7 @@ mod tests {
             {id:123,name:"foo"}
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_object1
         );
 
@@ -373,7 +378,7 @@ mod tests {
             }
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_object1
         );
 
@@ -386,7 +391,7 @@ mod tests {
             }
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_object1
         );
 
@@ -399,7 +404,7 @@ mod tests {
             }
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_object1
         );
 
@@ -415,7 +420,7 @@ mod tests {
             }
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::Object(vec![
                 NameValuePair {
                     name: "id".to_string(),
@@ -471,7 +476,7 @@ mod tests {
             [123,456,789]
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_array1
         );
 
@@ -485,7 +490,7 @@ mod tests {
             ]
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_array1
         );
 
@@ -499,7 +504,7 @@ mod tests {
             ]
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_array1
         );
 
@@ -513,7 +518,7 @@ mod tests {
             ]
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_array1
         );
     }
@@ -532,7 +537,7 @@ mod tests {
             (123,"foo",true)
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_tuple1
         );
 
@@ -546,7 +551,7 @@ mod tests {
             )
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_tuple1
         );
 
@@ -560,7 +565,7 @@ mod tests {
             )
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_tuple1
         );
 
@@ -574,7 +579,7 @@ mod tests {
             )
             "#
             )
-                .unwrap(),
+            .unwrap(),
             expect_tuple1
         );
     }
@@ -601,7 +606,7 @@ mod tests {
             }
             "#
             )
-                .unwrap(),
+            .unwrap(),
             AsonNode::Object(vec![
                 NameValuePair {
                     name: "id".to_string(),

@@ -21,6 +21,7 @@ _ANON_ is mainly used as a configuration file for applications, but can also be 
 - [File Extension](#file-extension)
 - [Shared Library and API](#shared-library-and-api)
   - [Rust ASON Shared Library](#rust-ason-shared-library)
+- [Utilities](#utilities)
 - [Documentation](#documentation)
 - [Source code](#source-code)
 - [License](#license)
@@ -147,7 +148,7 @@ let node = AsonNode::Object(vec![
     },
 ]);
 
-let text = format(&node);
+let text = write(&node);
 println!("{}", text);
 ```
 
@@ -157,15 +158,42 @@ The output text should be:
 {
     name: "foo"
     version: "0.1.0"
-    dependencies: [{
-        name: "random"
-        version: Option::None
-    },{
-        name: "regex"
-        version: Option::Some("1.0.1")
-    }]
+    dependencies: [
+        {
+            name: "random"
+            version: Option::None
+        }
+        {
+            name: "regex"
+            version: Option::Some("1.0.1")
+        }
+    ]
 }
 ```
+
+## Utilities
+
+This library also provides a utility "ason" which can be used to read and validate, or format an ASON document.
+
+First install the utility with the following command:
+
+`$ cargo install ason`
+
+This command will add the executable `ason` to the `~/.cargo/bin` directory.
+
+This usage of utility is:
+
+```bash
+$ ason <file_name>
+```
+
+For example:
+
+`$ ason test.ason`
+
+If the document has no errors, the program prints the formatted document to the terminal. The output can be redirected to a new file, e.g.:
+
+`$ ason test.ason > new.ason`
 
 ## Documentation
 
