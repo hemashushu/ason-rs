@@ -1,6 +1,6 @@
 [package]
 name = "ason"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 
 license = "MPL-2.0"
@@ -13,7 +13,7 @@ keywords = ["ason", "parser", "json", "serde", "xiaoxuan"]
 categories = ["encoding", "parser-implementations"]
 
 [dependencies]
-chrono = "0.4.35"
+chrono = "0.4.38"
 hexfloat2 = "0.1.3"
 
 [dev-dependencies]

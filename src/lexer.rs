@@ -3417,12 +3417,12 @@ mod tests {
         assert_eq!(lex_from_str("\"\"").unwrap(), vec![Token::new_string("")]);
 
         assert_eq!(
-            lex_from_str("\"abc\"").unwrap(),
+            lex_from_str(r#""abc""#).unwrap(),
             vec![Token::new_string("abc")]
         );
 
         assert_eq!(
-            lex_from_str("(\"abc\")").unwrap(),
+            lex_from_str(r#"("abc")"#).unwrap(),
             vec![
                 Token::LeftParen,
                 Token::new_string("abc"),
@@ -3431,7 +3431,7 @@ mod tests {
         );
 
         assert_eq!(
-            lex_from_str("\"abc\" \"xyz\"").unwrap(),
+            lex_from_str(r#""abc" "xyz""#).unwrap(),
             vec![Token::new_string("abc"), Token::new_string("xyz")]
         );
 
@@ -3555,11 +3555,13 @@ mod tests {
             vec![Token::new_string("abc\ndef\n    uvw\r\n\t  \txyz")]
         );
 
+        // the tailing '\' should escapes the new-line symbol
         assert_eq!(
             lex_from_str("\"abc\\\ndef\\\n    uvw\\\r\n\t  \txyz\"").unwrap(),
             vec![Token::new_string("abcdefuvwxyz")]
         );
 
+        // the tailing '\' should escapes the new-line symbol and trim the leading white-spaces
         assert_eq!(
             lex_from_str("\"\\\n  \t  \"").unwrap(),
             vec![Token::new_string("")]

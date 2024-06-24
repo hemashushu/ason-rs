@@ -14,8 +14,13 @@ fn main() {
     // 0 = program itself
     // 1 = source file
     if args.len() != 2 {
-        eprintln!("USAGE:");
+        // https://doc.rust-lang.org/cargo/reference/environment-variables.html
+        eprintln!("XiaoXuan Script Object Notation Parser {}", env!("CARGO_PKG_VERSION"));
+        eprintln!();
+        eprintln!("Usage:");
         eprintln!("    ason <source_file>");
+        eprintln!();
+        eprintln!("Reference: https://github.com/hemashushu/xiaoxuan-script-object-notation");
         process::exit(1);
     }
 

@@ -4,12 +4,14 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{AsonNode, NameValuePair, NumberLiteral};
+use chrono::{DateTime, FixedOffset};
+
+use crate::{AsonNode, NameValuePair, NumberLiteral, VariantItem};
 
 pub const INDENT_SPACES: &str = "    ";
 
-fn write_number_literal(number_literal: &NumberLiteral) -> String {
-    match number_literal {
+fn write_number(v: &NumberLiteral) -> String {
+    match v {
         NumberLiteral::Byte(v) => {
             format!("{}@byte", v)
         }
@@ -49,99 +51,138 @@ fn write_number_literal(number_literal: &NumberLiteral) -> String {
     }
 }
 
-fn write_name_value_pair(name_value_pair: &NameValuePair, level: usize) -> String {
-    // let sub_level = level + 1;
-    let leading_space = INDENT_SPACES.repeat(level);
+fn write_boolean(v: &bool) -> String {
+    match v {
+        true => "true".to_string(),
+        false => "false".to_string(),
+    }
+}
+
+fn write_char(v: &char) -> String {
+    format!("'{}'", escape_single_char(*v))
+}
+
+fn write_string(v: &str) -> String {
     format!(
-        "{}{}: {}",
-        leading_space,
-        name_value_pair.name,
-        write_ason_node(&name_value_pair.value, level)
+        "\"{}\"",
+        v.chars()
+            .map(|c| match c {
+                '\\' => "\\\\".to_string(),
+                '"' => "\\\"".to_string(),
+                // null char is allowed in the ASON string, it is used for represent the string resource.
+                '\0' => "\\0".to_string(),
+                // some text editors automatically remove the tab when
+                // it is at the end of a line, so it is best to escape the tab char.
+                // therefor it should be escaped
+                '\t' => "\\t".to_string(),
+                _ => c.to_string(),
+            })
+            .collect::<Vec<String>>()
+            .join("")
+    )
+}
+
+fn write_date(v: &DateTime<FixedOffset>) -> String {
+    format!("d\"{}\"", v.to_rfc3339())
+}
+
+fn write_variant(v: &VariantItem, level: usize) -> String {
+    if let Some(val) = &v.value {
+        format!("{}({})", v.name, write_ason_node(val, level))
+    } else {
+        v.name.to_owned()
+    }
+}
+
+fn write_byte_data(v: &[u8]) -> String {
+    format!(
+        "h\"{}\"",
+        v.iter()
+            .map(|item| format!("{:02x}", item))
+            .collect::<Vec<String>>()
+            .join(":")
+    )
+}
+
+fn write_array(v: &[AsonNode], level: usize) -> String {
+    let leading_space = INDENT_SPACES.repeat(level);
+    let sub_level = level + 1;
+    let element_leading_space = INDENT_SPACES.repeat(sub_level);
+    format!(
+        "[\n{}\n{}]",
+        v.iter()
+            .map(|item| format!(
+                "{}{}",
+                element_leading_space,
+                write_ason_node(item, sub_level)
+            ))
+            .collect::<Vec<String>>()
+            .join("\n"),
+        leading_space
+    )
+}
+
+fn write_tuple(v: &[AsonNode], level: usize) -> String {
+    format!(
+        "({})",
+        v.iter()
+            .map(|item| write_ason_node(item, level))
+            .collect::<Vec<String>>()
+            .join(", ")
+    )
+}
+
+fn write_object(v: &[NameValuePair], level: usize) -> String {
+    let write_name_value_pair = |name_value_pair: &NameValuePair, current_level: usize| -> String {
+        let leading_space = INDENT_SPACES.repeat(current_level);
+        format!(
+            "{}{}: {}",
+            leading_space,
+            name_value_pair.name,
+            write_ason_node(&name_value_pair.value, current_level)
+        )
+    };
+
+    let sub_level = level + 1;
+    format!(
+        "{{\n{}\n{}}}",
+        v.iter()
+            .map(|item| write_name_value_pair(item, sub_level))
+            .collect::<Vec<String>>()
+            .join("\n"),
+        INDENT_SPACES.repeat(level),
     )
 }
 
 fn write_ason_node(node: &AsonNode, level: usize) -> String {
     match node {
-        AsonNode::Number(v) => write_number_literal(v),
-        AsonNode::Boolean(v) => match v {
-            true => "true".to_string(),
-            false => "false".to_string(),
-        },
-        AsonNode::Char(v) => format!("'{}'", escape(*v, true)),
-        AsonNode::String_(v) => format!(
-            "\"{}\"",
-            v.chars()
-                .map(|c| escape(c, false))
-                .collect::<Vec<String>>()
-                .join("")
-        ),
-        AsonNode::Date(v) => format!("d\"{}\"", v.to_rfc3339()),
-        AsonNode::Variant(i) => {
-            if let Some(v) = &i.value {
-                format!("{}({})", i.name, write_ason_node(v, level))
-            } else {
-                i.name.to_owned()
-            }
-        }
-        AsonNode::ByteData(v) => format!(
-            "h\"{}\"",
-            v.iter()
-                .map(|item| format!("{:02x}", item))
-                .collect::<Vec<String>>()
-                .join(":")
-        ),
-        AsonNode::Array(v) => {
-            let leading_space = INDENT_SPACES.repeat(level);
-            let sub_level = level + 1;
-            let element_leading_space = INDENT_SPACES.repeat(sub_level);
-            format!(
-                "[\n{}\n{}]",
-                v.iter()
-                    .map(|item| format!(
-                        "{}{}",
-                        element_leading_space,
-                        write_ason_node(item, sub_level)
-                    ))
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-                leading_space
-            )
-        }
-        AsonNode::Tuple(v) => format!(
-            "({})",
-            v.iter()
-                .map(|item| write_ason_node(item, level))
-                .collect::<Vec<String>>()
-                .join(", ")
-        ),
-        AsonNode::Object(v) => {
-            let sub_level = level + 1;
-            format!(
-                "{{\n{}\n{}}}",
-                v.iter()
-                    .map(|item| write_name_value_pair(item, sub_level))
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-                INDENT_SPACES.repeat(level),
-            )
-        }
+        AsonNode::Number(v) => write_number(v),
+        AsonNode::Boolean(v) => write_boolean(v),
+        AsonNode::Char(v) => write_char(v),
+        AsonNode::String_(v) => write_string(v),
+        AsonNode::Date(v) => write_date(v),
+        AsonNode::Variant(v) => write_variant(v, level),
+        AsonNode::ByteData(v) => write_byte_data(v),
+        AsonNode::Array(v) => write_array(v, level),
+        AsonNode::Tuple(v) => write_tuple(v, level),
+        AsonNode::Object(v) => write_object(v, level),
     }
 }
 
-fn escape(c: char, escape_single_char: bool) -> String {
+fn escape_single_char(c: char) -> String {
     match c {
         '\\' => "\\\\".to_string(),
-        '\'' if escape_single_char => "\\'".to_string(),
+        '\'' => "\\'".to_string(),
         '"' => "\\\"".to_string(),
         '\t' => {
             // horizontal tabulation
             "\\t".to_string()
         }
-        '\r' if escape_single_char => {
+        '\r' => {
             // carriage return, jump to the beginning of the line (CR)
             "\\r".to_string()
         }
-        '\n' if escape_single_char => {
+        '\n' => {
             // new line/line feed (LF)
             "\\n".to_string()
         }

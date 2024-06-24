@@ -32,6 +32,10 @@ fn test_file_01() {
     let n = parse(&s).unwrap();
     let t = write(&n);
 
+    // note that the suffix 'a' should be '0.000000000000000001', but
+    // in the debug mode, it may be '0.0000000000000000009999999' and
+    // this unit test will be failed if it is running under the 'release' profile.
+
     assert_eq!(
         &t,
         r#"{

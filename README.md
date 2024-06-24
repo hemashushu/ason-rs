@@ -77,18 +77,18 @@ The file extension for _ASON_ document is `*.ason`. Filename example:
 
 `sample.ason`, `package.ason`
 
-## Shared Library and API
+## Library and API
 
 Currently, only the Rust implementation of _ASON_ serialization and deserialization library is provided.
 
-### Rust ASON Shared Library
+### Rust ASON Library
 
 Run the command `cargo add ason` in your project directory to add the _ASON_ library to your project.
 
 This library provides two functions:
 
 - `fn parse(s: &str) -> Result<AsonNode, ParseError>` for deserialization;
-- `fn format(n: &AsonNode) -> String` for serialization.
+- `fn write(n: &AsonNode) -> String` for serialization.
 
 **Deserialization**
 
@@ -171,9 +171,9 @@ The output text should be:
 }
 ```
 
-## Utilities
+### Utilities
 
-This library also provides a utility "ason" which can be used to read and validate, or format an ASON document.
+The Rust ASON library also provides a utility "ason" which can be used to read and validate, or format an ASON document.
 
 First install the utility with the following command:
 
@@ -191,7 +191,7 @@ For example:
 
 `$ ason test.ason`
 
-If the document has no errors, the program prints the formatted document to the terminal. The output can be redirected to a new file, e.g.:
+If the document "test.ason" has no errors, the program prints the formatted document to the terminal. The output can be redirected to a new file, e.g.:
 
 `$ ason test.ason > new.ason`
 
