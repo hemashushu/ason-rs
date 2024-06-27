@@ -1499,6 +1499,7 @@ fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                                 c = '\'';
                             }
                             '"' => {
+                                // double quote does not necessary to be escaped
                                 c = '"';
                             }
                             't' => {
@@ -1521,12 +1522,12 @@ fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                                 // unicode code point, e.g. '\u{2d}', '\u{6587}'
                                 c = lex_string_unescape_unicode(iter)?;
                             }
-                            '\n' => {
-                                c = '\n';
-                            }
-                            '\r' => {
-                                c = '\r';
-                            }
+                            // '\n' => {
+                            //     c = '\n';
+                            // }
+                            // '\r' => {
+                            //     c = '\r';
+                            // }
                             _ => {
                                 return Err(ParseError::new(&format!(
                                     "Unsupported escape char: \"{}\"",

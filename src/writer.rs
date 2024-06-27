@@ -59,7 +59,30 @@ fn write_boolean(v: &bool) -> String {
 }
 
 fn write_char(v: &char) -> String {
-    format!("'{}'", escape_single_char(*v))
+    // escape single char
+    let s = match v {
+        '\\' => "\\\\".to_string(),
+        '\'' => "\\'".to_string(),
+        '\t' => {
+            // horizontal tabulation
+            "\\t".to_string()
+        }
+        '\r' => {
+            // carriage return, jump to the beginning of the line (CR)
+            "\\r".to_string()
+        }
+        '\n' => {
+            // new line/line feed (LF)
+            "\\n".to_string()
+        }
+        '\0' => {
+            // null char
+            "\\0".to_string()
+        }
+        _ => v.to_string(),
+    };
+
+    format!("'{}'", s)
 }
 
 fn write_string(v: &str) -> String {
@@ -166,31 +189,6 @@ fn write_ason_node(node: &AsonNode, level: usize) -> String {
         AsonNode::Array(v) => write_array(v, level),
         AsonNode::Tuple(v) => write_tuple(v, level),
         AsonNode::Object(v) => write_object(v, level),
-    }
-}
-
-fn escape_single_char(c: char) -> String {
-    match c {
-        '\\' => "\\\\".to_string(),
-        '\'' => "\\'".to_string(),
-        '"' => "\\\"".to_string(),
-        '\t' => {
-            // horizontal tabulation
-            "\\t".to_string()
-        }
-        '\r' => {
-            // carriage return, jump to the beginning of the line (CR)
-            "\\r".to_string()
-        }
-        '\n' => {
-            // new line/line feed (LF)
-            "\\n".to_string()
-        }
-        '\0' => {
-            // null char
-            "\\0".to_string()
-        }
-        _ => c.to_string(),
     }
 }
 

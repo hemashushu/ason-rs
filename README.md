@@ -1,8 +1,8 @@
-# XiaoXuan Script Object Notation
+# ASON
 
-_XiaoXuan Script Object Notation_ (_ANON_) is a data format that is easy for humans to read and write. It is similar to _JSON_, but has many improvements and enhancements.
+_ASON_ (stands for _XiaoXuan Script Object Notation_) is a data format that is easy for humans to read and write. It is similar to _JSON_, but has many improvements and enhancements.
 
-_ANON_ is mainly used as a configuration file for applications, but can also be used for data transmission.
+_ASON_ is mainly used as a configuration file for applications, but can also be used for data transmission.
 
 **Features**
 
@@ -52,8 +52,6 @@ A typical _ASON_ document contains only one _ASON_ object. The following is a ex
     }
 }
 ```
-
-It is worth mentioning that an _ASON_ document does not necessarily have to be an _ASON_ object, it can also be other _ASON_ values, such as an array, a tuple, or even a single number or string, all of which are valid _ASON_ values.
 
 ## Comparison with JSON
 
