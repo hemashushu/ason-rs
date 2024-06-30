@@ -32,7 +32,7 @@ pub struct Serializer {
     indent_level: usize,
     indent_chars: String,
 
-    is_first_element: bool,
+    flag_is_first_element: bool,
 }
 
 impl Serializer {
@@ -41,7 +41,7 @@ impl Serializer {
             buffer: Vec::new(),
             indent_level: 0,
             indent_chars: indent_chars.to_owned(),
-            is_first_element: false,
+            flag_is_first_element: false,
         }
     }
 
@@ -52,25 +52,29 @@ impl Serializer {
     }
 
     // insert the leading whitespaces
-    fn indent(&mut self) {
+    fn insert_indent(&mut self) {
         let s = self.indent_chars.repeat(self.indent_level);
         self.buffer.push(s);
     }
 
-    fn increase_indent(&mut self) {
+    fn increase_level(&mut self) {
         self.indent_level += 1;
     }
 
-    fn decrease_indent(&mut self) {
+    fn decrease_level(&mut self) {
         self.indent_level -= 1;
     }
 
-    fn set_first_element_flag_on(&mut self) {
-        self.is_first_element = true;
+    fn set_first_element_flag(&mut self) {
+        self.flag_is_first_element = true;
     }
 
-    fn set_first_element_flag_off(&mut self) {
-        self.is_first_element = false;
+    fn clear_first_element_flag(&mut self) {
+        self.flag_is_first_element = false;
+    }
+
+    fn is_first_element(&self) -> bool {
+        self.flag_is_first_element
     }
 }
 
@@ -294,8 +298,8 @@ impl<'a> ser::Serializer for &'a mut Serializer {
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
         self.append("[".to_owned())?;
-        self.set_first_element_flag_on();
-        self.increase_indent();
+        self.set_first_element_flag();
+        self.increase_level();
         Ok(self)
     }
 
@@ -307,7 +311,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         // per: https://serde.rs/data-model.html
 
         self.append("(".to_owned())?;
-        self.set_first_element_flag_on();
+        self.set_first_element_flag();
         Ok(self)
     }
 
@@ -346,8 +350,8 @@ impl<'a> ser::Serializer for &'a mut Serializer {
 
     fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
         self.append("{".to_owned())?;
-        self.set_first_element_flag_on();
-        self.increase_indent();
+        self.set_first_element_flag();
+        self.increase_level();
         Ok(self)
     }
 
@@ -373,17 +377,17 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
     where
         T: ?Sized + Serialize,
     {
-        self.set_first_element_flag_off(); // turn off the 'is_first_element' flag
+        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         self.append("\n".to_owned())?;
-        self.indent();
+        self.insert_indent();
         value.serialize(&mut **self)
     }
 
     fn end(self) -> Result<()> {
-        self.decrease_indent();
+        self.decrease_level();
         self.append("\n".to_owned())?;
-        self.indent();
+        self.insert_indent();
         self.append("]".to_owned())
     }
 }
@@ -396,8 +400,8 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     where
         T: ?Sized + Serialize,
     {
-        let is_first_element = self.is_first_element;
-        self.set_first_element_flag_off(); // turn off the 'is_first_element' flag
+        let is_first_element = self.is_first_element();
+        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         if !is_first_element {
             self.append(", ".to_owned())?;
@@ -474,18 +478,18 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
     where
         T: ?Sized + Serialize,
     {
-        self.set_first_element_flag_off(); // turn off the 'is_first_element' flag
+        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         self.append("\n".to_owned())?;
-        self.indent();
+        self.insert_indent();
         self.append(format!("{}: ", key))?;
         value.serialize(&mut **self)
     }
 
     fn end(self) -> Result<()> {
-        self.decrease_indent();
+        self.decrease_level();
         self.append("\n".to_owned())?;
-        self.indent();
+        self.insert_indent();
         self.append("}".to_owned())
     }
 }
@@ -552,11 +556,11 @@ mod tests {
             let v0: f32 = 123_f32;
             assert_eq!(to_string(&v0).unwrap(), r#"123.0"#);
 
-            let v1: f32 = 3.142_f32;
-            assert_eq!(to_string(&v1).unwrap(), r#"3.142"#);
+            let v1: f32 = std::f32::consts::PI;
+            assert_eq!(to_string(&v1).unwrap(), r#"3.1415927"#);
 
-            let v2: f64 = 2.718_f64;
-            assert_eq!(to_string(&v2).unwrap(), r#"2.718@double"#);
+            let v2: f64 = std::f64::consts::E;
+            assert_eq!(to_string(&v2).unwrap(), r#"2.718281828459045@double"#);
         }
     }
 

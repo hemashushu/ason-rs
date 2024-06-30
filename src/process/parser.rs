@@ -8,21 +8,21 @@ use crate::error::Error;
 
 use super::{
     lexer::{filter, lex, Token},
-    peekable_iterator::PeekableIterator,
+    lookaheaditer::LookaheadIter,
     AsonNode, NameValuePair, VariantItem,
 };
 
 pub fn from_str(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
-    let mut char_iter = PeekableIterator::new(&mut chars, 3);
+    let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
     let effective_tokens = filter(tokens);
     let mut token_iter = effective_tokens.into_iter();
-    let mut peekable_token_iter = PeekableIterator::new(&mut token_iter, 2);
-    parse_root(&mut peekable_token_iter)
+    let mut lookahead_iter = LookaheadIter::new(&mut token_iter, 2);
+    parse(&mut lookahead_iter)
 }
 
-pub fn parse_root(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
+pub fn parse(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     let root = parse_node(iter)?;
 
     if iter.peek(0).is_some() {
@@ -34,7 +34,7 @@ pub fn parse_root(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error>
     Ok(root)
 }
 
-fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
+fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     while let Some(current_token) = iter.peek(0) {
         let node = match current_token {
             Token::NewLine => {
@@ -68,7 +68,7 @@ fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
                 v
             }
             Token::VariantName(v) => {
-                if iter.look_ahead_equals(1, &Token::LeftParen) {
+                if iter.equals(1, &Token::LeftParen) {
                     parse_variant_item(iter)?
                 } else {
                     let v = AsonNode::Variant(VariantItem {
@@ -105,7 +105,7 @@ fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     Err(Error::Message("Incomplete ASON document.".to_owned()))
 }
 
-fn parse_variant_item(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
+fn parse_variant_item(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     // name(...)?  //
     // ^        ^__// to here
     // |-----------// current token
@@ -133,7 +133,7 @@ fn parse_variant_item(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Er
     Ok(AsonNode::Variant(variant_item))
 }
 
-fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
+fn parse_object(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     // {...}?  //
     // ^    ^__// to here
     // |-------// current char
@@ -145,7 +145,7 @@ fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     loop {
         consume_new_line_if_exist(iter);
 
-        if iter.look_ahead_equals(0, &Token::RightBrace) {
+        if iter.equals(0, &Token::RightBrace) {
             iter.next(); // consume '}'
             break;
         }
@@ -175,7 +175,7 @@ fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     Ok(AsonNode::Object(entries))
 }
 
-fn parse_array(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
+fn parse_array(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     // [...]?  //
     // ^    ^__// to here
     // |-------// current char
@@ -187,7 +187,7 @@ fn parse_array(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     loop {
         consume_new_line_if_exist(iter);
 
-        if iter.look_ahead_equals(0, &Token::RightBracket) {
+        if iter.equals(0, &Token::RightBracket) {
             iter.next(); // consume ']'
             break;
         }
@@ -199,7 +199,7 @@ fn parse_array(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     Ok(AsonNode::Array(items))
 }
 
-fn parse_tuple(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
+fn parse_tuple(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     // (...)?  //
     // ^    ^__// to here
     // |-------// current char
@@ -211,7 +211,7 @@ fn parse_tuple(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     loop {
         consume_new_line_if_exist(iter);
 
-        if iter.look_ahead_equals(0, &Token::RightParen) {
+        if iter.equals(0, &Token::RightParen) {
             iter.next(); // consume ')'
             break;
         }
@@ -223,7 +223,7 @@ fn parse_tuple(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     Ok(AsonNode::Tuple(items))
 }
 
-fn consume_token(iter: &mut PeekableIterator<Token>, expect_token: Token) -> Result<(), Error> {
+fn consume_token(iter: &mut LookaheadIter<Token>, expect_token: Token) -> Result<(), Error> {
     let opt_token = iter.next();
     if let Some(token) = opt_token {
         if token == expect_token {
@@ -235,27 +235,24 @@ fn consume_token(iter: &mut PeekableIterator<Token>, expect_token: Token) -> Res
             )))
         }
     } else {
-        Err(Error::Message(format!(
-            "Missing token: {:?}",
-            expect_token
-        )))
+        Err(Error::Message(format!("Missing token: {:?}", expect_token)))
     }
 }
 
 // consume ':'
-fn consume_colon(iter: &mut PeekableIterator<Token>) -> Result<(), Error> {
+fn consume_colon(iter: &mut LookaheadIter<Token>) -> Result<(), Error> {
     consume_token(iter, Token::Colon)
 }
 
-fn consume_left_paren(iter: &mut PeekableIterator<Token>) -> Result<(), Error> {
+fn consume_left_paren(iter: &mut LookaheadIter<Token>) -> Result<(), Error> {
     consume_token(iter, Token::LeftParen)
 }
 
-fn consume_right_paren(iter: &mut PeekableIterator<Token>) -> Result<(), Error> {
+fn consume_right_paren(iter: &mut LookaheadIter<Token>) -> Result<(), Error> {
     consume_token(iter, Token::RightParen)
 }
 
-fn consume_new_line_if_exist(iter: &mut PeekableIterator<Token>) {
+fn consume_new_line_if_exist(iter: &mut LookaheadIter<Token>) {
     if let Some(Token::NewLine) = iter.peek(0) {
         iter.next(); // consume '\n'
     }
@@ -266,7 +263,10 @@ mod tests {
     use chrono::DateTime;
     use pretty_assertions::assert_eq;
 
-    use crate::{error::Error, process::{parser::from_str, NameValuePair, NumberLiteral, VariantItem}};
+    use crate::{
+        error::Error,
+        process::{parser::from_str, NameValuePair, NumberLiteral, VariantItem},
+    };
 
     use super::AsonNode;
 

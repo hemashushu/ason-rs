@@ -8,7 +8,7 @@ use chrono::{DateTime, FixedOffset};
 
 use crate::error::Error;
 
-use super::{peekable_iterator::PeekableIterator, NumberLiteral};
+use super::{lookaheaditer::LookaheadIter, NumberLiteral};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
@@ -58,7 +58,7 @@ pub enum CommentToken {
     Document(String),
 }
 
-pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, Error> {
+pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
     let mut tokens: Vec<Token> = vec![];
 
     while let Some(current_char) = iter.peek(0) {
@@ -69,7 +69,7 @@ pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, Error> {
             }
             '\r' => {
                 // \r\n or \r
-                if iter.look_ahead_equals(1, &'\n') {
+                if iter.equals(1, &'\n') {
                     iter.next();
                 }
 
@@ -118,28 +118,28 @@ pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, Error> {
                 // can be parsed as partition of number.
                 tokens.push(lex_number(iter)?);
             }
-            'h' if iter.look_ahead_equals(1, &'"') => {
+            'h' if iter.equals(1, &'"') => {
                 // hex byte data
                 tokens.push(lex_hex_byte_data(iter)?);
             }
-            'd' if iter.look_ahead_equals(1, &'"') => {
+            'd' if iter.equals(1, &'"') => {
                 // date
                 tokens.push(lex_date(iter)?);
             }
-            'r' if iter.look_ahead_equals(1, &'"') => {
+            'r' if iter.equals(1, &'"') => {
                 // raw string
                 tokens.push(lex_raw_string(iter)?);
             }
-            'r' if iter.look_ahead_equals(1, &'#') && iter.look_ahead_equals(2, &'"') => {
+            'r' if iter.equals(1, &'#') && iter.equals(2, &'"') => {
                 // raw string variant 1
                 tokens.push(lex_raw_string_variant(iter)?);
             }
-            'r' if iter.look_ahead_equals(1, &'|') && iter.look_ahead_equals(2, &'"') => {
+            'r' if iter.equals(1, &'|') && iter.equals(2, &'"') => {
                 // raw string variant 2: auto-trimmed string
                 tokens.push(lex_auto_trimmed_string(iter)?);
             }
             '"' => {
-                if iter.look_ahead_equals(1, &'"') && iter.look_ahead_equals(2, &'"') {
+                if iter.equals(1, &'"') && iter.equals(2, &'"') {
                     // document comment
                     tokens.push(lex_document_comment(iter)?);
                 } else {
@@ -151,11 +151,11 @@ pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, Error> {
                 // char
                 tokens.push(lex_char(iter)?);
             }
-            '/' if iter.look_ahead_equals(1, &'/') => {
+            '/' if iter.equals(1, &'/') => {
                 // line comment
                 tokens.push(lex_line_comment(iter)?);
             }
-            '/' if iter.look_ahead_equals(1, &'*') => {
+            '/' if iter.equals(1, &'*') => {
                 // block comment
                 tokens.push(lex_block_comment(iter)?);
             }
@@ -176,7 +176,7 @@ pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, Error> {
     Ok(tokens)
 }
 
-fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_name_or_keyword(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // key_nameT  //
     // ^       ^__// to here
     // |__________// current char, i.e. the value of 'iter.peek(0)'
@@ -187,12 +187,12 @@ fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Error
     let mut found_separator = false;
 
     while let Some(current_char) = iter.peek(0) {
-        match *current_char {
+        match current_char {
             '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => {
                 name_string.push(*current_char);
                 iter.next();
             }
-            ':' if iter.look_ahead_equals(1, &':') => {
+            ':' if iter.equals(1, &':') => {
                 found_separator = true;
                 name_string.push_str("::");
                 iter.next();
@@ -324,7 +324,7 @@ fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Error
 // - types:
 //   - imem
 //   - umem
-fn lex_number(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_number(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // 123456T  //
     // ^     ^__// to here
     // |________// current char
@@ -337,10 +337,10 @@ fn lex_number(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
         false
     };
 
-    if iter.look_ahead_equals(0, &'0') && iter.look_ahead_equals(1, &'b') {
+    if iter.equals(0, &'0') && iter.equals(1, &'b') {
         // '0b...'
         lex_number_binary(iter, is_negative)
-    } else if iter.look_ahead_equals(0, &'0') && iter.look_ahead_equals(1, &'x') {
+    } else if iter.equals(0, &'0') && iter.equals(1, &'x') {
         // '0x...'
         lex_number_hex(iter, is_negative)
     } else {
@@ -350,10 +350,7 @@ fn lex_number(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     }
 }
 
-fn lex_number_decimal(
-    iter: &mut PeekableIterator<char>,
-    is_negative: bool,
-) -> Result<Token, Error> {
+fn lex_number_decimal(iter: &mut LookaheadIter<char>, is_negative: bool) -> Result<Token, Error> {
     // 123456T  //
     // ^     ^__// to here
     // |________// current char
@@ -377,7 +374,7 @@ fn lex_number_decimal(
     // 6.672e-34
 
     while let Some(current_char) = iter.peek(0) {
-        match *current_char {
+        match current_char {
             '0'..='9' => {
                 // valid digits for decimal number
                 num_string.push(*current_char);
@@ -397,11 +394,11 @@ fn lex_number_decimal(
                 // 123e45
                 // 123e+45
                 // 123e-45
-                if iter.look_ahead_equals(1, &'-') {
+                if iter.equals(1, &'-') {
                     num_string.push_str("e-");
                     iter.next();
                     iter.next();
-                } else if iter.look_ahead_equals(1, &'+') {
+                } else if iter.equals(1, &'+') {
                     num_string.push_str("e+");
                     iter.next();
                     iter.next();
@@ -414,7 +411,7 @@ fn lex_number_decimal(
                 num_type.replace(lex_number_type(iter)?);
             }
             'E' | 'P' | 'T' | 'G' | 'M' | 'K' if num_prefix.is_none() => {
-                if iter.look_ahead_equals(1, &'i') || iter.look_ahead_equals(1, &'B') {
+                if iter.equals(1, &'i') || iter.equals(1, &'B') {
                     // https://en.wikipedia.org/wiki/Binary_prefix
                     found_binary_prefix = true;
                     num_prefix.replace(*current_char);
@@ -941,7 +938,7 @@ fn lex_number_decimal(
     Ok(Token::Number(num_token))
 }
 
-fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, Error> {
+fn lex_number_type(iter: &mut LookaheadIter<char>) -> Result<String, Error> {
     // @floatT  //
     // ^     ^__// to here
     // |________// current char
@@ -953,7 +950,7 @@ fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, Error> {
     let mut num_type = String::new();
 
     while let Some(current_char) = iter.peek(0) {
-        match *current_char {
+        match current_char {
             'a'..='z' | '0'..='9' => {
                 // valid char for type name
                 num_type.push(*current_char);
@@ -982,7 +979,7 @@ fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, Error> {
     }
 }
 
-fn lex_number_hex(iter: &mut PeekableIterator<char>, is_negative: bool) -> Result<Token, Error> {
+fn lex_number_hex(iter: &mut LookaheadIter<char>, is_negative: bool) -> Result<Token, Error> {
     // 0xaabbT  //
     // ^     ^__// to here
     // |________// current char
@@ -1000,7 +997,7 @@ fn lex_number_hex(iter: &mut PeekableIterator<char>, is_negative: bool) -> Resul
     let mut found_p: bool = false;
 
     while let Some(current_char) = iter.peek(0) {
-        match *current_char {
+        match current_char {
             '0'..='9' | 'a'..='f' | 'A'..='F' => {
                 // valid digits for hex number
                 num_string.push(*current_char);
@@ -1022,11 +1019,11 @@ fn lex_number_hex(iter: &mut PeekableIterator<char>, is_negative: bool) -> Resul
                 // 0x0.123p45
                 // 0x0.123p+45
                 // 0x0.123p-45
-                if iter.look_ahead_equals(1, &'-') {
+                if iter.equals(1, &'-') {
                     num_string.push_str("p-");
                     iter.next();
                     iter.next();
-                } else if iter.look_ahead_equals(1, &'+') {
+                } else if iter.equals(1, &'+') {
                     num_string.push_str("p+");
                     iter.next();
                     iter.next();
@@ -1267,7 +1264,7 @@ fn lex_number_hex(iter: &mut PeekableIterator<char>, is_negative: bool) -> Resul
     Ok(Token::Number(num_token))
 }
 
-fn lex_number_binary(iter: &mut PeekableIterator<char>, is_negative: bool) -> Result<Token, Error> {
+fn lex_number_binary(iter: &mut LookaheadIter<char>, is_negative: bool) -> Result<Token, Error> {
     // 0b1010T  //
     // ^     ^__// to here
     // |________// current char
@@ -1282,7 +1279,7 @@ fn lex_number_binary(iter: &mut PeekableIterator<char>, is_negative: bool) -> Re
     let mut num_type: Option<String> = None;
 
     while let Some(current_char) = iter.peek(0) {
-        match *current_char {
+        match current_char {
             '0' | '1' => {
                 // valid digits for binary number
                 num_string.push(*current_char);
@@ -1466,7 +1463,7 @@ fn lex_number_binary(iter: &mut PeekableIterator<char>, is_negative: bool) -> Re
     Ok(Token::Number(num_token))
 }
 
-fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_char(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // 'a'?  //
     // ^  ^__// to here
     // |_____// current char
@@ -1552,7 +1549,7 @@ fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     Ok(Token::Char(c))
 }
 
-fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // "abc"?  //
     // ^    ^__// to here
     // |_______// current char
@@ -1602,7 +1599,7 @@ fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
                                     // multiple-line string
                                     let _ = consume_leading_whitespaces(iter)?;
                                 }
-                                '\r' if iter.look_ahead_equals(0, &'\n') => {
+                                '\r' if iter.equals(0, &'\n') => {
                                     // multiple-line string
                                     iter.next();
                                     let _ = consume_leading_whitespaces(iter)?;
@@ -1635,7 +1632,7 @@ fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
 }
 
 // return the amount of leading whitespaces
-fn consume_leading_whitespaces(iter: &mut PeekableIterator<char>) -> Result<usize, Error> {
+fn consume_leading_whitespaces(iter: &mut LookaheadIter<char>) -> Result<usize, Error> {
     // \nssssS  //
     //   ^   ^__// to here ('s' = whitespace, i.e. [ \t], 'S' = not whitespace)
     //   |______// current char
@@ -1655,7 +1652,7 @@ fn consume_leading_whitespaces(iter: &mut PeekableIterator<char>) -> Result<usiz
     Ok(count)
 }
 
-fn skip_leading_whitespaces(iter: &mut PeekableIterator<char>, whitespaces: usize) {
+fn skip_leading_whitespaces(iter: &mut LookaheadIter<char>, whitespaces: usize) {
     for _ in 0..whitespaces {
         match iter.peek(0) {
             Some(next_char) if next_char == &' ' || next_char == &'\t' => {
@@ -1666,7 +1663,7 @@ fn skip_leading_whitespaces(iter: &mut PeekableIterator<char>, whitespaces: usiz
     }
 }
 
-fn lex_string_unescape_unicode(iter: &mut PeekableIterator<char>) -> Result<char, Error> {
+fn lex_string_unescape_unicode(iter: &mut LookaheadIter<char>) -> Result<char, Error> {
     // \u{6587}?  //
     //   ^     ^__// to here
     //   |________// current char
@@ -1720,7 +1717,7 @@ fn lex_string_unescape_unicode(iter: &mut PeekableIterator<char>) -> Result<char
     }
 }
 
-fn lex_raw_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_raw_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // r"abc"?  //
     // ^     ^__// to here
     // |________// current char
@@ -1749,7 +1746,7 @@ fn lex_raw_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     Ok(Token::String_(raw_string))
 }
 
-fn lex_raw_string_variant(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_raw_string_variant(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // r#"abc"#?  //
     // ^       ^__// to here
     // |__________// current char
@@ -1763,7 +1760,7 @@ fn lex_raw_string_variant(iter: &mut PeekableIterator<char>) -> Result<Token, Er
     loop {
         match iter.next() {
             Some(previous_char) => match previous_char {
-                '"' if iter.look_ahead_equals(0, &'#') => {
+                '"' if iter.equals(0, &'#') => {
                     // end of the string
                     iter.next(); // consume the hash
                     break;
@@ -1780,7 +1777,7 @@ fn lex_raw_string_variant(iter: &mut PeekableIterator<char>) -> Result<Token, Er
     Ok(Token::String_(raw_string))
 }
 
-fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_auto_trimmed_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // r|"                    //
     // ^  auto-trimmed string //
     // |  "|\n?               //
@@ -1791,9 +1788,9 @@ fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, E
     iter.next(); // consume char |
     iter.next(); // consume char "
 
-    if iter.look_ahead_equals(0, &'\n') {
+    if iter.equals(0, &'\n') {
         iter.next();
-    } else if iter.look_ahead_equals(0, &'\r') && iter.look_ahead_equals(1, &'\n') {
+    } else if iter.equals(0, &'\r') && iter.equals(1, &'\n') {
         iter.next();
         iter.next();
     } else {
@@ -1815,14 +1812,14 @@ fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, E
                         line_leading.clear();
                         skip_leading_whitespaces(iter, leading_whitespaces);
                     }
-                    '\r' if iter.look_ahead_equals(0, &'\n') => {
+                    '\r' if iter.equals(0, &'\n') => {
                         iter.next(); // consume '\n'
 
                         total_string.push_str("\r\n");
                         line_leading.clear();
                         skip_leading_whitespaces(iter, leading_whitespaces);
                     }
-                    '"' if line_leading.trim().is_empty() && iter.look_ahead_equals(0, &'|') => {
+                    '"' if line_leading.trim().is_empty() && iter.equals(0, &'|') => {
                         iter.next(); // consume '|'
                         break;
                     }
@@ -1844,7 +1841,7 @@ fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, E
     Ok(Token::String_(total_string.trim_end().to_owned()))
 }
 
-fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_document_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // """                  //
     // ^  document comment  //
     // |  """\n?            //
@@ -1856,9 +1853,9 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Erro
     iter.next();
     iter.next();
 
-    if iter.look_ahead_equals(0, &'\n') {
+    if iter.equals(0, &'\n') {
         iter.next();
-    } else if iter.look_ahead_equals(0, &'\r') && iter.look_ahead_equals(1, &'\n') {
+    } else if iter.equals(0, &'\r') && iter.equals(1, &'\n') {
         iter.next();
         iter.next();
     } else {
@@ -1880,7 +1877,7 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Erro
                         line_leading.clear();
                         skip_leading_whitespaces(iter, leading_whitespaces);
                     }
-                    '\r' if iter.look_ahead_equals(0, &'\n') => {
+                    '\r' if iter.equals(0, &'\n') => {
                         iter.next(); // consume '\n'
 
                         comment_string.push_str("\r\n");
@@ -1888,8 +1885,8 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Erro
                         skip_leading_whitespaces(iter, leading_whitespaces);
                     }
                     '"' if line_leading.trim().is_empty()
-                        && iter.look_ahead_equals(0, &'"')
-                        && iter.look_ahead_equals(1, &'"') =>
+                        && iter.equals(0, &'"')
+                        && iter.equals(1, &'"') =>
                     {
                         iter.next(); // consume '"'
                         iter.next(); // consume '"'
@@ -1899,12 +1896,10 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Erro
                         // note that the ending marker includes the new line symbol (\n or \r\n),
                         // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
                         // the ending marker.
-                        if iter.look_ahead_equals(0, &'\n') {
+                        if iter.equals(0, &'\n') {
                             iter.next();
                             break;
-                        } else if iter.look_ahead_equals(0, &'\r')
-                            && iter.look_ahead_equals(1, &'\n')
-                        {
+                        } else if iter.equals(0, &'\r') && iter.equals(1, &'\n') {
                             iter.next();
                             iter.next();
                             break;
@@ -1932,7 +1927,7 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Erro
     )))
 }
 
-fn lex_date(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_date(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // d"2024-03-16T16:30:50+08:00"?  //
     // ^                           ^__// to here
     // |______________________________// current char
@@ -1981,7 +1976,7 @@ fn lex_date(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     Ok(Token::Date(rfc3339))
 }
 
-fn lex_hex_byte_data(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_hex_byte_data(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // h"0011aabb"?  //
     // ^          ^__// to here
     // |_____________// current char
@@ -2034,7 +2029,7 @@ fn lex_hex_byte_data(iter: &mut PeekableIterator<char>) -> Result<Token, Error> 
     Ok(Token::ByteData(bytes))
 }
 
-fn lex_line_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_line_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // xx...[\r]\n?  //
     // ^          ^__// to here ('?' = any char or EOF)
     // |_____________// current char
@@ -2053,7 +2048,7 @@ fn lex_line_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
 
         if previous_char == '\n' {
             break;
-        } else if previous_char == '\r' && iter.look_ahead_equals(0, &'\n') {
+        } else if previous_char == '\r' && iter.equals(0, &'\n') {
             iter.next(); // consume char '\n'
             break;
         }
@@ -2064,7 +2059,7 @@ fn lex_line_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     Ok(Token::Comment(CommentToken::Line(comment_string)))
 }
 
-fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
+fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // x*...*x?  //
     // ^      ^__// to here
     // |_________// current char
@@ -2080,13 +2075,13 @@ fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> 
     loop {
         match iter.next() {
             Some(previous_char) => match previous_char {
-                '/' if iter.look_ahead_equals(0, &'*') => {
+                '/' if iter.equals(0, &'*') => {
                     // nested block comment
                     comment_string.push_str("/*");
                     iter.next();
                     pairs += 1;
                 }
-                '*' if iter.look_ahead_equals(0, &'/') => {
+                '*' if iter.equals(0, &'/') => {
                     iter.next();
                     pairs -= 1;
 
@@ -2160,7 +2155,7 @@ mod tests {
         error::Error,
         process::{
             lexer::{filter, CommentToken},
-            peekable_iterator::PeekableIterator,
+            lookaheaditer::LookaheadIter,
             NumberLiteral,
         },
     };
@@ -2183,7 +2178,7 @@ mod tests {
 
     fn lex_from_str(s: &str) -> Result<Vec<Token>, Error> {
         let mut chars = s.chars();
-        let mut iter = PeekableIterator::new(&mut chars, 3);
+        let mut iter = LookaheadIter::new(&mut chars, 3);
         lex(&mut iter)
     }
 

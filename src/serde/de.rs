@@ -11,14 +11,14 @@
 //     error::Error,
 //     process::{
 //         lexer::{filter, lex, Token},
-//         peekable_iterator::PeekableIterator,
+//         lookaheaditer::LookaheadIter,
 //     },
 // };
 //
 // pub struct Deserializer<'a> {
-//     iter: PeekableIterator<'a, Token>,
+//     iter: LookaheadIter<'a, Token>,
 // }
-//
+
 // pub fn from_str<'a, T>(s: &'a str) -> Result<T>
 // where
 //     T: de::Deserialize<'a>,

@@ -6,7 +6,8 @@
 
 pub mod lexer;
 pub mod parser;
-pub mod peekable_iterator;
+pub mod lookaheaditer;
+pub mod lookaheadvec;
 pub mod writer;
 
 use chrono::{DateTime, FixedOffset};
