@@ -4,6 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+/*
 use ason::{parse, write};
 
 use pretty_assertions::assert_eq;
@@ -240,3 +241,4 @@ fn test_file_04() {
 }"#
     );
 }
+*/

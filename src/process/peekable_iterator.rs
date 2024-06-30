@@ -108,7 +108,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::peekable_iterator::PeekableIterator;
+    use crate::process::peekable_iterator::PeekableIterator;
 
     #[test]
     fn test_peekable_iterator() {

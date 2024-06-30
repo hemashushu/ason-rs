@@ -6,7 +6,7 @@
 
 use chrono::{DateTime, FixedOffset};
 
-use crate::{AsonNode, NameValuePair, NumberLiteral, VariantItem};
+use super::{AsonNode, NameValuePair, NumberLiteral, VariantItem};
 
 pub const INDENT_SPACES: &str = "    ";
 
@@ -192,20 +192,26 @@ fn write_ason_node(node: &AsonNode, level: usize) -> String {
     }
 }
 
-pub fn write(node: &AsonNode) -> String {
+// pub fn write(node: &AsonNode) -> String {
+//     write_ason_node(node, 0)
+// }
+
+pub fn to_string(node: &AsonNode) -> String {
     write_ason_node(node, 0)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::parse;
+
     use pretty_assertions::assert_eq;
 
-    use super::write;
+    use crate::process::parser::from_str;
+
+    use super::to_string;
 
     fn format_ason_document(s: &str) -> String {
-        let node = parse(s).unwrap();
-        write(&node)
+        let node = from_str(s).unwrap();
+        to_string(&node)
     }
 
     #[test]

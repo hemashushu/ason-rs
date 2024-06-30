@@ -6,7 +6,9 @@
 
 use chrono::{DateTime, FixedOffset};
 
-use crate::{peekable_iterator::PeekableIterator, NumberLiteral, ParseError};
+use crate::error::Error;
+
+use super::{peekable_iterator::PeekableIterator, NumberLiteral};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
@@ -56,7 +58,7 @@ pub enum CommentToken {
     Document(String),
 }
 
-pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, ParseError> {
+pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, Error> {
     let mut tokens: Vec<Token> = vec![];
 
     while let Some(current_char) = iter.peek(0) {
@@ -166,10 +168,7 @@ pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, ParseError> 
                 tokens.push(lex_name_or_keyword(iter)?);
             }
             _ => {
-                return Err(ParseError::new(&format!(
-                    "Unexpected char: {}",
-                    current_char
-                )));
+                return Err(Error::Message(format!("Unexpected char: {}", current_char)));
             }
         }
     }
@@ -177,7 +176,7 @@ pub fn lex(iter: &mut PeekableIterator<char>) -> Result<Vec<Token>, ParseError> 
     Ok(tokens)
 }
 
-fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // key_nameT  //
     // ^       ^__// to here
     // |__________// current char, i.e. the value of 'iter.peek(0)'
@@ -241,7 +240,7 @@ fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Parse
                 break;
             }
             _ => {
-                return Err(ParseError::new(&format!(
+                return Err(Error::Message(format!(
                     "Invalid char for key name: {}",
                     *current_char
                 )));
@@ -325,7 +324,7 @@ fn lex_name_or_keyword(iter: &mut PeekableIterator<char>) -> Result<Token, Parse
 // - types:
 //   - imem
 //   - umem
-fn lex_number(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_number(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // 123456T  //
     // ^     ^__// to here
     // |________// current char
@@ -354,7 +353,7 @@ fn lex_number(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
 fn lex_number_decimal(
     iter: &mut PeekableIterator<char>,
     is_negative: bool,
-) -> Result<Token, ParseError> {
+) -> Result<Token, Error> {
     // 123456T  //
     // ^     ^__// to here
     // |________// current char
@@ -437,7 +436,7 @@ fn lex_number_decimal(
                 break;
             }
             _ => {
-                return Err(ParseError::new(&format!(
+                return Err(Error::Message(format!(
                     "Invalid char for decimal number: {}",
                     *current_char
                 )));
@@ -447,14 +446,14 @@ fn lex_number_decimal(
 
     // check syntax
     if num_string.ends_with('.') {
-        return Err(ParseError::new(&format!(
+        return Err(Error::Message(format!(
             "A number can not ends with \".\": {}",
             num_string
         )));
     }
 
     if num_string.ends_with('e') {
-        return Err(ParseError::new(&format!(
+        return Err(Error::Message(format!(
             "A number can not ends with \"e\": {}",
             num_string
         )));
@@ -531,7 +530,7 @@ fn lex_number_decimal(
                     // pass
                 }
                 _ => {
-                    return Err(ParseError::new(&format!(
+                    return Err(Error::Message(format!(
                         "Only int, uint, long and ulong type numbers can add integer unit prefix, \
                             the current number type is: {}",
                         type_name
@@ -546,7 +545,7 @@ fn lex_number_decimal(
                     // pass
                 }
                 _ => {
-                    return Err(ParseError::new(&format!(
+                    return Err(Error::Message(format!(
                         "Only float and double type numbers can add fraction metric prefix, \
                         the current number type is: {}",
                         type_name
@@ -562,7 +561,7 @@ fn lex_number_decimal(
                 }
 
                 let v = num_string.parse::<i8>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to byte number, error: {}",
                         num_string, e
                     ))
@@ -572,13 +571,13 @@ fn lex_number_decimal(
             }
             "ubyte" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = num_string.parse::<u8>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned byte number, error: {}",
                         num_string, e
                     ))
@@ -591,7 +590,7 @@ fn lex_number_decimal(
                 }
 
                 let v = num_string.parse::<i16>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to short integer number, error: {}",
                         num_string, e
                     ))
@@ -601,13 +600,13 @@ fn lex_number_decimal(
             }
             "ushort" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = num_string.parse::<u16>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned short integer number, error: {}",
                         num_string, e
                     ))
@@ -620,7 +619,7 @@ fn lex_number_decimal(
                 }
 
                 let mut v = num_string.parse::<i32>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to integer number, error: {}",
                         num_string, e
                     ))
@@ -629,7 +628,7 @@ fn lex_number_decimal(
                 if has_integer_unit_prefix(num_prefix) {
                     match num_prefix {
                         Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-                            return Err(ParseError::new(&format!(
+                            return Err(Error::Message(format!(
                                 "The unit prefix {} is out of range for integer numbers, consider adding @long or @ulong types.",
                                 num_prefix.unwrap()
                             )));
@@ -641,7 +640,7 @@ fn lex_number_decimal(
 
                     v = v
                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as i32)
-                        .ok_or(ParseError::new(&format!(
+                        .ok_or(Error::Message(format!(
                             "Integer number is overflow: {}{}",
                             num_string,
                             num_prefix.unwrap()
@@ -652,13 +651,13 @@ fn lex_number_decimal(
             }
             "uint" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let mut v = num_string.parse::<u32>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned integer number, error: {}",
                         num_string, e
                     ))
@@ -667,7 +666,7 @@ fn lex_number_decimal(
                 if has_integer_unit_prefix(num_prefix) {
                     match num_prefix {
                         Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-                            return Err(ParseError::new(&format!(
+                            return Err(Error::Message(format!(
                                 "The unit prefix {} is out of range for integer numbers, consider adding @long or @ulong types.",
                                 num_prefix.unwrap()
                             )));
@@ -679,7 +678,7 @@ fn lex_number_decimal(
 
                     v = v
                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
-                        .ok_or(ParseError::new(&format!(
+                        .ok_or(Error::Message(format!(
                             "Integer number is overflow: {}{}",
                             num_string,
                             num_prefix.unwrap()
@@ -694,7 +693,7 @@ fn lex_number_decimal(
                 }
 
                 let mut v = num_string.parse::<i64>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
                     ))
@@ -703,7 +702,7 @@ fn lex_number_decimal(
                 if has_integer_unit_prefix(num_prefix) {
                     v = v
                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as i64)
-                        .ok_or(ParseError::new(&format!(
+                        .ok_or(Error::Message(format!(
                             "Long integer number is overflow: {}{}",
                             num_string,
                             num_prefix.unwrap()
@@ -714,13 +713,13 @@ fn lex_number_decimal(
             }
             "ulong" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let mut v = num_string.parse::<u64>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned long integer number, error: {}",
                         num_string, e
                     ))
@@ -729,7 +728,7 @@ fn lex_number_decimal(
                 if has_integer_unit_prefix(num_prefix) {
                     v = v
                         .checked_mul(get_integer_unit_prefix_value(num_prefix))
-                        .ok_or(ParseError::new(&format!(
+                        .ok_or(Error::Message(format!(
                             "Unsigned long integer number is overflow: {}{}",
                             num_string,
                             num_prefix.unwrap()
@@ -744,26 +743,26 @@ fn lex_number_decimal(
                 }
 
                 let mut v = num_string.parse::<f32>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to floating-point number, error: {}",
                         num_string, e
                     ))
                 })?;
 
                 if v.is_infinite() {
-                    return Err(ParseError::new("Floating point number overflow."));
+                    return Err(Error::Message("Floating point number overflow.".to_owned()));
                 }
 
                 if v.is_nan() {
-                    return Err(ParseError::new(
-                        "Does not support NaN floating point numbers.",
+                    return Err(Error::Message(
+                        "Does not support NaN floating point numbers.".to_owned(),
                     ));
                 }
 
                 // note: -0.0 == 0f32 and +0.0 == 0f32
                 if is_negative && v == 0f32 {
-                    return Err(ParseError::new(
-                        "Negative floating-point number 0 is not allowed.",
+                    return Err(Error::Message(
+                        "Negative floating-point number 0 is not allowed.".to_owned(),
                     ));
                 }
 
@@ -783,26 +782,26 @@ fn lex_number_decimal(
                 }
 
                 let mut v = num_string.parse::<f64>().map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to double precision floating-point number, error: {}",
                         num_string, e
                     ))
                 })?;
 
                 if v.is_infinite() {
-                    return Err(ParseError::new("Floating point number overflow."));
+                    return Err(Error::Message("Floating point number overflow.".to_owned()));
                 }
 
                 if v.is_nan() {
-                    return Err(ParseError::new(
-                        "Does not support NaN floating point numbers.",
+                    return Err(Error::Message(
+                        "Does not support NaN floating point numbers.".to_owned(),
                     ));
                 }
 
                 // note: -0.0 == 0f64 and +0.0 == 0f64
                 if is_negative && v == 0f64 {
-                    return Err(ParseError::new(
-                        "Negative floating-point number 0 is not allowed.",
+                    return Err(Error::Message(
+                        "Negative floating-point number 0 is not allowed.".to_owned(),
                     ));
                 }
 
@@ -823,13 +822,13 @@ fn lex_number_decimal(
     } else if has_integer_unit_prefix(num_prefix) {
         // i32
         if is_negative {
-            return Err(ParseError::new(
-                "Number with both minus sign and unit prefix is not allowed.",
+            return Err(Error::Message(
+                "Number with both minus sign and unit prefix is not allowed.".to_owned(),
             ));
         }
 
         let mut v = num_string.parse::<i32>().map_err(|e| {
-            ParseError::new(&format!(
+            Error::Message(format!(
                 "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
             ))
@@ -837,7 +836,7 @@ fn lex_number_decimal(
 
         match num_prefix {
             Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-                return Err(ParseError::new(&format!(
+                return Err(Error::Message(format!(
                     "The unit prefix {} is out of range for integer numbers, consider adding @long or @ulong types.",
                     num_prefix.unwrap()
                 )));
@@ -849,7 +848,7 @@ fn lex_number_decimal(
 
         v = v
             .checked_mul(get_integer_unit_prefix_value(num_prefix) as i32)
-            .ok_or(ParseError::new(&format!(
+            .ok_or(Error::Message(format!(
                 "Integer number is overflow: {}{}",
                 num_string,
                 num_prefix.unwrap()
@@ -863,26 +862,26 @@ fn lex_number_decimal(
         }
 
         let mut v = num_string.parse::<f32>().map_err(|e| {
-            ParseError::new(&format!(
+            Error::Message(format!(
                 "Can not convert \"{}\" to floating-point number, error: {}",
                 num_string, e
             ))
         })?;
 
         if v.is_infinite() {
-            return Err(ParseError::new("Floating point number overflow."));
+            return Err(Error::Message("Floating point number overflow.".to_owned()));
         }
 
         if v.is_nan() {
-            return Err(ParseError::new(
-                "Does not support NaN floating point numbers.",
+            return Err(Error::Message(
+                "Does not support NaN floating point numbers.".to_owned(),
             ));
         }
 
         // note: -0.0 == 0f32 and +0.0 == 0f32
         if is_negative && v == 0f32 {
-            return Err(ParseError::new(
-                "Negative floating-point number 0 is not allowed.",
+            return Err(Error::Message(
+                "Negative floating-point number 0 is not allowed.".to_owned(),
             ));
         }
 
@@ -900,25 +899,25 @@ fn lex_number_decimal(
         }
 
         let v = num_string.parse::<f32>().map_err(|e| {
-            ParseError::new(&format!(
+            Error::Message(format!(
                 "Can not convert \"{}\" to floating-point number, error: {}",
                 num_string, e
             ))
         })?;
 
         if v.is_infinite() {
-            return Err(ParseError::new("Floating point number overflow."));
+            return Err(Error::Message("Floating point number overflow.".to_owned()));
         }
 
         if v.is_nan() {
-            return Err(ParseError::new(
-                "Does not support NaN floating point numbers.",
+            return Err(Error::Message(
+                "Does not support NaN floating point numbers.".to_owned(),
             ));
         }
 
         if is_negative && v == 0f32 {
-            return Err(ParseError::new(
-                "Negative floating-point number 0 is not allowed.",
+            return Err(Error::Message(
+                "Negative floating-point number 0 is not allowed.".to_owned(),
             ));
         }
 
@@ -930,7 +929,7 @@ fn lex_number_decimal(
         }
 
         let v = num_string.parse::<i32>().map_err(|e| {
-            ParseError::new(&format!(
+            Error::Message(format!(
                 "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
             ))
@@ -942,7 +941,7 @@ fn lex_number_decimal(
     Ok(Token::Number(num_token))
 }
 
-fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, ParseError> {
+fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, Error> {
     // @floatT  //
     // ^     ^__// to here
     // |________// current char
@@ -979,17 +978,11 @@ fn lex_number_type(iter: &mut PeekableIterator<char>) -> Result<String, ParseErr
         "u16" => Ok("ushort".to_string()),
         "f32" => Ok("float".to_string()),
         "f64" => Ok("double".to_string()),
-        _ => Err(ParseError::new(&format!(
-            "Invalid number type: {}",
-            num_type
-        ))),
+        _ => Err(Error::Message(format!("Invalid number type: {}", num_type))),
     }
 }
 
-fn lex_number_hex(
-    iter: &mut PeekableIterator<char>,
-    is_negative: bool,
-) -> Result<Token, ParseError> {
+fn lex_number_hex(iter: &mut PeekableIterator<char>, is_negative: bool) -> Result<Token, Error> {
     // 0xaabbT  //
     // ^     ^__// to here
     // |________// current char
@@ -1051,7 +1044,7 @@ fn lex_number_hex(
                 break;
             }
             _ => {
-                return Err(ParseError::new(&format!(
+                return Err(Error::Message(format!(
                     "Invalid char for hexadecimal number: {}",
                     *current_char
                 )));
@@ -1060,7 +1053,7 @@ fn lex_number_hex(
     }
 
     if num_string.is_empty() {
-        return Err(ParseError::new("Incomplete hexadecimal number"));
+        return Err(Error::Message("Incomplete hexadecimal number".to_owned()));
     }
 
     let num_token: NumberLiteral;
@@ -1077,7 +1070,7 @@ fn lex_number_hex(
                     to_double = true;
                 }
                 _ => {
-                    return Err(ParseError::new(&format!(
+                    return Err(Error::Message(format!(
                         "Only number type \"float\" and \"double\" are allowed for hexadecimal floating-point numbers, current type: {}",
                         ty
                     )));
@@ -1089,7 +1082,7 @@ fn lex_number_hex(
 
         if to_double {
             let v = hexfloat2::parse::<f64>(&num_string).map_err(|_| {
-                ParseError::new(&format!(
+                Error::Message(format!(
                     "Can not convert \"{}\" to double precision floating-point number.",
                     num_string
                 ))
@@ -1106,7 +1099,7 @@ fn lex_number_hex(
             }
         } else {
             let v = hexfloat2::parse::<f32>(&num_string).map_err(|_| {
-                ParseError::new(&format!(
+                Error::Message(format!(
                     "Can not convert \"{}\" to floating-point number.",
                     num_string
                 ))
@@ -1125,7 +1118,7 @@ fn lex_number_hex(
     } else if let Some(type_name) = num_type {
         match type_name.as_str() {
             "float" | "double" => {
-                return Err(ParseError::new(&format!(
+                return Err(Error::Message(format!(
                     "Invalid hexadecimal floating point number: {}",
                     num_string
                 )));
@@ -1136,7 +1129,7 @@ fn lex_number_hex(
                 }
 
                 let v = i8::from_str_radix(&num_string, 16).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to byte integer number, error: {}",
                         num_string, e
                     ))
@@ -1146,13 +1139,13 @@ fn lex_number_hex(
             }
             "ubyte" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned byte integer number, error: {}",
                         num_string, e
                     ))
@@ -1166,7 +1159,7 @@ fn lex_number_hex(
                 }
 
                 let v = i16::from_str_radix(&num_string, 16).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to short integer number, error: {}",
                         num_string, e
                     ))
@@ -1176,13 +1169,13 @@ fn lex_number_hex(
             }
             "ushort" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned short integer number, error: {}",
                         num_string, e
                     ))
@@ -1196,7 +1189,7 @@ fn lex_number_hex(
                 }
 
                 let v = i32::from_str_radix(&num_string, 16).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to integer number, error: {}",
                         num_string, e
                     ))
@@ -1206,13 +1199,13 @@ fn lex_number_hex(
             }
             "uint" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned integer number, error: {}",
                         num_string, e
                     ))
@@ -1226,7 +1219,7 @@ fn lex_number_hex(
                 }
 
                 let v = i64::from_str_radix(&num_string, 16).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
                     ))
@@ -1236,13 +1229,13 @@ fn lex_number_hex(
             }
             "ulong" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned long integer number, error: {}",
                         num_string, e
                     ))
@@ -1262,7 +1255,7 @@ fn lex_number_hex(
         }
 
         let v = i32::from_str_radix(&num_string, 16).map_err(|e| {
-            ParseError::new(&format!(
+            Error::Message(format!(
                 "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
             ))
@@ -1274,10 +1267,7 @@ fn lex_number_hex(
     Ok(Token::Number(num_token))
 }
 
-fn lex_number_binary(
-    iter: &mut PeekableIterator<char>,
-    is_negative: bool,
-) -> Result<Token, ParseError> {
+fn lex_number_binary(iter: &mut PeekableIterator<char>, is_negative: bool) -> Result<Token, Error> {
     // 0b1010T  //
     // ^     ^__// to here
     // |________// current char
@@ -1310,7 +1300,7 @@ fn lex_number_binary(
                 break;
             }
             _ => {
-                return Err(ParseError::new(&format!(
+                return Err(Error::Message(format!(
                     "Invalid char for binary number: {}",
                     *current_char
                 )));
@@ -1319,7 +1309,7 @@ fn lex_number_binary(
     }
 
     if num_string.is_empty() {
-        return Err(ParseError::new("Incomplete binary number"));
+        return Err(Error::Message("Incomplete binary number.".to_owned()));
     }
 
     let num_token: NumberLiteral;
@@ -1327,8 +1317,8 @@ fn lex_number_binary(
     if let Some(ty) = num_type {
         match ty.as_str() {
             "float" | "double" => {
-                return Err(ParseError::new(&format!(
-                    "Does not support binary floating point number: {}",
+                return Err(Error::Message(format!(
+                    "Does not support binary floating point number: {}.",
                     num_string
                 )));
             }
@@ -1338,7 +1328,7 @@ fn lex_number_binary(
                 }
 
                 let v = i8::from_str_radix(&num_string, 2).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to byte integer number, error: {}",
                         num_string, e
                     ))
@@ -1348,13 +1338,13 @@ fn lex_number_binary(
             }
             "ubyte" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned byte integer number, error: {}",
                         num_string, e
                     ))
@@ -1368,7 +1358,7 @@ fn lex_number_binary(
                 }
 
                 let v = i16::from_str_radix(&num_string, 2).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to short integer number, error: {}",
                         num_string, e
                     ))
@@ -1378,13 +1368,13 @@ fn lex_number_binary(
             }
             "ushort" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned short integer number, error: {}",
                         num_string, e
                     ))
@@ -1398,7 +1388,7 @@ fn lex_number_binary(
                 }
 
                 let v = i32::from_str_radix(&num_string, 2).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to integer number, error: {}",
                         num_string, e
                     ))
@@ -1408,13 +1398,13 @@ fn lex_number_binary(
             }
             "uint" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned integer number, error: {}",
                         num_string, e
                     ))
@@ -1428,7 +1418,7 @@ fn lex_number_binary(
                 }
 
                 let v = i64::from_str_radix(&num_string, 2).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
                     ))
@@ -1438,13 +1428,13 @@ fn lex_number_binary(
             }
             "ulong" => {
                 if is_negative {
-                    return Err(ParseError::new(
-                        "Unsigned number with minus sign is not allowed.",
+                    return Err(Error::Message(
+                        "Unsigned number with minus sign is not allowed.".to_owned(),
                     ));
                 }
 
                 let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
-                    ParseError::new(&format!(
+                    Error::Message(format!(
                         "Can not convert \"{}\" to unsigned long integer number, error: {}",
                         num_string, e
                     ))
@@ -1464,7 +1454,7 @@ fn lex_number_binary(
         }
 
         let v = i32::from_str_radix(&num_string, 2).map_err(|e| {
-            ParseError::new(&format!(
+            Error::Message(format!(
                 "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
             ))
@@ -1476,7 +1466,7 @@ fn lex_number_binary(
     Ok(Token::Number(num_token))
 }
 
-fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // 'a'?  //
     // ^  ^__// to here
     // |_____// current char
@@ -1529,14 +1519,14 @@ fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                             //     c = '\r';
                             // }
                             _ => {
-                                return Err(ParseError::new(&format!(
+                                return Err(Error::Message(format!(
                                     "Unsupported escape char: \"{}\"",
                                     current_char
                                 )));
                             }
                         }
                     }
-                    None => return Err(ParseError::new("Incomplete escape char.")),
+                    None => return Err(Error::Message("Incomplete escape char.".to_owned())),
                 }
             }
             _ => {
@@ -1544,7 +1534,7 @@ fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                 c = previous_char;
             }
         },
-        None => return Err(ParseError::new("Incomplete char.")),
+        None => return Err(Error::Message("Incomplete char.".to_owned())),
     }
 
     // consume the right single quote
@@ -1552,13 +1542,17 @@ fn lex_char(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
         Some('\'') => {
             // ok
         }
-        _ => return Err(ParseError::new("Missing end single quote for char.")),
+        _ => {
+            return Err(Error::Message(
+                "Missing end single quote for char.".to_owned(),
+            ))
+        }
     }
 
     Ok(Token::Char(c))
 }
 
-fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // "abc"?  //
     // ^    ^__// to here
     // |_______// current char
@@ -1614,14 +1608,14 @@ fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                                     let _ = consume_leading_whitespaces(iter)?;
                                 }
                                 _ => {
-                                    return Err(ParseError::new(&format!(
+                                    return Err(Error::Message(format!(
                                         "Unsupported escape char: \"{}\"",
                                         current_char
                                     )));
                                 }
                             }
                         }
-                        None => return Err(ParseError::new("Incomplete escape char.")),
+                        None => return Err(Error::Message("Incomplete escape char.".to_owned())),
                     }
                 }
                 '"' => {
@@ -1633,7 +1627,7 @@ fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                     ss.push(previous_char);
                 }
             },
-            None => return Err(ParseError::new("Missing end quote for string.")),
+            None => return Err(Error::Message("Missing end quote for string.".to_owned())),
         }
     }
 
@@ -1641,7 +1635,7 @@ fn lex_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
 }
 
 // return the amount of leading whitespaces
-fn consume_leading_whitespaces(iter: &mut PeekableIterator<char>) -> Result<usize, ParseError> {
+fn consume_leading_whitespaces(iter: &mut PeekableIterator<char>) -> Result<usize, Error> {
     // \nssssS  //
     //   ^   ^__// to here ('s' = whitespace, i.e. [ \t], 'S' = not whitespace)
     //   |______// current char
@@ -1653,7 +1647,7 @@ fn consume_leading_whitespaces(iter: &mut PeekableIterator<char>) -> Result<usiz
                 count += 1;
                 iter.next();
             }
-            None => return Err(ParseError::new("Expect the string content.")),
+            None => return Err(Error::Message("Expect the string content.".to_owned())),
             _ => break,
         }
     }
@@ -1672,15 +1666,15 @@ fn skip_leading_whitespaces(iter: &mut PeekableIterator<char>, whitespaces: usiz
     }
 }
 
-fn lex_string_unescape_unicode(iter: &mut PeekableIterator<char>) -> Result<char, ParseError> {
+fn lex_string_unescape_unicode(iter: &mut PeekableIterator<char>) -> Result<char, Error> {
     // \u{6587}?  //
     //   ^     ^__// to here
     //   |________// current char
 
     // comsume char '{'
     if !matches!(iter.next(), Some(c) if c == '{') {
-        return Err(ParseError::new(
-            "Missing left brace for unicode escape sequence.",
+        return Err(Error::Message(
+            "Missing left brace for unicode escape sequence.".to_owned(),
         ));
     }
 
@@ -1692,22 +1686,22 @@ fn lex_string_unescape_unicode(iter: &mut PeekableIterator<char>) -> Result<char
                 '}' => break,
                 '0'..='9' | 'a'..='f' | 'A'..='F' => codepoint_string.push(previous_char),
                 _ => {
-                    return Err(ParseError::new(&format!(
+                    return Err(Error::Message(format!(
                         "Invalid character for unicode escape sequence: {}",
                         previous_char
                     )));
                 }
             },
             None => {
-                return Err(ParseError::new(
-                    "Missing right brace for unicode escape sequence.",
+                return Err(Error::Message(
+                    "Missing right brace for unicode escape sequence.".to_owned(),
                 ));
             }
         }
 
         if codepoint_string.len() > 5 {
-            return Err(ParseError::new(
-                "The value of unicode point code is to large.",
+            return Err(Error::Message(
+                "The value of unicode point code is to large.".to_owned(),
             ));
         }
     }
@@ -1722,11 +1716,11 @@ fn lex_string_unescape_unicode(iter: &mut PeekableIterator<char>) -> Result<char
         // https://doc.rust-lang.org/std/primitive.char.html
         Ok(unic)
     } else {
-        Err(ParseError::new("Invalid unicode code point."))
+        Err(Error::Message("Invalid unicode code point.".to_owned()))
     }
 }
 
-fn lex_raw_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_raw_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // r"abc"?  //
     // ^     ^__// to here
     // |________// current char
@@ -1748,14 +1742,14 @@ fn lex_raw_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError
                     raw_string.push(previous_char);
                 }
             },
-            None => return Err(ParseError::new("Missing end quote for string.")),
+            None => return Err(Error::Message("Missing end quote for string.".to_owned())),
         }
     }
 
     Ok(Token::String_(raw_string))
 }
 
-fn lex_raw_string_variant(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_raw_string_variant(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // r#"abc"#?  //
     // ^       ^__// to here
     // |__________// current char
@@ -1779,14 +1773,14 @@ fn lex_raw_string_variant(iter: &mut PeekableIterator<char>) -> Result<Token, Pa
                     raw_string.push(previous_char);
                 }
             },
-            None => return Err(ParseError::new("Missing end quote for string.")),
+            None => return Err(Error::Message("Missing end quote for string.".to_owned())),
         }
     }
 
     Ok(Token::String_(raw_string))
 }
 
-fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // r|"                    //
     // ^  auto-trimmed string //
     // |  "|\n?               //
@@ -1803,8 +1797,8 @@ fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, P
         iter.next();
         iter.next();
     } else {
-        return Err(ParseError::new(
-            "The content of auto-trimmed string should start on a new line.",
+        return Err(Error::Message(
+            "The content of auto-trimmed string should start on a new line.".to_owned(),
         ));
     }
 
@@ -1839,8 +1833,8 @@ fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, P
                 }
             }
             None => {
-                return Err(ParseError::new(
-                    "Missing the ending marker for the auto-trimmed string.",
+                return Err(Error::Message(
+                    "Missing the ending marker for the auto-trimmed string.".to_owned(),
                 ));
             }
         }
@@ -1850,7 +1844,7 @@ fn lex_auto_trimmed_string(iter: &mut PeekableIterator<char>) -> Result<Token, P
     Ok(Token::String_(total_string.trim_end().to_owned()))
 }
 
-fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // """                  //
     // ^  document comment  //
     // |  """\n?            //
@@ -1868,8 +1862,8 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Pars
         iter.next();
         iter.next();
     } else {
-        return Err(ParseError::new(
-            "The content of document comment should start on a new line.",
+        return Err(Error::Message(
+            "The content of document comment should start on a new line.".to_owned(),
         ));
     }
 
@@ -1926,8 +1920,8 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Pars
                 }
             }
             None => {
-                return Err(ParseError::new(
-                    "Missing the ending marker for the paragraph string.",
+                return Err(Error::Message(
+                    "Missing the ending marker for the paragraph string.".to_owned(),
                 ));
             }
         }
@@ -1938,7 +1932,7 @@ fn lex_document_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Pars
     )))
 }
 
-fn lex_date(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_date(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // d"2024-03-16T16:30:50+08:00"?  //
     // ^                           ^__// to here
     // |______________________________// current char
@@ -1959,18 +1953,15 @@ fn lex_date(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
                     date_string.push(c);
                 }
                 _ => {
-                    return Err(ParseError::new(&format!(
-                        "Invalid char for date time: {}",
-                        c
-                    )));
+                    return Err(Error::Message(format!("Invalid char for date time: {}", c)));
                 }
             },
-            None => return Err(ParseError::new("Incomplete date time.")),
+            None => return Err(Error::Message("Incomplete date time.".to_owned())),
         }
     }
 
     if date_string.len() < 19 {
-        return Err(ParseError::new(&format!(
+        return Err(Error::Message(format!(
             "Incorrect date time (format: YYYY-MM-DD HH:mm:ss) string: {}",
             date_string
         )));
@@ -1981,7 +1972,7 @@ fn lex_date(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
     }
 
     let rfc3339 = DateTime::parse_from_rfc3339(&date_string).map_err(|_| {
-        ParseError::new(&format!(
+        Error::Message(format!(
             "Can not parse the string into datetime: {}",
             date_string
         ))
@@ -1990,7 +1981,7 @@ fn lex_date(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
     Ok(Token::Date(rfc3339))
 }
 
-fn lex_hex_byte_data(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_hex_byte_data(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // h"0011aabb"?  //
     // ^          ^__// to here
     // |_____________// current char
@@ -2010,7 +2001,7 @@ fn lex_hex_byte_data(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
                     }
                     '"' => {
                         if !byte_buf.is_empty() {
-                            return Err(ParseError::new("Incomplete byte string."));
+                            return Err(Error::Message("Incomplete byte string.".to_owned()));
                         } else {
                             break;
                         }
@@ -2025,21 +2016,25 @@ fn lex_hex_byte_data(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
                         }
                     }
                     _ => {
-                        return Err(ParseError::new(&format!(
+                        return Err(Error::Message(format!(
                             "Invalid char for byte string: {}",
                             previous_char
                         )));
                     }
                 }
             }
-            None => return Err(ParseError::new("Missing end quote for byte string.")),
+            None => {
+                return Err(Error::Message(
+                    "Missing end quote for byte string.".to_owned(),
+                ))
+            }
         }
     }
 
     Ok(Token::ByteData(bytes))
 }
 
-fn lex_line_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_line_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // xx...[\r]\n?  //
     // ^          ^__// to here ('?' = any char or EOF)
     // |_____________// current char
@@ -2069,7 +2064,7 @@ fn lex_line_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseErr
     Ok(Token::Comment(CommentToken::Line(comment_string)))
 }
 
-fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseError> {
+fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, Error> {
     // x*...*x?  //
     // ^      ^__// to here
     // |_________// current char
@@ -2108,7 +2103,7 @@ fn lex_block_comment(iter: &mut PeekableIterator<char>) -> Result<Token, ParseEr
                     comment_string.push(previous_char);
                 }
             },
-            None => return Err(ParseError::new("Incomplete block comment.")),
+            None => return Err(Error::Message("Incomplete block comment.".to_owned())),
         }
     }
 
@@ -2162,12 +2157,15 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        lexer::{filter, CommentToken, NumberLiteral, Token},
-        peekable_iterator::PeekableIterator,
-        ParseError,
+        error::Error,
+        process::{
+            lexer::{filter, CommentToken},
+            peekable_iterator::PeekableIterator,
+            NumberLiteral,
+        },
     };
 
-    use super::lex;
+    use super::{lex, Token};
 
     impl Token {
         pub fn new_key_name(s: &str) -> Self {
@@ -2183,7 +2181,7 @@ mod tests {
         }
     }
 
-    fn lex_from_str(s: &str) -> Result<Vec<Token>, ParseError> {
+    fn lex_from_str(s: &str) -> Result<Vec<Token>, Error> {
         let mut chars = s.chars();
         let mut iter = PeekableIterator::new(&mut chars, 3);
         lex(&mut iter)
@@ -2277,16 +2275,10 @@ mod tests {
         );
 
         // err: starts with number
-        assert!(matches!(
-            lex_from_str("1abc"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("1abc"), Err(Error::Message(_))));
 
         // err: invalid char
-        assert!(matches!(
-            lex_from_str("abc&xyz"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("abc&xyz"), Err(Error::Message(_))));
     }
 
     #[test]
@@ -2392,46 +2384,25 @@ mod tests {
         );
 
         // err: invalid char for decimal number
-        assert!(matches!(
-            lex_from_str("123XYZ"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("123XYZ"), Err(Error::Message(_))));
 
         // err: unsupports plus sign
-        assert!(matches!(
-            lex_from_str("+123456"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("+123456"), Err(Error::Message(_))));
 
         // err: unsupports start with dot
-        assert!(matches!(
-            lex_from_str(".123"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str(".123"), Err(Error::Message(_))));
 
         // err: multiple points
-        assert!(matches!(
-            lex_from_str("1.23.456"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("1.23.456"), Err(Error::Message(_))));
 
         // err: multiple 'e' (exps)
-        assert!(matches!(
-            lex_from_str("1e2e3"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("1e2e3"), Err(Error::Message(_))));
 
         // err: incomplete floating point number
-        assert!(matches!(
-            lex_from_str("123."),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("123."), Err(Error::Message(_))));
 
         // err: incomplete 'e'
-        assert!(matches!(
-            lex_from_str("123e"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("123e"), Err(Error::Message(_))));
     }
 
     #[test]
@@ -2452,28 +2423,16 @@ mod tests {
         );
 
         // err: overflow
-        assert!(matches!(
-            lex_from_str("128@byte"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("128@byte"), Err(Error::Message(_))));
 
         // err: negative overflow
-        assert!(matches!(
-            lex_from_str("-129@byte"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("-129@byte"), Err(Error::Message(_))));
 
         // err: unsigned overflow
-        assert!(matches!(
-            lex_from_str("256@ubyte"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("256@ubyte"), Err(Error::Message(_))));
 
         // err: unsigned number with minus sign
-        assert!(matches!(
-            lex_from_str("-1@ubyte"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("-1@ubyte"), Err(Error::Message(_))));
 
         assert_eq!(
             lex_from_str("32767@short").unwrap(),
@@ -2493,26 +2452,23 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("32768@short"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: negative overflow
         assert!(matches!(
             lex_from_str("-32769@short"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("65536@ushort"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned number with minus sign
-        assert!(matches!(
-            lex_from_str("-1@ushort"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("-1@ushort"), Err(Error::Message(_))));
 
         assert_eq!(
             lex_from_str("2_147_483_647@int").unwrap(),
@@ -2532,26 +2488,23 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("2_147_483_648@int"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: negative overflow
         assert!(matches!(
             lex_from_str("-2_147_483_649@int"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("4_294_967_296@uint"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned number with minus sign
-        assert!(matches!(
-            lex_from_str("-1@uint"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("-1@uint"), Err(Error::Message(_))));
 
         assert_eq!(
             lex_from_str("9_223_372_036_854_775_807@long").unwrap(),
@@ -2575,26 +2528,23 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("9_223_372_036_854_775_808@long"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: negative overflow
         assert!(matches!(
             lex_from_str("-9_223_372_036_854_775_809@long"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("18_446_744_073_709_551_616@ulong"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned number with minus sign
-        assert!(matches!(
-            lex_from_str("-1@ulong"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("-1@ulong"), Err(Error::Message(_))));
 
         assert_eq!(
             lex_from_str("3.402_823_5e+38@float").unwrap(),
@@ -2614,32 +2564,20 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("3.4e39@float"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: -0.0
-        assert!(matches!(
-            lex_from_str("-0@float"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("-0@float"), Err(Error::Message(_))));
 
         // err: NaN
-        assert!(matches!(
-            lex_from_str("NaN@float"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("NaN@float"), Err(Error::Message(_))));
 
         // err: +Inf
-        assert!(matches!(
-            lex_from_str("+Inf@float"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("+Inf@float"), Err(Error::Message(_))));
 
         // err: -Inf
-        assert!(matches!(
-            lex_from_str("-Inf@float"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("-Inf@float"), Err(Error::Message(_))));
 
         assert_eq!(
             lex_from_str("1.797_693_134_862_315_7e+308@double").unwrap(),
@@ -2665,31 +2603,25 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("1.8e309@double"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: -0.0
-        assert!(matches!(
-            lex_from_str("-0@double"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("-0@double"), Err(Error::Message(_))));
 
         // err: NaN
-        assert!(matches!(
-            lex_from_str("NaN@double"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("NaN@double"), Err(Error::Message(_))));
 
         // err: +Inf
         assert!(matches!(
             lex_from_str("+Inf@double"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: -Inf
         assert!(matches!(
             lex_from_str("-Inf@double"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -2904,31 +2836,25 @@ mod tests {
         );
 
         // err: invalid unit prefix
-        assert!(matches!(lex_from_str("1Z"), Err(ParseError { message: _ })));
+        assert!(matches!(lex_from_str("1Z"), Err(Error::Message(_))));
 
         // err: out of range
-        assert!(matches!(lex_from_str("8G"), Err(ParseError { message: _ })));
+        assert!(matches!(lex_from_str("8G"), Err(Error::Message(_))));
 
         // err: out of range
-        assert!(matches!(lex_from_str("1T"), Err(ParseError { message: _ })));
+        assert!(matches!(lex_from_str("1T"), Err(Error::Message(_))));
 
         // err: out of range
-        assert!(matches!(lex_from_str("1P"), Err(ParseError { message: _ })));
+        assert!(matches!(lex_from_str("1P"), Err(Error::Message(_))));
 
         // err: out of range
-        assert!(matches!(lex_from_str("1E"), Err(ParseError { message: _ })));
+        assert!(matches!(lex_from_str("1E"), Err(Error::Message(_))));
 
         // err: invalid type
-        assert!(matches!(
-            lex_from_str("1K@short"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("1K@short"), Err(Error::Message(_))));
 
         // err: invalid type
-        assert!(matches!(
-            lex_from_str("1m@int"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("1m@int"), Err(Error::Message(_))));
     }
 
     #[test]
@@ -2946,17 +2872,14 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("0x8000_0000"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: invalid hex char
-        assert!(matches!(
-            lex_from_str("0x1234xyz"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("0x1234xyz"), Err(Error::Message(_))));
 
         // err: incomplete hex number
-        assert!(matches!(lex_from_str("0x"), Err(ParseError { message: _ })));
+        assert!(matches!(lex_from_str("0x"), Err(Error::Message(_))));
 
         assert_eq!(
             lex_from_str("0x7f@byte").unwrap(),
@@ -2974,21 +2897,18 @@ mod tests {
         );
 
         // err: overflow
-        assert!(matches!(
-            lex_from_str("0x80@byte"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("0x80@byte"), Err(Error::Message(_))));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("0x1_ff@ubyte"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned with minus sign
         assert!(matches!(
             lex_from_str("-0xaa@ubyte"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         assert_eq!(
@@ -3009,19 +2929,19 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("0x8000@short"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("0x1_ffff@ushort"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned with minus sign
         assert!(matches!(
             lex_from_str("-0xaaaa@ushort"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         assert_eq!(
@@ -3042,19 +2962,19 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("0x8000_0000@int"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("0x1_ffff_ffff@uint"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned with minus sign
         assert!(matches!(
             lex_from_str("-0xaaaa_aaaa@uint"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         assert_eq!(
@@ -3081,31 +3001,28 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("0x8000_0000_0000_0000@long"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("0x1_ffff_ffff_ffff_ffff@ulong"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned with minus sign
         assert!(matches!(
             lex_from_str("-0xaaaa_aaaa_aaaa_aaaa@ulong"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: invalid hex floating pointer number
-        assert!(matches!(
-            lex_from_str("0xaa@float"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("0xaa@float"), Err(Error::Message(_))));
 
         // err: invalid hex floating pointer number
         assert!(matches!(
             lex_from_str("0xaa@double"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -3138,7 +3055,7 @@ mod tests {
         // err: incorrect number type
         assert!(matches!(
             lex_from_str("0x1.23p4@int"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -3155,25 +3072,19 @@ mod tests {
         );
 
         // err: unsupport binary floating point
-        assert!(matches!(
-            lex_from_str("0b11.1"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("0b11.1"), Err(Error::Message(_))));
 
         // err: overflow
         assert!(matches!(
             lex_from_str("0b1_0000_0000_0000_0000_0000_0000_0000_0000"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: invalid binary char
-        assert!(matches!(
-            lex_from_str("0b10xyz"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("0b10xyz"), Err(Error::Message(_))));
 
         // err: incomplete hex number
-        assert!(matches!(lex_from_str("0b"), Err(ParseError { message: _ })));
+        assert!(matches!(lex_from_str("0b"), Err(Error::Message(_))));
 
         assert_eq!(
             lex_from_str("0b0111_1111@byte").unwrap(),
@@ -3193,19 +3104,19 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("0b1000_0000@byte"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("0b1_1111_1111@ubyte"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned with minus sign
         assert!(matches!(
             lex_from_str("-0b11@ubyte"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         assert_eq!(
@@ -3226,19 +3137,19 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("0b1000_0000_0000_0000@short"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("0b1_1111_1111_1111_1111@ushort"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned with minus sign
         assert!(matches!(
             lex_from_str("-0b1111@ushort"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         assert_eq!(
@@ -3259,19 +3170,19 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("0b1000_0000_0000_0000__0000_0000_0000_0000@int"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("0b1_1111_1111_1111_1111__1111_1111_1111_1111@uint"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned with minus sign
         assert!(matches!(
             lex_from_str("-0b1111_1111@uint"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         assert_eq!(
@@ -3292,31 +3203,28 @@ mod tests {
         // err: overflow
         assert!(matches!(
             lex_from_str("0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000@long"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned overflow
         assert!(matches!(
             lex_from_str("0b1_1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@ulong"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsigned with minus sign
         assert!(matches!(
             lex_from_str("-0b1111_1111_1111_1111@ulong"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: invalid hex floating pointer number
-        assert!(matches!(
-            lex_from_str("0b11@float"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("0b11@float"), Err(Error::Message(_))));
 
         // err: invalid hex floating pointer number
         assert!(matches!(
             lex_from_str("0b11@double"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -3368,49 +3276,34 @@ mod tests {
         assert_eq!(lex_from_str("'\\0'").unwrap(), vec![Token::Char('\0')]);
 
         // err: unsupported escape char \v
-        assert!(matches!(
-            lex_from_str("'\\v'"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("'\\v'"), Err(Error::Message(_))));
 
         // err: unsupported hex escape "\x.."
-        assert!(matches!(
-            lex_from_str("'\\x33'"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("'\\x33'"), Err(Error::Message(_))));
 
         // err: incomplete escape string
-        assert!(matches!(
-            lex_from_str("'a\\'"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("'a\\'"), Err(Error::Message(_))));
 
         // err: invalid unicode code point
         assert!(matches!(
             lex_from_str("'\\u{110000}'"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: invalid unicode escape sequence
         assert!(matches!(
             lex_from_str("'\\u{12mn}''"),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: missing left brace for unicode escape sequence
-        assert!(matches!(
-            lex_from_str("'\\u1234'"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("'\\u1234'"), Err(Error::Message(_))));
 
         // err: missing right brace for unicode escape sequence
-        assert!(matches!(
-            lex_from_str("'\\u{1234'"),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("'\\u{1234'"), Err(Error::Message(_))));
 
         // err: missing right quote
-        assert!(matches!(lex_from_str("'a"), Err(ParseError { message: _ })));
+        assert!(matches!(lex_from_str("'a"), Err(Error::Message(_))));
     }
 
     #[test]
@@ -3483,7 +3376,7 @@ mod tests {
                 "abc\vxyz"
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unsupported hex escape "\x.."
@@ -3493,14 +3386,11 @@ mod tests {
                 "abc\x33xyz"
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: incomplete escape string
-        assert!(matches!(
-            lex_from_str(r#""abc\"#),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str(r#""abc\"#), Err(Error::Message(_))));
 
         // err: invalid unicode code point
         assert!(matches!(
@@ -3509,7 +3399,7 @@ mod tests {
                 "abc\u{110000}xyz"
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: invalid unicode escape sequence
@@ -3519,7 +3409,7 @@ mod tests {
                 "abc\u{12mn}xyz"
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: missing left brace for unicode escape sequence
@@ -3529,13 +3419,13 @@ mod tests {
                 "abc\u1234}xyz"
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: missing right brace for unicode escape sequence
         assert!(matches!(
             lex_from_str(r#""abc\u{1234"#),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: missing right quote
@@ -3545,7 +3435,7 @@ mod tests {
                 "abc
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -3571,7 +3461,7 @@ mod tests {
         // err: missing right quote
         assert!(matches!(
             lex_from_str("\"abc\\\n    "),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -3588,10 +3478,7 @@ mod tests {
         );
 
         // err: missing right quote
-        assert!(matches!(
-            lex_from_str("r\"abc    "),
-            Err(ParseError { message: _ })
-        ));
+        assert!(matches!(lex_from_str("r\"abc    "), Err(Error::Message(_))));
     }
 
     #[test]
@@ -3609,7 +3496,7 @@ mod tests {
         // err: missing the ending marker
         assert!(matches!(
             lex_from_str("r#\"abc    "),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -3716,7 +3603,7 @@ mod tests {
                 r|"hello"|
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: the ending marker does not start on a new line
@@ -3727,7 +3614,7 @@ mod tests {
             hello"|
             "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: missing the ending marker
@@ -3738,7 +3625,7 @@ mod tests {
                 hello
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -3831,7 +3718,7 @@ mod tests {
                 h"1113171"
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: invalid char for byte string
@@ -3841,7 +3728,7 @@ mod tests {
                 h"1113171z"
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: missing the ending quote
@@ -3851,7 +3738,7 @@ mod tests {
                 h"11131719
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -3971,7 +3858,7 @@ mod tests {
                 7 /* 11 /* 13 */ 17
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: unpaired
@@ -3981,7 +3868,7 @@ mod tests {
                 7 */ 11
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -4074,7 +3961,7 @@ mod tests {
                 """hello"""
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: the ending marker does not start on a new line
@@ -4085,7 +3972,7 @@ mod tests {
             hello"""
             "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: the ending marker does not occupy the whole line
@@ -4097,7 +3984,7 @@ mod tests {
                 """world
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: missing the ending marker
@@ -4108,7 +3995,7 @@ mod tests {
                 hello
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -4150,19 +4037,19 @@ mod tests {
         // err: missing time
         assert!(matches!(
             lex_from_str("d\"16:30:50\""),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: missing date
         assert!(matches!(
             lex_from_str("d\"2024-03-16\""),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
 
         // err: not YYYY-MM-DD HH:mm:ss
         assert!(matches!(
             lex_from_str("d\"2024-3-16 4:30:50\""),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 

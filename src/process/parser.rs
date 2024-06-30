@@ -4,22 +4,37 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{
-    lexer::Token, peekable_iterator::PeekableIterator, AsonNode, NameValuePair, ParseError,
-    VariantItem,
+use crate::error::Error;
+
+use super::{
+    lexer::{filter, lex, Token},
+    peekable_iterator::PeekableIterator,
+    AsonNode, NameValuePair, VariantItem,
 };
 
-pub fn parse(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
+pub fn from_str(s: &str) -> Result<AsonNode, Error> {
+    let mut chars = s.chars();
+    let mut char_iter = PeekableIterator::new(&mut chars, 3);
+    let tokens = lex(&mut char_iter)?;
+    let effective_tokens = filter(tokens);
+    let mut token_iter = effective_tokens.into_iter();
+    let mut peekable_token_iter = PeekableIterator::new(&mut token_iter, 2);
+    parse_root(&mut peekable_token_iter)
+}
+
+pub fn parse_root(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     let root = parse_node(iter)?;
 
     if iter.peek(0).is_some() {
-        return Err(ParseError::new("The ASON document does not end properly."));
+        return Err(Error::Message(
+            "The ASON document does not end properly.".to_owned(),
+        ));
     }
 
     Ok(root)
 }
 
-fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
+fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     while let Some(current_token) = iter.peek(0) {
         let node = match current_token {
             Token::NewLine => {
@@ -81,16 +96,16 @@ fn parse_node(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError
                 // tuple: (...)
                 parse_tuple(iter)?
             }
-            _ => return Err(ParseError::new("ASON document syntax error.")),
+            _ => return Err(Error::Message("ASON document syntax error.".to_owned())),
         };
 
         return Ok(node);
     }
 
-    Err(ParseError::new("Incomplete ASON document."))
+    Err(Error::Message("Incomplete ASON document.".to_owned()))
 }
 
-fn parse_variant_item(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
+fn parse_variant_item(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     // name(...)?  //
     // ^        ^__// to here
     // |-----------// current token
@@ -118,7 +133,7 @@ fn parse_variant_item(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Pa
     Ok(AsonNode::Variant(variant_item))
 }
 
-fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
+fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     // {...}?  //
     // ^    ^__// to here
     // |-------// current char
@@ -140,7 +155,9 @@ fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErr
             iter.next();
             v
         } else {
-            return Err(ParseError::new("Expect a key name for the object."));
+            return Err(Error::Message(
+                "Expect a key name for the object.".to_owned(),
+            ));
         };
 
         consume_new_line_if_exist(iter);
@@ -158,7 +175,7 @@ fn parse_object(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErr
     Ok(AsonNode::Object(entries))
 }
 
-fn parse_array(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
+fn parse_array(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     // [...]?  //
     // ^    ^__// to here
     // |-------// current char
@@ -182,7 +199,7 @@ fn parse_array(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErro
     Ok(AsonNode::Array(items))
 }
 
-fn parse_tuple(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseError> {
+fn parse_tuple(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, Error> {
     // (...)?  //
     // ^    ^__// to here
     // |-------// current char
@@ -206,22 +223,19 @@ fn parse_tuple(iter: &mut PeekableIterator<Token>) -> Result<AsonNode, ParseErro
     Ok(AsonNode::Tuple(items))
 }
 
-fn consume_token(
-    iter: &mut PeekableIterator<Token>,
-    expect_token: Token,
-) -> Result<(), ParseError> {
+fn consume_token(iter: &mut PeekableIterator<Token>, expect_token: Token) -> Result<(), Error> {
     let opt_token = iter.next();
     if let Some(token) = opt_token {
         if token == expect_token {
             Ok(())
         } else {
-            Err(ParseError::new(&format!(
+            Err(Error::Message(format!(
                 "Expect token: {:?}, actual token: {:?}",
                 expect_token, token
             )))
         }
     } else {
-        Err(ParseError::new(&format!(
+        Err(Error::Message(format!(
             "Missing token: {:?}",
             expect_token
         )))
@@ -229,15 +243,15 @@ fn consume_token(
 }
 
 // consume ':'
-fn consume_colon(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
+fn consume_colon(iter: &mut PeekableIterator<Token>) -> Result<(), Error> {
     consume_token(iter, Token::Colon)
 }
 
-fn consume_left_paren(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
+fn consume_left_paren(iter: &mut PeekableIterator<Token>) -> Result<(), Error> {
     consume_token(iter, Token::LeftParen)
 }
 
-fn consume_right_paren(iter: &mut PeekableIterator<Token>) -> Result<(), ParseError> {
+fn consume_right_paren(iter: &mut PeekableIterator<Token>) -> Result<(), Error> {
     consume_token(iter, Token::RightParen)
 }
 
@@ -252,14 +266,14 @@ mod tests {
     use chrono::DateTime;
     use pretty_assertions::assert_eq;
 
-    use crate::{parse, parser::NameValuePair, NumberLiteral, ParseError, VariantItem};
+    use crate::{error::Error, process::{parser::from_str, NameValuePair, NumberLiteral, VariantItem}};
 
     use super::AsonNode;
 
     #[test]
     fn test_parse_simple_value() {
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             123
             "#
@@ -269,7 +283,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             true
             "#
@@ -279,7 +293,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             '🍒'
             "#
@@ -289,7 +303,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             "hello"
             "#
@@ -299,7 +313,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             d"2024-03-17 10:01:11+08:00"
             "#
@@ -310,7 +324,7 @@ mod tests {
 
         // variant
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             Option::None
             "#
@@ -323,7 +337,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             Option::Some(123)
             "#
@@ -336,7 +350,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             h"11:13:17:19"
             "#
@@ -360,7 +374,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             {id:123,name:"foo"}
             "#
@@ -370,7 +384,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             {
                 id:123
@@ -383,7 +397,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             {
                 id:123,
@@ -396,7 +410,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             {
                 id: 123,
@@ -409,7 +423,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             {
                 id: 123
@@ -450,7 +464,7 @@ mod tests {
 
         // err: key name with quote
         assert!(matches!(
-            parse(
+            from_str(
                 r#"
             {
                 "id": 123,
@@ -458,7 +472,7 @@ mod tests {
             }
             "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 
@@ -471,7 +485,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             [123,456,789]
             "#
@@ -481,7 +495,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             [
                 123
@@ -495,7 +509,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             [
                 123,
@@ -509,7 +523,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             [
                 123,
@@ -532,7 +546,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             (123,"foo",true)
             "#
@@ -542,7 +556,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             (
                 123
@@ -556,7 +570,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             (
                 123,
@@ -570,7 +584,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             (
                 123,
@@ -587,7 +601,7 @@ mod tests {
     #[test]
     fn test_parse_complex() {
         assert_eq!(
-            parse(
+            from_str(
                 r#"
             {
                 id:123
@@ -670,12 +684,12 @@ mod tests {
 
         // err: does not end properly
         assert!(matches!(
-            parse(
+            from_str(
                 r#"
                 {id: 123, name: "foo"} true
                 "#
             ),
-            Err(ParseError { message: _ })
+            Err(Error::Message(_))
         ));
     }
 }
