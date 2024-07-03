@@ -272,13 +272,19 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         }
     }
 
-    fn deserialize_str<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        Err(Error::Message(
-            "Does not support \"String\" reference.".to_owned(),
-        ))
+        // Err(Error::Message(
+        //     "Does not support \"String\" reference.".to_owned(),
+        // ))
+
+        if let Some(Token::String_(s)) = self.vec.next() {
+            visitor.visit_str(&s)
+        } else {
+            Err(Error::Message("Expect \"String\".".to_owned()))
+        }
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
@@ -798,6 +804,22 @@ mod tests {
         assert_eq!(
             from_str::<Color>(r#"Color::Grey(11@ubyte)"#).unwrap(),
             Color::Grey(11)
+        );
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Member {
+            Code(i32),
+            Name(String),
+        }
+
+        assert_eq!(
+            from_str::<Member>(r#"Member::Code(11)"#).unwrap(),
+            Member::Code(11)
+        );
+
+        assert_eq!(
+            from_str::<Member>(r#"Member::Name("foo")"#).unwrap(),
+            Member::Name("foo".to_owned())
         );
 
         // nested

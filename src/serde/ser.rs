@@ -648,6 +648,20 @@ mod tests {
             assert_eq!(to_string(&v2).unwrap(), r#"Color::Grey(11@ubyte)"#);
         }
 
+        #[derive(Serialize)]
+        enum Member {
+            Code(i32),
+            Name(String),
+        }
+
+        {
+            assert_eq!(to_string(&Member::Code(11)).unwrap(), r#"Member::Code(11)"#);
+            assert_eq!(
+                to_string(&Member::Name("foo".to_owned())).unwrap(),
+                r#"Member::Name("foo")"#
+            );
+        }
+
         // nested
         #[derive(Serialize)]
         enum Apperance {
@@ -669,22 +683,6 @@ mod tests {
             );
         }
     }
-
-    //     #[test]
-    //     fn test_datetime() {
-    //         let date1 =
-    //             Date::Rfc3339(DateTime::parse_from_rfc3339("2024-06-26T16:38:50+08:00").unwrap());
-    //         let date2 = Date::Rfc3339(DateTime::parse_from_rfc3339("2024-06-26T16:38:50Z").unwrap());
-    //
-    //         assert_eq!(
-    //             to_string(&date1).unwrap(),
-    //             r#"Date::Rfc3339("2024-06-26T16:38:50+08:00")"#
-    //         );
-    //         assert_eq!(
-    //             to_string(&date2).unwrap(),
-    //             r#"Date::Rfc3339("2024-06-26T16:38:50Z")"#
-    //         );
-    //     }
 
     #[test]
     fn test_array() {
