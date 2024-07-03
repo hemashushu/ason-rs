@@ -4,7 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use serde::de::{self, EnumAccess, SeqAccess, VariantAccess};
+use serde::de::{self, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess};
 
 use super::Result;
 use crate::{
@@ -36,7 +36,7 @@ where
     let mut deserializer = Deserializer::from_tokens(&mut lookahead_tokens);
     let t = T::deserialize(&mut deserializer)?;
 
-    if let Some(_) = deserializer.vec.peek(0) {
+    if deserializer.vec.peek(0).is_some() {
         Err(Error::Message(
             "The ASON document ends incorrectly.".to_owned(),
         ))
@@ -108,32 +108,36 @@ impl<'de> Deserializer<'de> {
 impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     type Error = Error;
 
-    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
+    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        if let Some(current_token) = self.vec.peek(0) {
-            match current_token {
-                Token::Boolean(_) => self.deserialize_bool(visitor),
-                Token::Number(n) => match n {
-                    NumberLiteral::Byte(_) => self.deserialize_i8(visitor),
-                    NumberLiteral::UByte(_) => self.deserialize_u8(visitor),
-                    NumberLiteral::Short(_) => self.deserialize_i16(visitor),
-                    NumberLiteral::UShort(_) => self.deserialize_u16(visitor),
-                    NumberLiteral::Int(_) => self.deserialize_i32(visitor),
-                    NumberLiteral::UInt(_) => self.deserialize_u32(visitor),
-                    NumberLiteral::Long(_) => self.deserialize_i64(visitor),
-                    NumberLiteral::ULong(_) => self.deserialize_u64(visitor),
-                    NumberLiteral::Float(_) => self.deserialize_f32(visitor),
-                    NumberLiteral::Double(_) => self.deserialize_f64(visitor),
-                },
-                Token::Char(_) => self.deserialize_char(visitor),
-                Token::String_(_) => self.deserialize_string(visitor),
-                _ => unreachable!(),
-            }
-        } else {
-            Err(Error::Message("Incomplete ASON document.".to_owned()))
-        }
+        // if let Some(current_token) = self.vec.peek(0) {
+        //     match current_token {
+        //         Token::Boolean(_) => self.deserialize_bool(visitor),
+        //         Token::Number(n) => match n {
+        //             NumberLiteral::Byte(_) => self.deserialize_i8(visitor),
+        //             NumberLiteral::UByte(_) => self.deserialize_u8(visitor),
+        //             NumberLiteral::Short(_) => self.deserialize_i16(visitor),
+        //             NumberLiteral::UShort(_) => self.deserialize_u16(visitor),
+        //             NumberLiteral::Int(_) => self.deserialize_i32(visitor),
+        //             NumberLiteral::UInt(_) => self.deserialize_u32(visitor),
+        //             NumberLiteral::Long(_) => self.deserialize_i64(visitor),
+        //             NumberLiteral::ULong(_) => self.deserialize_u64(visitor),
+        //             NumberLiteral::Float(_) => self.deserialize_f32(visitor),
+        //             NumberLiteral::Double(_) => self.deserialize_f64(visitor),
+        //         },
+        //         Token::Char(_) => self.deserialize_char(visitor),
+        //         Token::String_(_) => self.deserialize_string(visitor),
+        //         Token::ByteData(_) => self.deserialize_bytes(visitor),
+        //         _ => {
+        //             unimplemented!()
+        //         }
+        //     }
+        // } else {
+        //     Err(Error::Message("Incomplete ASON document.".to_owned()))
+        // }
+        unimplemented!()
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
@@ -362,8 +366,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         if let Some(Token::LeftBracket) = self.vec.next() {
             let value = visitor.visit_seq(ArrayAccessor::new(self))?;
+
             self.consume_right_bracket()?; // consume ']'
             self.consume_new_line_when_exist(); // consume trailing newlines
+
             Ok(value)
         } else {
             Err(Error::Message("Expect \"Array\".".to_owned()))
@@ -416,42 +422,85 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
 
     fn deserialize_struct<V>(
         self,
-        name: &'static str,
-        fields: &'static [&'static str],
+        _name: &'static str,
+        _fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        todo!()
+        if let Some(Token::LeftBrace) = self.vec.next() {
+            let value = visitor.visit_map(ObjectAccessor::new(self))?;
+
+            self.consume_new_line_when_exist(); // consume additional newlines
+            self.consume_right_brace()?; // consume '}'
+            self.consume_new_line_when_exist(); // consume trailing newlines
+
+            Ok(value)
+        } else {
+            Err(Error::Message("Expect \"Object\".".to_owned()))
+        }
     }
 
     fn deserialize_enum<V>(
         self,
         name: &'static str,
-        variants: &'static [&'static str],
+        _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        println!("NAME: {}", name);
-        println!("VARIANTS: {:?}", variants);
-        todo!()
+        if let Some(Token::VariantName(s)) = self.vec.next() {
+            let (variant_type_name, variant_member_name) = s.split_once("::").unwrap();
+            if variant_type_name == name {
+                if self.vec.equals(0, &Token::LeftParen) {
+                    // variant with value
+                    // consume '('
+                    self.consume_left_paren()?;
+                    // parse the value
+                    let v = visitor.visit_enum(VariantAccessor::new(self, variant_member_name))?;
+                    // consume ')'
+                    self.consume_right_paren()?;
+
+                    Ok(v)
+                } else {
+                    // variant without value
+                    visitor.visit_enum(variant_member_name.into_deserializer())
+                }
+            } else {
+                Err(Error::Message(format!(
+                    "Variant type mismatch, expect: {}, actual: {}.",
+                    name, variant_type_name
+                )))
+            }
+        } else {
+            Err(Error::Message("Expect \"Variant\".".to_owned()))
+        }
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        todo!()
+        // An identifier in Serde is the type that identifies a field of a struct.
+        // In ASON, struct fields  represented as strings.
+
+        if let Some(Token::KeyName(s)) = self.vec.next() {
+            visitor.visit_string(s)
+        } else {
+            Err(Error::Message("Expect \"Object Field Name\".".to_owned()))
+        }
     }
 
-    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value>
+    fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        todo!()
+        unimplemented!()
+        // Err(Error::Message(
+        //     "ASON does not support type-less data.".to_owned(),
+        // ))
     }
 }
 
@@ -506,6 +555,124 @@ impl<'de, 'a> SeqAccess<'de> for TupleAccessor<'a, 'de> {
         // the deserializer knows the number of members of the
         // target tuple, so it doesn't need to check the
         // ending marker ')'.
+    }
+}
+
+struct VariantAccessor<'a, 'de: 'a> {
+    de: &'a mut Deserializer<'de>,
+    variant_member_name: &'a str,
+}
+
+impl<'a, 'de> VariantAccessor<'a, 'de> {
+    fn new(de: &'a mut Deserializer<'de>, variant_member_name: &'a str) -> Self {
+        Self {
+            de,
+            variant_member_name,
+        }
+    }
+}
+
+// `EnumAccess` is provided to the `Visitor` to give it the ability to determine
+// which variant of the enum is supposed to be deserialized.
+//
+// Note that all enum deserialization methods in Serde refer exclusively to the
+// "externally tagged" enum representation.
+impl<'de, 'a> EnumAccess<'de> for VariantAccessor<'a, 'de> {
+    type Error = Error;
+    type Variant = Self;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        let value = seed.deserialize(self.variant_member_name.into_deserializer())?;
+        Ok((value, self))
+    }
+}
+
+// `VariantAccess` is provided to the `Visitor` to give it the ability to see
+// the content of the single variant that it decided to deserialize.
+impl<'de, 'a> VariantAccess<'de> for VariantAccessor<'a, 'de> {
+    type Error = Error;
+
+    // If the `Visitor` expected this variant to be a unit variant, the input
+    // should have been the plain string case handled in `deserialize_enum`.
+    fn unit_variant(self) -> Result<()> {
+        unreachable!()
+    }
+
+    // Newtype variants are represented in ASON as `(value)` so
+    // deserialize the value here.
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
+    where
+        T: de::DeserializeSeed<'de>,
+    {
+        seed.deserialize(self.de)
+    }
+
+    // Tuple variants are not supported
+    fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        Err(Error::Message(
+            "ASON does not support \"Tuple Variant\".".to_owned(),
+        ))
+    }
+
+    // Struct variants are not supported
+    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        Err(Error::Message(
+            "ASON does not support \"Struct Variant\".".to_owned(),
+        ))
+    }
+}
+
+struct ObjectAccessor<'a, 'de: 'a> {
+    de: &'a mut Deserializer<'de>,
+}
+
+impl<'a, 'de> ObjectAccessor<'a, 'de> {
+    fn new(de: &'a mut Deserializer<'de>) -> Self {
+        Self { de }
+    }
+}
+
+impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
+    type Error = Error;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+    where
+        K: de::DeserializeSeed<'de>,
+    {
+        self.de.consume_new_line_when_exist();
+
+        // it seems the struct/object accessor wouldn't stop automatically when
+        // it encounters the last field.
+        if self.de.vec.equals(0, &Token::RightBrace) {
+            return Ok(None);
+        }
+
+        // Deserialize a field key.
+        seed.deserialize(&mut *self.de).map(Some)
+
+        // the function 'deserialize_identifier' is called here, and then
+        // the key name will be obtained.
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        self.de.consume_new_line_when_exist();
+        self.de.consume_colon()?;
+        self.de.consume_new_line_when_exist();
+
+        // Deserialize a field value.
+        seed.deserialize(&mut *self.de)
     }
 }
 
@@ -639,6 +806,21 @@ mod tests {
             Transparent,
             Color(Color),
         }
+
+        assert_eq!(
+            from_str::<Apperance>(r#"Apperance::Transparent"#).unwrap(),
+            Apperance::Transparent
+        );
+
+        assert_eq!(
+            from_str::<Apperance>(r#"Apperance::Color(Color::Blue)"#).unwrap(),
+            Apperance::Color(Color::Blue)
+        );
+
+        assert_eq!(
+            from_str::<Apperance>(r#"Apperance::Color(Color::Grey(13@ubyte))"#).unwrap(),
+            Apperance::Color(Color::Grey(13))
+        );
     }
 
     #[test]
@@ -743,6 +925,251 @@ mod tests {
             from_str::<((i32, i32), (i32, i32), (i32, i32))>(r#"((11, 13), (17, 19), (23, 29))"#)
                 .unwrap(),
             ((11, 13), (17, 19), (23, 29))
+        );
+    }
+
+    #[test]
+    fn test_object() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Object {
+            id: i32,
+            name: String,
+            checked: bool,
+        }
+
+        assert_eq!(
+            from_str::<Object>(r#"{id: 123, name: "foo", checked: true}"#).unwrap(),
+            Object {
+                id: 123,
+                name: "foo".to_owned(),
+                checked: true
+            }
+        );
+
+        // nested object
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Address {
+            code: i32,
+            city: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct NestedObject {
+            id: i32,
+            name: String,
+            address: Box<Address>,
+        }
+
+        assert_eq!(
+            from_str::<NestedObject>(
+                r#"{
+    id: 456
+    name: "bar"
+    address: {
+        code: 518000
+        city: "sz"
+    }
+}"#
+            )
+            .unwrap(),
+            NestedObject {
+                id: 456,
+                name: "bar".to_owned(),
+                address: Box::new(Address {
+                    code: 518000,
+                    city: "sz".to_owned()
+                })
+            }
+        )
+    }
+
+    #[test]
+    fn test_mix_array_and_tuple() {
+        assert_eq!(
+            from_str::<Vec<(i32, String)>>(
+                r#"[
+    (1, "foo")
+    (2, "bar")
+]"#
+            )
+            .unwrap(),
+            vec![(1, "foo".to_owned()), (2, "bar".to_owned())]
+        );
+
+        assert_eq!(
+            from_str::<(Vec<i32>, Vec<String>)>(
+                r#"([
+    11
+    13
+], [
+    "foo"
+    "bar"
+])"#
+            )
+            .unwrap(),
+            (vec![11, 13], vec!["foo".to_owned(), "bar".to_owned()])
+        );
+    }
+
+    #[test]
+    fn test_mix_array_and_object() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Object {
+            id: i32,
+            name: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct ObjectList {
+            id: i32,
+            items: Vec<i32>,
+        }
+
+        assert_eq!(
+            from_str::<Vec<Object>>(
+                r#"[
+    {
+        id: 11
+        name: "foo"
+    }
+    {
+        id: 13
+        name: "bar"
+    }
+]"#
+            )
+            .unwrap(),
+            vec![
+                Object {
+                    id: 11,
+                    name: "foo".to_owned()
+                },
+                Object {
+                    id: 13,
+                    name: "bar".to_owned()
+                }
+            ]
+        );
+
+        assert_eq!(
+            from_str::<ObjectList>(
+                r#"{
+    id: 456
+    items: [
+        11
+        13
+        17
+        19
+    ]
+}"#
+            )
+            .unwrap(),
+            ObjectList {
+                id: 456,
+                items: vec![11, 13, 17, 19]
+            }
+        );
+    }
+
+    #[test]
+    fn test_mix_tuple_and_object() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Object {
+            id: i32,
+            name: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct ObjectDetail {
+            id: i32,
+            address: (i32, String),
+        }
+
+        assert_eq!(
+            from_str::<(i32, Object)>(
+                r#"(123, {
+                id: 11
+                name: "foo"
+            })"#
+            )
+            .unwrap(),
+            (
+                123,
+                Object {
+                    id: 11,
+                    name: "foo".to_owned()
+                }
+            )
+        );
+
+        assert_eq!(
+            from_str::<ObjectDetail>(
+                r#"{
+    id: 456
+    address: (11, "sz")
+}"#
+            )
+            .unwrap(),
+            ObjectDetail {
+                id: 456,
+                address: (11, "sz".to_owned())
+            }
+        );
+    }
+
+    #[test]
+    fn test_mix_variant_object() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Simple {
+            id: i32,
+            name: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Complex {
+            id: i32,
+            checked: bool,
+            fullname: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Item {
+            Empty,
+            Minimal(i32),
+            Simple(Simple),
+            Complex(Complex),
+        }
+
+        assert_eq!(
+            from_str::<Vec<Item>>(
+                r#"[
+    Item::Empty
+    Item::Minimal(11)
+    Item::Simple({
+        id: 13
+        name: "foo"
+    })
+    Item::Complex({
+        id: 17
+        checked: true
+        fullname: "foobar"
+    })
+]"#
+            )
+            .unwrap(),
+            vec![
+                Item::Empty,
+                Item::Minimal(11),
+                Item::Simple(Simple {
+                    id: 13,
+                    name: "foo".to_owned()
+                }),
+                Item::Complex(Complex {
+                    id: 17,
+                    checked: true,
+                    fullname: "foobar".to_owned()
+                })
+            ]
         );
     }
 }

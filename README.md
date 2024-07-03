@@ -176,10 +176,19 @@ The output text should be:
 
 > A fixed-length array is treated as tuple
 
+struct
+unit enum
+new type enum
+
 does not support:
 - &str
 - &[u8]
-- ...
+- unit/()
+- unit struct
+- new type struct
+- tuple struct
+- tuple enum
+- struct enum
 
 **Serialization**
 

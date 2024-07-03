@@ -12,28 +12,32 @@ use super::{lookaheaditer::LookaheadIter, NumberLiteral};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-    LeftBrace,
     // {
-    RightBrace,
+    LeftBrace,
     // }
-    LeftBracket,
+    RightBrace,
     // [
-    RightBracket,
+    LeftBracket,
     // ]
-    LeftParen,
+    RightBracket,
     // (
-    RightParen, // )
+    LeftParen,
+    // )
+    RightParen,
 
-    NewLine,
     // \n, \r\n, \r
-    Comma,
+    NewLine,
     // ,
-    Colon, // :
+    Comma,
+    // :
+    Colon,
 
-    KeyName(String),
     // [a-zA-Z0-9_] and '\u{a0}' - '\u{d7ff}' and '\u{e000}' - '\u{10ffff}'
-    VariantName(String),
+    KeyName(String),
+
     // key name and "::"
+    VariantName(String),
+
     Number(NumberLiteral),
     Boolean(bool),
     Char(char),

@@ -795,7 +795,7 @@ mod tests {
 }"#;
         assert_eq!(to_string(&v0).unwrap(), expected0);
 
-        // nested struct
+        // nested object
         #[derive(Serialize)]
         struct Address {
             code: i32,
