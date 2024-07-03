@@ -6,6 +6,7 @@
 
 use std::collections::VecDeque;
 
+#[derive(Debug)]
 pub struct LookaheadVec<T>
 where
     T: PartialEq,

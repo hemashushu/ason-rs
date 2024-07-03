@@ -2106,8 +2106,10 @@ fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 }
 
 // - remove all comments.
-// - combine multiple continuous newlines and commas into one single newline.
-pub fn filter(tokens: Vec<Token>) -> Vec<Token> {
+// - convert commas into newlines
+// - combine multiple continuous newlines into one single newline.
+// - remove document leading newline and tailing newline
+pub fn sanitize(tokens: Vec<Token>) -> Vec<Token> {
     let mut effective_tokens = vec![];
 
     let mut is_new_line = false;
@@ -2154,7 +2156,7 @@ mod tests {
     use crate::{
         error::Error,
         process::{
-            lexer::{filter, CommentToken},
+            lexer::{sanitize, CommentToken},
             lookaheaditer::LookaheadIter,
             NumberLiteral,
         },
@@ -4159,7 +4161,7 @@ mod tests {
     }
 
     #[test]
-    fn test_filter() {
+    fn test_sanitize() {
         assert_eq!(
             lex_from_str(
                 r#"
@@ -4191,7 +4193,7 @@ mod tests {
         );
 
         assert_eq!(
-            filter(
+            sanitize(
                 lex_from_str(
                     r#"
                     [1,2,

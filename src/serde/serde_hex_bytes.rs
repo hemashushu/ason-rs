@@ -10,6 +10,8 @@ pub fn serialize<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
+    // return a string such as "aa:bb:cc:dd..."
+
     let s = bytes
         .iter()
         .map(|item| format!("{:02x}", item))

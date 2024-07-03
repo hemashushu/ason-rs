@@ -7,7 +7,7 @@
 use crate::error::Error;
 
 use super::{
-    lexer::{filter, lex, Token},
+    lexer::{sanitize, lex, Token},
     lookaheaditer::LookaheadIter,
     AsonNode, NameValuePair, VariantItem,
 };
@@ -16,7 +16,7 @@ pub fn from_str(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
     let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
-    let effective_tokens = filter(tokens);
+    let effective_tokens = sanitize(tokens);
     let mut token_iter = effective_tokens.into_iter();
     let mut lookahead_iter = LookaheadIter::new(&mut token_iter, 2);
     parse(&mut lookahead_iter)
@@ -119,7 +119,7 @@ fn parse_variant_item(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error
     };
 
     consume_left_paren(iter)?;
-    consume_new_line_if_exist(iter);
+    consume_new_line_when_exist(iter);
 
     let value = parse_node(iter)?;
     let variant_item = VariantItem {
@@ -127,7 +127,7 @@ fn parse_variant_item(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error
         value: Some(Box::new(value)),
     };
 
-    consume_new_line_if_exist(iter);
+    consume_new_line_when_exist(iter);
     consume_right_paren(iter)?;
 
     Ok(AsonNode::Variant(variant_item))
@@ -143,7 +143,7 @@ fn parse_object(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     let mut entries: Vec<NameValuePair> = vec![];
 
     loop {
-        consume_new_line_if_exist(iter);
+        consume_new_line_when_exist(iter);
 
         if iter.equals(0, &Token::RightBrace) {
             iter.next(); // consume '}'
@@ -160,9 +160,9 @@ fn parse_object(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
             ));
         };
 
-        consume_new_line_if_exist(iter);
+        consume_new_line_when_exist(iter);
         consume_colon(iter)?;
-        consume_new_line_if_exist(iter);
+        consume_new_line_when_exist(iter);
 
         let value = parse_node(iter)?;
         let name_value_pair = NameValuePair {
@@ -185,7 +185,7 @@ fn parse_array(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     let mut items: Vec<AsonNode> = vec![];
 
     loop {
-        consume_new_line_if_exist(iter);
+        consume_new_line_when_exist(iter);
 
         if iter.equals(0, &Token::RightBracket) {
             iter.next(); // consume ']'
@@ -209,7 +209,7 @@ fn parse_tuple(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     let mut items: Vec<AsonNode> = vec![];
 
     loop {
-        consume_new_line_if_exist(iter);
+        consume_new_line_when_exist(iter);
 
         if iter.equals(0, &Token::RightParen) {
             iter.next(); // consume ')'
@@ -252,9 +252,10 @@ fn consume_right_paren(iter: &mut LookaheadIter<Token>) -> Result<(), Error> {
     consume_token(iter, Token::RightParen)
 }
 
-fn consume_new_line_if_exist(iter: &mut LookaheadIter<Token>) {
+// consume '\n'
+fn consume_new_line_when_exist(iter: &mut LookaheadIter<Token>) {
     if let Some(Token::NewLine) = iter.peek(0) {
-        iter.next(); // consume '\n'
+        iter.next();
     }
 }
 

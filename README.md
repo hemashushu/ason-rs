@@ -19,8 +19,9 @@ _ASON_ is mainly used as a configuration file for applications, but can also be 
 - [ASON Document Example](#ason-document-example)
 - [Comparison with JSON](#comparison-with-json)
 - [File Extension](#file-extension)
-- [Shared Library and API](#shared-library-and-api)
-  - [Rust ASON Shared Library](#rust-ason-shared-library)
+- [Rust library](#rust-library)
+  - [The base processor](#the-base-processor)
+  - [Serde](#serde)
 - [Utilities](#utilities)
 - [Documentation](#documentation)
 - [Source code](#source-code)
@@ -75,20 +76,20 @@ The file extension for _ASON_ document is `*.ason`. Filename example:
 
 `sample.ason`, `package.ason`
 
-## Library and API
+## Rust library
 
 Currently, only the Rust implementation of _ASON_ serialization and deserialization library is provided.
 
-### Rust ASON Library
-
 Run the command `cargo add ason` in your project directory to add the _ASON_ library to your project.
+
+### The base processor
 
 This library provides two functions:
 
 - `fn parse(s: &str) -> Result<AsonNode, ParseError>` for deserialization;
 - `fn write(n: &AsonNode) -> String` for serialization.
 
-**Deserialization**
+**Parser**
 
 Suppose you have the following _ASON_ text, which may come from a file or from the internet:
 
@@ -125,7 +126,7 @@ if let AsonNode::Object(obj) = node {
 }
 ```
 
-**Serialization**
+**Writer**
 
 Suppose there is an object with two fields, their names and values are:
 
@@ -169,7 +170,20 @@ The output text should be:
 }
 ```
 
-### Utilities
+### Serde
+
+**Deserialization**
+
+> A fixed-length array is treated as tuple
+
+does not support:
+- &str
+- &[u8]
+- ...
+
+**Serialization**
+
+## Utilities
 
 The Rust ASON library also provides a utility "ason" which can be used to read and validate, or format an ASON document.
 
