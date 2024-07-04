@@ -53,31 +53,31 @@ fn write_number(v: &NumberLiteral) -> String {
 
 fn write_boolean(v: &bool) -> String {
     match v {
-        true => "true".to_string(),
-        false => "false".to_string(),
+        true => "true".to_owned(),
+        false => "false".to_owned(),
     }
 }
 
 fn write_char(v: &char) -> String {
     // escape single char
     let s = match v {
-        '\\' => "\\\\".to_string(),
-        '\'' => "\\'".to_string(),
+        '\\' => "\\\\".to_owned(),
+        '\'' => "\\'".to_owned(),
         '\t' => {
             // horizontal tabulation
-            "\\t".to_string()
+            "\\t".to_owned()
         }
         '\r' => {
             // carriage return, jump to the beginning of the line (CR)
-            "\\r".to_string()
+            "\\r".to_owned()
         }
         '\n' => {
             // new line/line feed (LF)
-            "\\n".to_string()
+            "\\n".to_owned()
         }
         '\0' => {
             // null char
-            "\\0".to_string()
+            "\\0".to_owned()
         }
         _ => v.to_string(),
     };
@@ -90,14 +90,14 @@ fn write_string(v: &str) -> String {
         "\"{}\"",
         v.chars()
             .map(|c| match c {
-                '\\' => "\\\\".to_string(),
-                '"' => "\\\"".to_string(),
+                '\\' => "\\\\".to_owned(),
+                '"' => "\\\"".to_owned(),
                 // null char is allowed in the ASON string, it is used for represent the string resource.
-                '\0' => "\\0".to_string(),
+                '\0' => "\\0".to_owned(),
                 // some text editors automatically remove the tab when
                 // it is at the end of a line, so it is best to escape the tab char.
                 // therefor it should be escaped
-                '\t' => "\\t".to_string(),
+                '\t' => "\\t".to_owned(),
                 _ => c.to_string(),
             })
             .collect::<Vec<String>>()
@@ -111,9 +111,9 @@ fn write_date(v: &DateTime<FixedOffset>) -> String {
 
 fn write_variant(v: &VariantItem, level: usize) -> String {
     if let Some(val) = &v.value {
-        format!("{}({})", v.name, write_ason_node(val, level))
+        format!("{}({})", v.fullname, write_ason_node(val, level))
     } else {
-        v.name.to_owned()
+        v.fullname.to_owned()
     }
 }
 

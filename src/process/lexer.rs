@@ -969,16 +969,16 @@ fn lex_number_type(iter: &mut LookaheadIter<char>) -> Result<String, Error> {
     match num_type.as_str() {
         "int" | "uint" | "long" | "ulong" | "byte" | "ubyte" | "short" | "ushort" | "float"
         | "double" => Ok(num_type),
-        "i32" => Ok("int".to_string()),
-        "u32" => Ok("uint".to_string()),
-        "i64" => Ok("long".to_string()),
-        "u64" => Ok("ulong".to_string()),
-        "i8" => Ok("byte".to_string()),
-        "u8" => Ok("ubyte".to_string()),
-        "i16" => Ok("short".to_string()),
-        "u16" => Ok("ushort".to_string()),
-        "f32" => Ok("float".to_string()),
-        "f64" => Ok("double".to_string()),
+        "i32" => Ok("int".to_owned()),
+        "u32" => Ok("uint".to_owned()),
+        "i64" => Ok("long".to_owned()),
+        "u64" => Ok("ulong".to_owned()),
+        "i8" => Ok("byte".to_owned()),
+        "u8" => Ok("ubyte".to_owned()),
+        "i16" => Ok("short".to_owned()),
+        "u16" => Ok("ushort".to_owned()),
+        "f32" => Ok("float".to_owned()),
+        "f64" => Ok("double".to_owned()),
         _ => Err(Error::Message(format!("Invalid number type: {}", num_type))),
     }
 }
@@ -3758,13 +3758,13 @@ mod tests {
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
-                Token::Comment(CommentToken::Line("11".to_string())),
+                Token::Comment(CommentToken::Line("11".to_owned())),
                 Token::Number(NumberLiteral::Int(13)),
                 Token::Number(NumberLiteral::Int(17)),
-                Token::Comment(CommentToken::Line(" 19 23".to_string())),
-                Token::Comment(CommentToken::Line(" 29".to_string())),
+                Token::Comment(CommentToken::Line(" 19 23".to_owned())),
+                Token::Comment(CommentToken::Line(" 29".to_owned())),
                 Token::Number(NumberLiteral::Int(31)),
-                Token::Comment(CommentToken::Line(" 37".to_string())),
+                Token::Comment(CommentToken::Line(" 37".to_owned())),
                 // note that the line comment includes the ending new line symbol (\n or \r\n),
                 // so there is NO `Token::NewLine` follows the line comment.
             ]
@@ -3783,7 +3783,7 @@ mod tests {
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
-                Token::Comment(CommentToken::Block(" 11 13 ".to_string())),
+                Token::Comment(CommentToken::Block(" 11 13 ".to_owned())),
                 Token::Number(NumberLiteral::Int(17)),
                 Token::NewLine,
             ]
@@ -3800,7 +3800,7 @@ mod tests {
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
-                Token::Comment(CommentToken::Block(" 11 /* 13 */ 17 ".to_string())),
+                Token::Comment(CommentToken::Block(" 11 /* 13 */ 17 ".to_owned())),
                 Token::Number(NumberLiteral::Int(19)),
                 Token::NewLine,
             ]
@@ -3817,7 +3817,7 @@ mod tests {
             vec![
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
-                Token::Comment(CommentToken::Block(" 11 // 13 17 ".to_string())),
+                Token::Comment(CommentToken::Block(" 11 // 13 17 ".to_owned())),
                 Token::Number(NumberLiteral::Int(19)),
                 Token::NewLine,
             ]
@@ -3845,7 +3845,7 @@ mod tests {
                 Token::NewLine,
                 Token::Number(NumberLiteral::Int(7)),
                 Token::Comment(CommentToken::Block(
-                    " 11\n\"\"\"\nabc\n\"\"\"\n13 ".to_string()
+                    " 11\n\"\"\"\nabc\n\"\"\"\n13 ".to_owned()
                 )),
                 Token::Number(NumberLiteral::Int(19)),
                 Token::NewLine,
@@ -3890,7 +3890,7 @@ mod tests {
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
-                    "one\n  two\n    three\nend".to_string()
+                    "one\n  two\n    three\nend".to_owned()
                 )),
                 // note that the ending marker includes the new line symbol (\n or \r\n),
                 // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
@@ -3912,7 +3912,7 @@ mod tests {
             .unwrap(),
             vec![
                 Token::NewLine,
-                Token::Comment(CommentToken::Document("one\ntwo\nthree\nend".to_string())),
+                Token::Comment(CommentToken::Document("one\ntwo\nthree\nend".to_owned())),
             ]
         );
 
@@ -3930,7 +3930,7 @@ mod tests {
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
-                    "one\\\\\\\"\\t\\r\\n\\u{1234}\n\nend".to_string()
+                    "one\\\\\\\"\\t\\r\\n\\u{1234}\n\nend".to_owned()
                 )),
             ]
         );
@@ -3950,7 +3950,7 @@ mod tests {
             vec![
                 Token::NewLine,
                 Token::Comment(CommentToken::Document(
-                    "one\"\"\"\n\"\"\"two\n\"\"\"\"\nend".to_string()
+                    "one\"\"\"\n\"\"\"two\n\"\"\"\"\nend".to_owned()
                 )),
             ]
         );
@@ -4113,7 +4113,7 @@ mod tests {
                 Token::new_string("foo"),
                 Token::Boolean(true),
                 Token::RightParen,
-                Token::Comment(CommentToken::Line(" line comment".to_string())),
+                Token::Comment(CommentToken::Line(" line comment".to_owned())),
             ]
         );
 

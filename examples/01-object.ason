@@ -106,7 +106,7 @@
         slash:\\
         tab:\t
         line feed:\n"
-    string_escape_unicode: "\u{6CB3}\u{9A6C}\u{26}\u{8431}"
+    string_escape_unicode: "\u{6CB3}\u{9A6C}"
     raw_string: r"hello"
     raw_string_variant: r#"hello "programming" world"#
     auto_trimmed_string: r|"

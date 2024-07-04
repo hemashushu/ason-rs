@@ -103,27 +103,28 @@ Suppose you have the following _ASON_ text, which may come from a file or from t
 The following code shows how to parse this text into an _ASON_ object and check the value of each member:
 
 ```rust
-let text = "..."; // the ASON text above
+use ason::process::parser::from_str;
 
-let node = parse(text).unwrap();
+let text = r#"{
+    id: 123
+    name: "foo"
+}"#;
 
-if let AsonNode::Object(obj) = node {
-    assert_eq!(
-        &obj[0],
-        &NameValuePair {
-            name: "id".to_string(),
+let node = from_str(text).unwrap();
+
+assert_eq!(
+    node,
+    AsonNode::Object(vec![
+        NameValuePair {
+            name: "id".to_owned(),
             value: Box::new(AsonNode::Number(NumberLiteral::Int(123)))
-        }
-    );
-
-    assert_eq!(
-        &obj[1],
-        &NameValuePair {
-            name: "name".to_string(),
-            value: Box::new(AsonNode::String_("foo".to_string()))
-        }
-    );
-}
+        },
+        NameValuePair {
+            name: "name".to_owned(),
+            value: Box::new(AsonNode::String_("foo".to_owned()))
+        },
+    ])
+);
 ```
 
 **Writer**
@@ -136,19 +137,28 @@ Suppose there is an object with two fields, their names and values are:
 The following code demonstrates how to convert this object into _ASON_ text:
 
 ```rust
+use use ason::process::writer::to_string;
+
 let node = AsonNode::Object(vec![
     NameValuePair {
-        name: "name".to_string(),
-        value: Box::new(AsonNode::String_("foo".to_string())),
+        name: "name".to_owned(),
+        value: Box::new(AsonNode::String_("foo".to_owned())),
     },
     NameValuePair {
-        name: "version".to_string(),
-        value: Box::new(AsonNode::String_("0.1.0".to_string())),
+        name: "version".to_owned(),
+        value: Box::new(AsonNode::String_("0.1.0".to_owned())),
     },
 ]);
 
-let text = write(&node);
-println!("{}", text);
+let text = to_string(&node);
+
+assert_eq!(
+    text,
+    r#"{
+    name: "foo"
+    version: "0.1.0"
+}"#
+    );
 ```
 
 The output text should be:
@@ -218,7 +228,7 @@ If the document "test.ason" has no errors, the program prints the formatted docu
 
 ## Documentation
 
-See the [document](https://hemashushu.github.io/works/xiaoxuan-script-object-notation) for more information.
+See the [document](https://hemashushu.github.io/works/ason/) for more information.
 
 ## Source code
 

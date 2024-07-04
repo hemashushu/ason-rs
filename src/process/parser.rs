@@ -72,7 +72,7 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
                     parse_variant_item(iter)?
                 } else {
                     let v = AsonNode::Variant(VariantItem {
-                        name: v.to_owned(),
+                        fullname: v.to_owned(),
                         value: None,
                     });
                     iter.next();
@@ -123,7 +123,7 @@ fn parse_variant_item(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error
 
     let value = parse_node(iter)?;
     let variant_item = VariantItem {
-        name,
+        fullname: name,
         value: Some(Box::new(value)),
     };
 
@@ -310,7 +310,7 @@ mod tests {
             "#
             )
             .unwrap(),
-            AsonNode::String_("hello".to_string())
+            AsonNode::String_("hello".to_owned())
         );
 
         assert_eq!(
@@ -332,7 +332,7 @@ mod tests {
             )
             .unwrap(),
             AsonNode::Variant(VariantItem {
-                name: "Option::None".to_string(),
+                fullname: "Option::None".to_owned(),
                 value: None
             })
         );
@@ -345,7 +345,7 @@ mod tests {
             )
             .unwrap(),
             AsonNode::Variant(VariantItem {
-                name: "Option::Some".to_string(),
+                fullname: "Option::Some".to_owned(),
                 value: Some(Box::new(AsonNode::Number(NumberLiteral::Int(123)))),
             })
         );
@@ -365,12 +365,12 @@ mod tests {
     fn test_parse_object() {
         let expect_object1 = AsonNode::Object(vec![
             NameValuePair {
-                name: "id".to_string(),
+                name: "id".to_owned(),
                 value: Box::new(AsonNode::Number(NumberLiteral::Int(123))),
             },
             NameValuePair {
-                name: "name".to_string(),
-                value: Box::new(AsonNode::String_("foo".to_string())),
+                name: "name".to_owned(),
+                value: Box::new(AsonNode::String_("foo".to_owned())),
             },
         ]);
 
@@ -438,22 +438,22 @@ mod tests {
             .unwrap(),
             AsonNode::Object(vec![
                 NameValuePair {
-                    name: "id".to_string(),
+                    name: "id".to_owned(),
                     value: Box::new(AsonNode::Number(NumberLiteral::Int(123))),
                 },
                 NameValuePair {
-                    name: "addr".to_string(),
+                    name: "addr".to_owned(),
                     value: Box::new(AsonNode::Variant(VariantItem {
-                        name: "Option::Some".to_string(),
+                        fullname: "Option::Some".to_owned(),
                         value: Some(Box::new(AsonNode::Object(vec![
                             NameValuePair {
-                                name: "city".to_string(),
-                                value: Box::new(AsonNode::String_("ShenZhen".to_string())),
+                                name: "city".to_owned(),
+                                value: Box::new(AsonNode::String_("ShenZhen".to_owned())),
                             },
                             NameValuePair {
-                                name: "street".to_string(),
+                                name: "street".to_owned(),
                                 value: Box::new(AsonNode::Variant(VariantItem {
-                                    name: "Option::None".to_string(),
+                                    fullname: "Option::None".to_owned(),
                                     value: None,
                                 })),
                             },
@@ -542,7 +542,7 @@ mod tests {
     fn test_parse_tuple() {
         let expect_tuple1 = AsonNode::Tuple(vec![
             AsonNode::Number(NumberLiteral::Int(123)),
-            AsonNode::String_("foo".to_string()),
+            AsonNode::String_("foo".to_owned()),
             AsonNode::Boolean(true),
         ]);
 
@@ -624,56 +624,56 @@ mod tests {
             .unwrap(),
             AsonNode::Object(vec![
                 NameValuePair {
-                    name: "id".to_string(),
+                    name: "id".to_owned(),
                     value: Box::new(AsonNode::Number(NumberLiteral::Int(123))),
                 },
                 NameValuePair {
-                    name: "name".to_string(),
-                    value: Box::new(AsonNode::String_("hello".to_string())),
+                    name: "name".to_owned(),
+                    value: Box::new(AsonNode::String_("hello".to_owned())),
                 },
                 NameValuePair {
-                    name: "orders".to_string(),
+                    name: "orders".to_owned(),
                     value: Box::new(AsonNode::Array(vec![
                         AsonNode::Tuple(vec![
                             AsonNode::Number(NumberLiteral::Int(1)),
-                            AsonNode::String_("foo".to_string()),
+                            AsonNode::String_("foo".to_owned()),
                             AsonNode::Boolean(true),
                         ]),
                         AsonNode::Tuple(vec![
                             AsonNode::Number(NumberLiteral::Int(2)),
-                            AsonNode::String_("bar".to_string()),
+                            AsonNode::String_("bar".to_owned()),
                             AsonNode::Boolean(false),
                         ]),
                     ])),
                 },
                 NameValuePair {
-                    name: "group".to_string(),
+                    name: "group".to_owned(),
                     value: Box::new(AsonNode::Object(vec![
                         NameValuePair {
-                            name: "active".to_string(),
+                            name: "active".to_owned(),
                             value: Box::new(AsonNode::Boolean(true)),
                         },
                         NameValuePair {
-                            name: "permissions".to_string(),
+                            name: "permissions".to_owned(),
                             value: Box::new(AsonNode::Array(vec![
                                 AsonNode::Object(vec![
                                     NameValuePair {
-                                        name: "number".to_string(),
+                                        name: "number".to_owned(),
                                         value: Box::new(AsonNode::Number(NumberLiteral::Int(11))),
                                     },
                                     NameValuePair {
-                                        name: "title".to_string(),
-                                        value: Box::new(AsonNode::String_("read".to_string())),
+                                        name: "title".to_owned(),
+                                        value: Box::new(AsonNode::String_("read".to_owned())),
                                     },
                                 ]),
                                 AsonNode::Object(vec![
                                     NameValuePair {
-                                        name: "number".to_string(),
+                                        name: "number".to_owned(),
                                         value: Box::new(AsonNode::Number(NumberLiteral::Int(13))),
                                     },
                                     NameValuePair {
-                                        name: "title".to_string(),
-                                        value: Box::new(AsonNode::String_("write".to_string())),
+                                        name: "title".to_owned(),
+                                        value: Box::new(AsonNode::String_("write".to_owned())),
                                     },
                                 ]),
                             ])),

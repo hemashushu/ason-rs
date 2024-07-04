@@ -4,23 +4,28 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-/*
 use std::process;
-use ason::{parse, write};
+
+use ason::process::{parser::from_str, writer::to_string};
 
 fn main() {
     let mut args = std::env::args();
 
-    // 0 = program itself
-    // 1 = source file
+    // args 0 = program itself
+    // args 1 = source file
+    //
+    // run with Cargo:
+    // `$ cargo run -- examples/01-object.ason`
+
     if args.len() != 2 {
         // https://doc.rust-lang.org/cargo/reference/environment-variables.html
-        eprintln!("XiaoXuan Script Object Notation Parser {}", env!("CARGO_PKG_VERSION"));
+        eprintln!("ASON Parser {}", env!("CARGO_PKG_VERSION"));
         eprintln!();
         eprintln!("Usage:");
         eprintln!("    ason <source_file>");
         eprintln!();
-        eprintln!("Reference: https://github.com/hemashushu/xiaoxuan-script-object-notation");
+        eprintln!("Repository: https://github.com/hemashushu/ason-rs");
+        eprintln!("Reference: https://hemashushu.github.io/works/ason");
         process::exit(1);
     }
 
@@ -31,29 +36,23 @@ fn main() {
         Err(e) => {
             eprintln!(
                 "Can not read the specified file: {}\nReason: {}",
-                &source_file,
-                e
+                &source_file, e
             );
             process::exit(1);
         }
     };
 
-    let node = match parse(&source) {
+    let node = match from_str(&source) {
         Ok(n) => n,
         Err(e) => {
             eprintln!(
-                "Can not parse the specified file: {}\nReason: {}",
-                &source_file, e.message
+                "Can not parse the specified file: {}\nMessage: {}",
+                &source_file, e
             );
             process::exit(1);
         }
     };
 
-    let text = write(&node);
+    let text = to_string(&node);
     println!("{}", text);
-}
-*/
-
-fn main() {
-    todo!()
 }
