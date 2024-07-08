@@ -16,7 +16,7 @@ pub fn from_str(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
     let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
-    let effective_tokens = sanitize(tokens);
+    let effective_tokens = sanitize(tokens)?;
     let mut token_iter = effective_tokens.into_iter();
     let mut lookahead_iter = LookaheadIter::new(&mut token_iter, 2);
     parse(&mut lookahead_iter)
@@ -38,7 +38,7 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     while let Some(current_token) = iter.peek(0) {
         let node = match current_token {
             Token::NewLine => {
-                // it is possible to have a newline token after the ']', '}', ')' symbols.
+                // it is possible to exist a newline token after the ']', '}', ')' punctuations.
                 iter.next();
                 continue;
             }
@@ -67,7 +67,7 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
                 iter.next();
                 v
             }
-            Token::VariantName(v) => {
+            Token::Variant(v) => {
                 if iter.equals(1, &Token::LeftParen) {
                     parse_variant_item(iter)?
                 } else {
@@ -110,7 +110,7 @@ fn parse_variant_item(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error
     // ^        ^__// to here
     // |-----------// current token
 
-    let name = if let Some(Token::VariantName(n)) = iter.peek(0) {
+    let name = if let Some(Token::Variant(n)) = iter.peek(0) {
         let v = n.to_owned();
         iter.next();
         v
@@ -150,7 +150,7 @@ fn parse_object(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
             break;
         }
 
-        let name = if let Some(Token::KeyName(n)) = iter.peek(0) {
+        let name = if let Some(Token::Identifier(n)) = iter.peek(0) {
             let v = n.to_owned();
             iter.next();
             v

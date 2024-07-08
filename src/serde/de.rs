@@ -12,7 +12,6 @@ use crate::{
     process::{
         lexer::{lex, sanitize, Token},
         lookaheaditer::LookaheadIter,
-        lookaheadvec::LookaheadVec,
         NumberLiteral,
     },
 };
@@ -31,8 +30,9 @@ where
     let mut chars = input.chars();
     let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
-    let effective_tokens = sanitize(tokens);
-    let mut lookahead_tokens = LookaheadVec::new(effective_tokens);
+    let effective_tokens = sanitize(tokens)?;
+    let mut token_iter = effective_tokens.into_iter();
+    let mut lookahead_tokens = LookaheadIter::new(&mut token_iter, 2);
     let mut deserializer = Deserializer::from_tokens(&mut lookahead_tokens);
     let t = T::deserialize(&mut deserializer)?;
 
@@ -46,11 +46,11 @@ where
 }
 
 pub struct Deserializer<'de> {
-    vec: &'de mut LookaheadVec<Token>,
+    vec: &'de mut LookaheadIter<'de, Token>,
 }
 
 impl<'de> Deserializer<'de> {
-    pub fn from_tokens(vec: &'de mut LookaheadVec<Token>) -> Self {
+    pub fn from_tokens(vec: &'de mut LookaheadIter<'de, Token>) -> Self {
         Self { vec }
     }
 }
@@ -144,6 +144,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
+        // match self.vec.next() {
+        //     Some(Token::Keyword(v)) if &v == "true" => visitor.visit_bool(true),
+        //     Some(Token::Keyword(v)) if &v == "false" => visitor.visit_bool(false),
+        //     _ => Err(Error::Message("Expect \"Boolean\".".to_owned())),
+        // }
         if let Some(Token::Boolean(v)) = self.vec.next() {
             visitor.visit_bool(v)
         } else {
@@ -320,7 +325,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::VariantName(name)) = self.vec.next() {
+        if let Some(Token::Variant(name)) = self.vec.next() {
             if &name == "Option::None" && !self.vec.equals(0, &Token::LeftParen) {
                 visitor.visit_none()
             } else if &name == "Option::Some" && self.vec.equals(0, &Token::LeftParen) {
@@ -457,7 +462,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::VariantName(s)) = self.vec.next() {
+        if let Some(Token::Variant(s)) = self.vec.next() {
             let (variant_type_name, variant_member_name) = s.split_once("::").unwrap();
             if variant_type_name == name {
                 if self.vec.equals(0, &Token::LeftParen) {
@@ -492,7 +497,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         // An identifier in Serde is the type that identifies a field of a struct.
         // In ASON, struct fields  represented as strings.
 
-        if let Some(Token::KeyName(s)) = self.vec.next() {
+        if let Some(Token::Identifier(s)) = self.vec.next() {
             visitor.visit_string(s)
         } else {
             Err(Error::Message("Expect \"Object Field Name\".".to_owned()))

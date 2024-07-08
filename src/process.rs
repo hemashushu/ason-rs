@@ -6,7 +6,7 @@
 
 pub mod lexer;
 pub mod lookaheaditer;
-pub mod lookaheadvec;
+// pub mod lookaheadvec;
 pub mod parser;
 pub mod writer;
 
