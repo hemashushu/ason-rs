@@ -10,7 +10,7 @@ use super::Result;
 use crate::{
     error::Error,
     process::{
-        lexer::{lex, sanitize, Token},
+        lexer::{lex, normalize, Token},
         lookaheaditer::LookaheadIter,
         NumberLiteral,
     },
@@ -30,7 +30,7 @@ where
     let mut chars = input.chars();
     let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
-    let effective_tokens = sanitize(tokens)?;
+    let effective_tokens = normalize(tokens)?;
     let mut token_iter = effective_tokens.into_iter();
     let mut lookahead_tokens = LookaheadIter::new(&mut token_iter, 2);
     let mut deserializer = Deserializer::from_tokens(&mut lookahead_tokens);

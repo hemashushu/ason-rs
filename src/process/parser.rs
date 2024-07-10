@@ -7,7 +7,7 @@
 use crate::error::Error;
 
 use super::{
-    lexer::{sanitize, lex, Token},
+    lexer::{lex, normalize, Token},
     lookaheaditer::LookaheadIter,
     AsonNode, NameValuePair, VariantItem,
 };
@@ -16,7 +16,7 @@ pub fn from_str(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
     let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
-    let effective_tokens = sanitize(tokens)?;
+    let effective_tokens = normalize(tokens)?;
     let mut token_iter = effective_tokens.into_iter();
     let mut lookahead_iter = LookaheadIter::new(&mut token_iter, 2);
     parse(&mut lookahead_iter)

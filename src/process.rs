@@ -240,7 +240,7 @@ mod tests {
     both_metric_suffix_and_type_long: 1000000000@long
     both_metric_suffix_and_type_double: 0.000001@double
     hex_integer: 48879
-    hex_integer_negative: -57005
+    hex_integer_negative: -48879
     hex_floating_point: 3.1415927
     hex_byte: 127@byte
     hex_ubyte: 255@ubyte
@@ -253,7 +253,7 @@ mod tests {
     hex_float: 3.1415927
     hex_double: 2.718281828459045@double
     bin_integer: 9
-    bin_integer_negative: 9
+    bin_integer_negative: -9
     bin_byte: 127@byte
     bin_ubyte: 255@ubyte
     bin_short: 32767@short

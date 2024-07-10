@@ -54,7 +54,7 @@
     both_metric_suffix_and_type_double: 1u@double
 
     hex_integer: 0xbeef
-    hex_integer_negative: -0xdead
+    hex_integer_negative: -0xbeef
     hex_floating_point: 0x1.921fb6p1
 
     hex_byte: 0x7f@byte
@@ -69,7 +69,7 @@
     hex_double: 0x1.5bf0a8b145769p+1@double
 
     bin_integer: 0b1001
-    bin_integer_negative: 0b1001
+    bin_integer_negative: -0b1001
 
     bin_byte: 0b0111_1111@byte
     bin_ubyte: 0b1111_1111@ubyte

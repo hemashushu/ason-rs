@@ -19,20 +19,20 @@ fn write_number(v: &NumberLiteral) -> String {
             format!("{}@ubyte", v)
         }
         NumberLiteral::Short(v) => {
-            format!("{}@short", v)
+            format!("{}@short", *v as i16)
         }
         NumberLiteral::UShort(v) => {
             format!("{}@ushort", v)
         }
         NumberLiteral::Int(v) => {
             // default integer number type
-            format!("{}", v)
+            format!("{}", *v as i32)
         }
         NumberLiteral::UInt(v) => {
             format!("{}@uint", v)
         }
         NumberLiteral::Long(v) => {
-            format!("{}@long", v)
+            format!("{}@long", *v as i64)
         }
         NumberLiteral::ULong(v) => {
             format!("{}@ulong", v)
