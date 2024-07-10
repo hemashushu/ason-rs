@@ -13,7 +13,7 @@ pub const INDENT_SPACES: &str = "    ";
 fn write_number(v: &NumberLiteral) -> String {
     match v {
         NumberLiteral::Byte(v) => {
-            format!("{}@byte", v)
+            format!("{}@byte", *v as i8)
         }
         NumberLiteral::UByte(v) => {
             format!("{}@ubyte", v)

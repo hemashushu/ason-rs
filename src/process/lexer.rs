@@ -606,7 +606,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = num_string.parse::<i8>().map_err(|e| {
+                let v = num_string.parse::<u8>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to byte number, error: {}",
                         num_string, e
@@ -635,7 +635,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = num_string.parse::<i16>().map_err(|e| {
+                let v = num_string.parse::<u16>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to short integer number, error: {}",
                         num_string, e
@@ -664,7 +664,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let mut v = num_string.parse::<i32>().map_err(|e| {
+                let mut v = num_string.parse::<u32>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to integer number, error: {}",
                         num_string, e
@@ -685,7 +685,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                     }
 
                     v = v
-                        .checked_mul(get_integer_unit_prefix_value(num_prefix) as i32)
+                        .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
                         .ok_or(Error::Message(format!(
                             "Integer number is overflow: {}{}",
                             num_string,
@@ -738,7 +738,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let mut v = num_string.parse::<i64>().map_err(|e| {
+                let mut v = num_string.parse::<u64>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
@@ -747,7 +747,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 
                 if has_integer_unit_prefix(num_prefix) {
                     v = v
-                        .checked_mul(get_integer_unit_prefix_value(num_prefix) as i64)
+                        .checked_mul(get_integer_unit_prefix_value(num_prefix))
                         .ok_or(Error::Message(format!(
                             "Long integer number is overflow: {}{}",
                             num_string,
@@ -873,7 +873,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
         //     ));
         // }
 
-        let mut v = num_string.parse::<i32>().map_err(|e| {
+        let mut v = num_string.parse::<u32>().map_err(|e| {
             Error::Message(format!(
                 "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
@@ -893,7 +893,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
         }
 
         v = v
-            .checked_mul(get_integer_unit_prefix_value(num_prefix) as i32)
+            .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
             .ok_or(Error::Message(format!(
                 "Integer number is overflow: {}{}",
                 num_string,
@@ -974,7 +974,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
         //     num_string.insert(0, '-');
         // }
 
-        let v = num_string.parse::<i32>().map_err(|e| {
+        let v = num_string.parse::<u32>().map_err(|e| {
             Error::Message(format!(
                 "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
@@ -1176,7 +1176,7 @@ fn lex_number_hex(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = i8::from_str_radix(&num_string, 16).map_err(|e| {
+                let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to byte integer number, error: {}",
                         num_string, e
@@ -1206,7 +1206,7 @@ fn lex_number_hex(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = i16::from_str_radix(&num_string, 16).map_err(|e| {
+                let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to short integer number, error: {}",
                         num_string, e
@@ -1236,7 +1236,7 @@ fn lex_number_hex(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = i32::from_str_radix(&num_string, 16).map_err(|e| {
+                let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to integer number, error: {}",
                         num_string, e
@@ -1266,7 +1266,7 @@ fn lex_number_hex(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = i64::from_str_radix(&num_string, 16).map_err(|e| {
+                let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
@@ -1302,7 +1302,7 @@ fn lex_number_hex(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
         //     num_string.insert(0, '-');
         // }
 
-        let v = i32::from_str_radix(&num_string, 16).map_err(|e| {
+        let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
             Error::Message(format!(
                 "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
@@ -1375,7 +1375,7 @@ fn lex_number_binary(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = i8::from_str_radix(&num_string, 2).map_err(|e| {
+                let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to byte integer number, error: {}",
                         num_string, e
@@ -1405,7 +1405,7 @@ fn lex_number_binary(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = i16::from_str_radix(&num_string, 2).map_err(|e| {
+                let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to short integer number, error: {}",
                         num_string, e
@@ -1435,7 +1435,7 @@ fn lex_number_binary(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = i32::from_str_radix(&num_string, 2).map_err(|e| {
+                let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to integer number, error: {}",
                         num_string, e
@@ -1465,7 +1465,7 @@ fn lex_number_binary(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 //     num_string.insert(0, '-');
                 // }
 
-                let v = i64::from_str_radix(&num_string, 2).map_err(|e| {
+                let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to long integer number, error: {}",
                         num_string, e
@@ -1501,7 +1501,7 @@ fn lex_number_binary(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
         //     num_string.insert(0, '-');
         // }
 
-        let v = i32::from_str_radix(&num_string, 2).map_err(|e| {
+        let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
             Error::Message(format!(
                 "Can not convert \"{}\" to integer number, error: {}",
                 num_string, e
@@ -2161,12 +2161,13 @@ fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 // - combine multiple continuous newlines into one newline.
 // - remove the '+' tokens in front of numbers (includes `Inf`).
 // - apple the '-' tokens into numbers (includes `Inf`).
+// - checks if the signed number is overflowed
 // - remove document leading newline and tailing newline.
 pub fn sanitize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
     let mut effective_tokens = vec![];
 
     let mut into = tokens.into_iter();
-    let mut iter = LookaheadIter::new(&mut into, 1);
+    let mut iter = LookaheadIter::new(&mut into, 2);
 
     // remove the leading new-lines and comments of document
     loop {
@@ -2262,28 +2263,56 @@ pub fn sanitize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
                             }
                             NumberLiteral::Byte(v) => {
                                 // consume the minus sign and the number literal token
-                                let token = Token::Number(NumberLiteral::Byte(v.neg()));
+                                let token = Token::Number(NumberLiteral::Byte(
+                                    format!("-{}", v).parse::<i8>().map_err(|e| {
+                                        Error::Message(format!(
+                                            "Can not convert \"{}\" to negative, error: {}",
+                                            v, e
+                                        ))
+                                    })? as u8,
+                                ));
                                 iter.next();
                                 iter.next();
                                 effective_tokens.push(token);
                             }
                             NumberLiteral::Short(v) => {
                                 // consume the minus sign and the number literal token
-                                let token = Token::Number(NumberLiteral::Short(v.neg()));
+                                let token = Token::Number(NumberLiteral::Short(
+                                    format!("-{}", v).parse::<i16>().map_err(|e| {
+                                        Error::Message(format!(
+                                            "Can not convert \"{}\" to negative, error: {}",
+                                            v, e
+                                        ))
+                                    })? as u16,
+                                ));
                                 iter.next();
                                 iter.next();
                                 effective_tokens.push(token);
                             }
                             NumberLiteral::Int(v) => {
                                 // consume the minus sign and the number literal token
-                                let token = Token::Number(NumberLiteral::Int(v.neg()));
+                                let token = Token::Number(NumberLiteral::Int(
+                                    format!("-{}", v).parse::<i32>().map_err(|e| {
+                                        Error::Message(format!(
+                                            "Can not convert \"{}\" to negative, error: {}",
+                                            v, e
+                                        ))
+                                    })? as u32,
+                                ));
                                 iter.next();
                                 iter.next();
                                 effective_tokens.push(token);
                             }
                             NumberLiteral::Long(v) => {
                                 // consume the minus sign and the number literal token
-                                let token = Token::Number(NumberLiteral::Long(v.neg()));
+                                let token = Token::Number(NumberLiteral::Long(
+                                    format!("-{}", v).parse::<i64>().map_err(|e| {
+                                        Error::Message(format!(
+                                            "Can not convert \"{}\" to negative, error: {}",
+                                            v, e
+                                        ))
+                                    })? as u64,
+                                ));
                                 iter.next();
                                 iter.next();
                                 effective_tokens.push(token);
@@ -2306,6 +2335,34 @@ pub fn sanitize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
                     }
                     None => return Err(Error::Message("Unexpected end of document.".to_owned())),
                 }
+            }
+            Token::Number(NumberLiteral::Byte(v)) if *v > i8::MAX as u8 => {
+                // check signed number overflow
+                return Err(Error::Message(format!(
+                    "The byte integer number {} is overflowed.",
+                    v
+                )));
+            }
+            Token::Number(NumberLiteral::Short(v)) if *v > i16::MAX as u16 => {
+                // check signed number overflow
+                return Err(Error::Message(format!(
+                    "The short integer number {} is overflowed.",
+                    v
+                )));
+            }
+            Token::Number(NumberLiteral::Int(v)) if *v > i32::MAX as u32 => {
+                // check signed number overflow
+                return Err(Error::Message(format!(
+                    "The integer number {} is overflowed.",
+                    v
+                )));
+            }
+            Token::Number(NumberLiteral::Long(v)) if *v > i64::MAX as u64 => {
+                // check signed number overflow
+                return Err(Error::Message(format!(
+                    "The long integer number {} is overflowed.",
+                    v
+                )));
             }
             _ => {
                 let token = iter.next().unwrap();
@@ -2356,6 +2413,10 @@ mod tests {
         let mut chars = s.chars();
         let mut iter = LookaheadIter::new(&mut chars, 3);
         lex(&mut iter)
+    }
+
+    fn lex_and_sanitize_from_str(s: &str) -> Result<Vec<Token>, Error> {
+        sanitize(lex_from_str(s)?)
     }
 
     #[test]
@@ -2560,6 +2621,18 @@ mod tests {
             ]
         );
 
+        // err: integer number overflow
+        assert!(matches!(
+            lex_from_str("4_294_967_296"),
+            Err(Error::Message(_))
+        ));
+
+        // err: invalid char for decimal number
+        assert!(matches!(lex_from_str("123XYZ"), Err(Error::Message(_))));
+    }
+
+    #[test]
+    fn test_lex_decimal_number_floating_point() {
         assert_eq!(
             lex_from_str("3.14").unwrap(),
             vec![Token::Number(NumberLiteral::Float(3.14))]
@@ -2589,9 +2662,6 @@ mod tests {
             lex_from_str("6.626e-34").unwrap(),
             vec![Token::Number(NumberLiteral::Float(6.626e-34))]
         );
-
-        // err: invalid char for decimal number
-        assert!(matches!(lex_from_str("123XYZ"), Err(Error::Message(_))));
 
         // err: unsupports start with dot
         assert!(matches!(lex_from_str(".123"), Err(Error::Message(_))));
@@ -2623,9 +2693,6 @@ mod tests {
                 vec![Token::Number(NumberLiteral::UByte(255))]
             );
 
-            // err: signed overflow
-            assert!(matches!(lex_from_str("128@byte"), Err(Error::Message(_))));
-
             // err: unsigned overflow
             assert!(matches!(lex_from_str("256@ubyte"), Err(Error::Message(_))));
         }
@@ -2642,12 +2709,6 @@ mod tests {
                 vec![Token::Number(NumberLiteral::UShort(65535))]
             );
 
-            // err: signed overflow
-            assert!(matches!(
-                lex_from_str("32768@short"),
-                Err(Error::Message(_))
-            ));
-
             // err: unsigned overflow
             assert!(matches!(
                 lex_from_str("65536@ushort"),
@@ -2659,19 +2720,13 @@ mod tests {
         {
             assert_eq!(
                 lex_from_str("2_147_483_647@int").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(2_147_483_647i32))]
+                vec![Token::Number(NumberLiteral::Int(2_147_483_647i32 as u32))]
             );
 
             assert_eq!(
                 lex_from_str("4_294_967_295@uint").unwrap(),
                 vec![Token::Number(NumberLiteral::UInt(std::u32::MAX))]
             );
-
-            // err: signed overflow
-            assert!(matches!(
-                lex_from_str("2_147_483_648@int"),
-                Err(Error::Message(_))
-            ));
 
             // err: unsigned overflow
             assert!(matches!(
@@ -2685,7 +2740,7 @@ mod tests {
             assert_eq!(
                 lex_from_str("9_223_372_036_854_775_807@long").unwrap(),
                 vec![Token::Number(NumberLiteral::Long(
-                    9_223_372_036_854_775_807i64
+                    9_223_372_036_854_775_807i64 as u64
                 )),]
             );
 
@@ -2693,12 +2748,6 @@ mod tests {
                 lex_from_str("18_446_744_073_709_551_615@ulong").unwrap(),
                 vec![Token::Number(NumberLiteral::ULong(std::u64::MAX))]
             );
-
-            // err: signed overflow
-            assert!(matches!(
-                lex_from_str("9_223_372_036_854_775_808@long"),
-                Err(Error::Message(_))
-            ));
 
             // err: unsigned overflow
             assert!(matches!(
@@ -2809,17 +2858,17 @@ mod tests {
         {
             assert_eq!(
                 lex_from_str("1K").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(10_i32.pow(3)))]
+                vec![Token::Number(NumberLiteral::Int(10_i32.pow(3) as u32))]
             );
 
             assert_eq!(
                 lex_from_str("1M").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(10_i32.pow(6)))]
+                vec![Token::Number(NumberLiteral::Int(10_i32.pow(6) as u32))]
             );
 
             assert_eq!(
                 lex_from_str("1G").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(10_i32.pow(9)))]
+                vec![Token::Number(NumberLiteral::Int(10_i32.pow(9) as u32))]
             );
         }
 
@@ -2827,17 +2876,17 @@ mod tests {
         {
             assert_eq!(
                 lex_from_str("1K@long").unwrap(),
-                vec![Token::Number(NumberLiteral::Long(10_i64.pow(3)))]
+                vec![Token::Number(NumberLiteral::Long(10_i64.pow(3) as u64))]
             );
 
             assert_eq!(
                 lex_from_str("1M@long").unwrap(),
-                vec![Token::Number(NumberLiteral::Long(10_i64.pow(6)))]
+                vec![Token::Number(NumberLiteral::Long(10_i64.pow(6) as u64))]
             );
 
             assert_eq!(
                 lex_from_str("1G@long").unwrap(),
-                vec![Token::Number(NumberLiteral::Long(10_i64.pow(9)))]
+                vec![Token::Number(NumberLiteral::Long(10_i64.pow(9) as u64))]
             );
 
             assert_eq!(
@@ -2860,17 +2909,17 @@ mod tests {
         {
             assert_eq!(
                 lex_from_str("1Ki").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(2_i32.pow(10)))]
+                vec![Token::Number(NumberLiteral::Int(2_i32.pow(10) as u32))]
             );
 
             assert_eq!(
                 lex_from_str("1Mi").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(2_i32.pow(20)))]
+                vec![Token::Number(NumberLiteral::Int(2_i32.pow(20) as u32))]
             );
 
             assert_eq!(
                 lex_from_str("1Gi").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(2_i32.pow(30)))]
+                vec![Token::Number(NumberLiteral::Int(2_i32.pow(30) as u32))]
             );
         }
 
@@ -2878,17 +2927,17 @@ mod tests {
         {
             assert_eq!(
                 lex_from_str("1Ki@long").unwrap(),
-                vec![Token::Number(NumberLiteral::Long(2_i64.pow(10)))]
+                vec![Token::Number(NumberLiteral::Long(2_i64.pow(10) as u64))]
             );
 
             assert_eq!(
                 lex_from_str("1Mi@long").unwrap(),
-                vec![Token::Number(NumberLiteral::Long(2_i64.pow(20)))]
+                vec![Token::Number(NumberLiteral::Long(2_i64.pow(20) as u64))]
             );
 
             assert_eq!(
                 lex_from_str("1Gi@long").unwrap(),
-                vec![Token::Number(NumberLiteral::Long(2_i64.pow(30)))]
+                vec![Token::Number(NumberLiteral::Long(2_i64.pow(30) as u64))]
             );
 
             assert_eq!(
@@ -2911,17 +2960,17 @@ mod tests {
         {
             assert_eq!(
                 lex_from_str("1KB").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(2_i32.pow(10)))]
+                vec![Token::Number(NumberLiteral::Int(2_i32.pow(10) as u32))]
             );
 
             assert_eq!(
                 lex_from_str("1MB").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(2_i32.pow(20)))]
+                vec![Token::Number(NumberLiteral::Int(2_i32.pow(20) as u32))]
             );
 
             assert_eq!(
                 lex_from_str("1GB").unwrap(),
-                vec![Token::Number(NumberLiteral::Int(2_i32.pow(30)))]
+                vec![Token::Number(NumberLiteral::Int(2_i32.pow(30) as u32))]
             );
         }
 
@@ -3010,9 +3059,9 @@ mod tests {
             vec![Token::Plus, Token::Number(NumberLiteral::Int(0xccdd))]
         );
 
-        // err: overflow
+        // err: hex number overflow
         assert!(matches!(
-            lex_from_str("0x8000_0000"),
+            lex_from_str("0x1_0000_0000"),
             Err(Error::Message(_))
         ));
 
@@ -3027,16 +3076,13 @@ mod tests {
     fn test_lex_hex_number_with_explicit_type() {
         assert_eq!(
             lex_from_str("0x7f@byte").unwrap(),
-            vec![Token::Number(NumberLiteral::Byte(0x7f_i8))]
+            vec![Token::Number(NumberLiteral::Byte(0x7f_i8 as u8))]
         );
 
         assert_eq!(
             lex_from_str("0xff@ubyte").unwrap(),
             vec![Token::Number(NumberLiteral::UByte(0xff_u8))]
         );
-
-        // err: signed overflow
-        assert!(matches!(lex_from_str("0x80@byte"), Err(Error::Message(_))));
 
         // err: unsigned overflow
         assert!(matches!(
@@ -3046,19 +3092,13 @@ mod tests {
 
         assert_eq!(
             lex_from_str("0x7fff@short").unwrap(),
-            vec![Token::Number(NumberLiteral::Short(0x7fff_i16))]
+            vec![Token::Number(NumberLiteral::Short(0x7fff_i16 as u16))]
         );
 
         assert_eq!(
             lex_from_str("0xffff@ushort").unwrap(),
             vec![Token::Number(NumberLiteral::UShort(0xffff_u16))]
         );
-
-        // err: signed overflow
-        assert!(matches!(
-            lex_from_str("0x8000@short"),
-            Err(Error::Message(_))
-        ));
 
         // err: unsigned overflow
         assert!(matches!(
@@ -3068,19 +3108,13 @@ mod tests {
 
         assert_eq!(
             lex_from_str("0x7fff_ffff@int").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(0x7fff_ffff_i32))]
+            vec![Token::Number(NumberLiteral::Int(0x7fff_ffff_i32 as u32))]
         );
 
         assert_eq!(
             lex_from_str("0xffff_ffff@uint").unwrap(),
             vec![Token::Number(NumberLiteral::UInt(0xffff_ffff_u32))]
         );
-
-        // err: signed overflow
-        assert!(matches!(
-            lex_from_str("0x8000_0000@int"),
-            Err(Error::Message(_))
-        ));
 
         // err: unsigned overflow
         assert!(matches!(
@@ -3091,7 +3125,7 @@ mod tests {
         assert_eq!(
             lex_from_str("0x7fff_ffff_ffff_ffff@long").unwrap(),
             vec![Token::Number(NumberLiteral::Long(
-                0x7fff_ffff_ffff_ffff_i64
+                0x7fff_ffff_ffff_ffff_i64 as u64
             ))]
         );
 
@@ -3101,12 +3135,6 @@ mod tests {
                 0xffff_ffff_ffff_ffff_u64
             ))]
         );
-
-        // err: signed overflow
-        assert!(matches!(
-            lex_from_str("0x8000_0000_0000_0000@long"),
-            Err(Error::Message(_))
-        ));
 
         // err: unsigned overflow
         assert!(matches!(
@@ -3120,6 +3148,33 @@ mod tests {
         // err: does not support hex double precision floating pointer number
         assert!(matches!(
             lex_from_str("0xaa@double"),
+            Err(Error::Message(_))
+        ));
+    }
+
+    #[test]
+    fn test_lex_hex_number_floating_point() {
+        // 3.1415927f32
+        assert_eq!(
+            lex_from_str("0x1.921fb6p1").unwrap(),
+            vec![Token::Number(NumberLiteral::Float(std::f32::consts::PI))]
+        );
+
+        // 2.718281828459045f64
+        assert_eq!(
+            lex_from_str("0x1.5bf0a8b145769p+1@double").unwrap(),
+            vec![Token::Number(NumberLiteral::Double(std::f64::consts::E))]
+        );
+
+        // https://observablehq.com/@jrus/hexfloat
+        assert_eq!(
+            lex_from_str("0x1.62e42fefa39efp-1@double").unwrap(),
+            vec![Token::Number(NumberLiteral::Double(std::f64::consts::LN_2))]
+        );
+
+        // err: incorrect number type
+        assert!(matches!(
+            lex_from_str("0x1.23p4@int"),
             Err(Error::Message(_))
         ));
     }
@@ -3144,7 +3199,7 @@ mod tests {
         // err: does not support binary floating point
         assert!(matches!(lex_from_str("0b11.1"), Err(Error::Message(_))));
 
-        // err: overflow
+        // err: binary number overflow
         assert!(matches!(
             lex_from_str("0b1_0000_0000_0000_0000_0000_0000_0000_0000"),
             Err(Error::Message(_))
@@ -3159,93 +3214,81 @@ mod tests {
 
     #[test]
     fn test_lex_binary_number_with_explicit_type() {
-        assert_eq!(
-            lex_from_str("0b0111_1111@byte").unwrap(),
-            vec![Token::Number(NumberLiteral::Byte(0x7f_i8))]
-        );
+        // byte
+        {
+            assert_eq!(
+                lex_from_str("0b0111_1111@byte").unwrap(),
+                vec![Token::Number(NumberLiteral::Byte(0x7f_i8 as u8))]
+            );
 
-        assert_eq!(
-            lex_from_str("0b1111_1111@ubyte").unwrap(),
-            vec![Token::Number(NumberLiteral::UByte(0xff_u8))]
-        );
+            assert_eq!(
+                lex_from_str("0b1111_1111@ubyte").unwrap(),
+                vec![Token::Number(NumberLiteral::UByte(0xff_u8))]
+            );
 
-        // err: signed overflow
-        assert!(matches!(
-            lex_from_str("0b1000_0000@byte"),
-            Err(Error::Message(_))
-        ));
+            // err: unsigned overflow
+            assert!(matches!(
+                lex_from_str("0b1_1111_1111@ubyte"),
+                Err(Error::Message(_))
+            ));
+        }
 
-        // err: unsigned overflow
-        assert!(matches!(
-            lex_from_str("0b1_1111_1111@ubyte"),
-            Err(Error::Message(_))
-        ));
+        // short
+        {
+            assert_eq!(
+                lex_from_str("0b0111_1111_1111_1111@short").unwrap(),
+                vec![Token::Number(NumberLiteral::Short(0x7fff_i16 as u16))]
+            );
 
-        assert_eq!(
-            lex_from_str("0b0111_1111_1111_1111@short").unwrap(),
-            vec![Token::Number(NumberLiteral::Short(0x7fff_i16))]
-        );
+            assert_eq!(
+                lex_from_str("0b1111_1111_1111_1111@ushort").unwrap(),
+                vec![Token::Number(NumberLiteral::UShort(0xffff_u16))]
+            );
 
-        assert_eq!(
-            lex_from_str("0b1111_1111_1111_1111@ushort").unwrap(),
-            vec![Token::Number(NumberLiteral::UShort(0xffff_u16))]
-        );
+            // err: unsigned overflow
+            assert!(matches!(
+                lex_from_str("0b1_1111_1111_1111_1111@ushort"),
+                Err(Error::Message(_))
+            ));
+        }
 
-        // err: signed overflow
-        assert!(matches!(
-            lex_from_str("0b1000_0000_0000_0000@short"),
-            Err(Error::Message(_))
-        ));
+        // int
+        {
+            assert_eq!(
+                lex_from_str("0b0111_1111_1111_1111__1111_1111_1111_1111@int").unwrap(),
+                vec![Token::Number(NumberLiteral::Int(0x7fff_ffff_i32 as u32))]
+            );
 
-        // err: unsigned overflow
-        assert!(matches!(
-            lex_from_str("0b1_1111_1111_1111_1111@ushort"),
-            Err(Error::Message(_))
-        ));
+            assert_eq!(
+                lex_from_str("0b1111_1111_1111_1111__1111_1111_1111_1111@uint").unwrap(),
+                vec![Token::Number(NumberLiteral::UInt(0xffff_ffff_u32))]
+            );
 
-        assert_eq!(
-            lex_from_str("0b0111_1111_1111_1111__1111_1111_1111_1111@int").unwrap(),
-            vec![Token::Number(NumberLiteral::Int(0x7fff_ffff_i32))]
-        );
+            // err: unsigned overflow
+            assert!(matches!(
+                lex_from_str("0b1_1111_1111_1111_1111__1111_1111_1111_1111@uint"),
+                Err(Error::Message(_))
+            ));
+        }
 
-        assert_eq!(
-            lex_from_str("0b1111_1111_1111_1111__1111_1111_1111_1111@uint").unwrap(),
-            vec![Token::Number(NumberLiteral::UInt(0xffff_ffff_u32))]
-        );
+        // long
+        {
+            assert_eq!(
+                lex_from_str("0b0111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@long").unwrap(),
+                vec![Token::Number(NumberLiteral::Long(0x7fff_ffff_ffff_ffff_i64 as u64))]
+            );
 
-        // err: signed overflow
-        assert!(matches!(
-            lex_from_str("0b1000_0000_0000_0000__0000_0000_0000_0000@int"),
-            Err(Error::Message(_))
-        ));
+            assert_eq!(
+                lex_from_str("0b1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@ulong").unwrap(),
+                vec![Token::Number(NumberLiteral::ULong(0xffff_ffff_ffff_ffff_u64))]
+            );
 
-        // err: unsigned overflow
-        assert!(matches!(
-            lex_from_str("0b1_1111_1111_1111_1111__1111_1111_1111_1111@uint"),
-            Err(Error::Message(_))
-        ));
-
-        assert_eq!(
-            lex_from_str("0b0111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@long").unwrap(),
-            vec![Token::Number(NumberLiteral::Long(0x7fff_ffff_ffff_ffff_i64))]
-        );
-
-        assert_eq!(
-            lex_from_str("0b1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@ulong").unwrap(),
-            vec![Token::Number(NumberLiteral::ULong(0xffff_ffff_ffff_ffff_u64))]
-        );
-
-        // err: overflow
-        assert!(matches!(
-            lex_from_str("0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000@long"),
-            Err(Error::Message(_))
-        ));
-
-        // err: unsigned overflow
-        assert!(matches!(
-            lex_from_str("0b1_1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@ulong"),
-            Err(Error::Message(_))
-        ));
+            // err: unsigned overflow
+            assert!(matches!(
+                lex_from_str("0b1_1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@ulong"),
+                Err(Error::Message(_))
+            ));
+        }
 
         // err: does not support binary floating pointer number
         assert!(matches!(lex_from_str("0b11@float"), Err(Error::Message(_))));
@@ -3253,33 +3296,6 @@ mod tests {
         // err: does not support binary floating pointer number
         assert!(matches!(
             lex_from_str("0b11@double"),
-            Err(Error::Message(_))
-        ));
-    }
-
-    #[test]
-    fn test_lex_hex_floating_point_number() {
-        // 3.1415927f32
-        assert_eq!(
-            lex_from_str("0x1.921fb6p1").unwrap(),
-            vec![Token::Number(NumberLiteral::Float(std::f32::consts::PI))]
-        );
-
-        // 2.718281828459045f64
-        assert_eq!(
-            lex_from_str("0x1.5bf0a8b145769p+1@double").unwrap(),
-            vec![Token::Number(NumberLiteral::Double(std::f64::consts::E))]
-        );
-
-        // https://observablehq.com/@jrus/hexfloat
-        assert_eq!(
-            lex_from_str("0x1.62e42fefa39efp-1@double").unwrap(),
-            vec![Token::Number(NumberLiteral::Double(std::f64::consts::LN_2))]
-        );
-
-        // err: incorrect number type
-        assert!(matches!(
-            lex_from_str("0x1.23p4@int"),
             Err(Error::Message(_))
         ));
     }
@@ -4258,9 +4274,8 @@ mod tests {
         );
 
         assert_eq!(
-            sanitize(
-                lex_from_str(
-                    r#"
+            lex_and_sanitize_from_str(
+                r#"
                     [1,2,
 
                     3
@@ -4268,8 +4283,6 @@ mod tests {
 
                     ]
                     "#
-                )
-                .unwrap()
             )
             .unwrap(),
             vec![
@@ -4285,204 +4298,600 @@ mod tests {
         );
     }
 
+    // check type range also
     #[test]
-    fn test_sanitize_plus_minus_and_floating_point_numbers() {
-        // assert_eq!(
-        //     lex_from_str("+127@byte").unwrap(),
-        //     vec![Token::Number(NumberLiteral::Byte(127))]
-        // );
+    fn test_sanitize_plus_and_minus() {
+        // default int
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+11").unwrap(),
+                vec![Token::Number(NumberLiteral::Int(11))]
+            );
 
-        // assert_eq!(
-        //     lex_from_str("-128@byte").unwrap(),
-        //     vec![Token::Number(NumberLiteral::Byte(-128))]
-        // );
+            assert_eq!(
+                lex_and_sanitize_from_str("-13").unwrap(),
+                vec![Token::Number(NumberLiteral::Int(-13_i32 as u32))]
+            );
 
-        // // err: negative overflow
-        // assert!(matches!(lex_from_str("-129@byte"), Err(Error::Message(_))));
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("2_147_483_648"),
+                Err(Error::Message(_))
+            ));
 
-        // // err: unsigned number with minus sign
-        // assert!(matches!(lex_from_str("-1@ubyte"), Err(Error::Message(_))));
+            // err: plus sign is added to non-numbers
+            assert!(matches!(
+                lex_and_sanitize_from_str("+true"),
+                Err(Error::Message(_))
+            ));
 
-        // assert_eq!(
-        //     lex_from_str("-32768@short").unwrap(),
-        //     vec![Token::Number(NumberLiteral::Short(-32768))]
-        // );
+            // err: minus sign is added to non-numbers
+            assert!(matches!(
+                lex_and_sanitize_from_str("-true"),
+                Err(Error::Message(_))
+            ));
+        }
 
-        // // err: negative overflow
-        // assert!(matches!(
-        //     lex_from_str("-32769@short"),
-        //     Err(Error::Message(_))
-        // ));
+        // byte
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+127@byte").unwrap(),
+                vec![Token::Number(NumberLiteral::Byte(127))]
+            );
 
-        // // err: unsigned number with minus sign
-        // assert!(matches!(lex_from_str("-1@ushort"), Err(Error::Message(_))));
+            assert_eq!(
+                lex_and_sanitize_from_str("-128@byte").unwrap(),
+                vec![Token::Number(NumberLiteral::Byte(-128_i8 as u8))]
+            );
 
-        // assert_eq!(
-        //     lex_from_str("-2_147_483_648@int").unwrap(),
-        //     vec![Token::Number(NumberLiteral::Int(-2_147_483_648i32))]
-        // );
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("128@byte"),
+                Err(Error::Message(_))
+            ));
 
-        // // err: negative overflow
-        // assert!(matches!(
-        //     lex_from_str("-2_147_483_649@int"),
-        //     Err(Error::Message(_))
-        // ));
+            // err: negative overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("-129@byte"),
+                Err(Error::Message(_))
+            ));
 
-        // // err: unsigned number with minus sign
-        // assert!(matches!(lex_from_str("-1@uint"), Err(Error::Message(_))));
+            // err: unsigned number with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-1@ubyte"),
+                Err(Error::Message(_))
+            ));
+        }
 
-        // assert_eq!(
-        //     lex_from_str("-9_223_372_036_854_775_808@long").unwrap(),
-        //     vec![Token::Number(NumberLiteral::Long(
-        //         -9_223_372_036_854_775_808i64
-        //     )),]
-        // );
+        // short
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+32767@short").unwrap(),
+                vec![Token::Number(NumberLiteral::Short(32767))]
+            );
 
-        // // err: negative overflow
-        // assert!(matches!(
-        //     lex_from_str("-9_223_372_036_854_775_809@long"),
-        //     Err(Error::Message(_))
-        // ));
+            assert_eq!(
+                lex_and_sanitize_from_str("-32768@short").unwrap(),
+                vec![Token::Number(NumberLiteral::Short(-32768_i16 as u16))]
+            );
 
-        // // err: unsigned number with minus sign
-        // assert!(matches!(lex_from_str("-1@ulong"), Err(Error::Message(_))));
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("32768@short"),
+                Err(Error::Message(_))
+            ));
 
-        // assert_eq!(
-        //     lex_from_str("-3.402_823_5e+38@float").unwrap(),
-        //     vec![Token::Number(NumberLiteral::Float(-3.402_823_5e38f32))]
-        // );
+            // err: negative overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("-32769@short"),
+                Err(Error::Message(_))
+            ));
 
-        //         // err: -0.0
-        //         assert!(matches!(lex_from_str("-0@float"), Err(Error::Message(_))));
-        //
-        //         // err: NaN
-        //         assert!(matches!(lex_from_str("NaN@float"), Err(Error::Message(_))));
-        //
-        //         // err: +Inf
-        //         assert!(matches!(lex_from_str("+Inf@float"), Err(Error::Message(_))));
-        //
-        //         // err: -Inf
-        //         assert!(matches!(lex_from_str("-Inf@float"), Err(Error::Message(_))));
+            // err: unsigned number with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-1@ushort"),
+                Err(Error::Message(_))
+            ));
+        }
 
-        // assert_eq!(
-        //     lex_from_str("-1.797_693_134_862_315_7e+308@double").unwrap(),
-        //     vec![Token::Number(NumberLiteral::Double(
-        //         -1.797_693_134_862_315_7e308_f64
-        //     )),]
-        // );
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+2_147_483_647@int").unwrap(),
+                vec![Token::Number(NumberLiteral::Int(2_147_483_647i32 as u32))]
+            );
 
-        //         // err: -0.0
-        //         assert!(matches!(lex_from_str("-0@double"), Err(Error::Message(_))));
-        //
-        //         // err: NaN
-        //         assert!(matches!(lex_from_str("NaN@double"), Err(Error::Message(_))));
-        //
-        //         // err: +Inf
-        //         assert!(matches!(
-        //             lex_from_str("+Inf@double"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         // err: -Inf
-        //         assert!(matches!(
-        //             lex_from_str("-Inf@double"),
-        //             Err(Error::Message(_))
-        //         ));
+            assert_eq!(
+                lex_and_sanitize_from_str("-2_147_483_648@int").unwrap(),
+                vec![Token::Number(NumberLiteral::Int(-2_147_483_648i32 as u32))]
+            );
 
-        //         assert_eq!(
-        //             lex_from_str("+0x7f@byte").unwrap(),
-        //             vec![Token::Number(NumberLiteral::Byte(-0x80_i8))]
-        //         );
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0x80@byte").unwrap(),
-        //             vec![Token::Number(NumberLiteral::Byte(-0x80_i8))]
-        //         );
-        //
-        //         // err: unsigned with minus sign
-        //         assert!(matches!(
-        //             lex_from_str("-0xaa@ubyte"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         // err: unsigned with minus sign
-        //         assert!(matches!(
-        //             lex_from_str("-0xaaaa@ushort"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0x8000_0000@int").unwrap(),
-        //             vec![Token::Number(NumberLiteral::Int(-0x8000_0000_i32))]
-        //         );
-        //
-        //         // err: unsigned with minus sign
-        //         assert!(matches!(
-        //             lex_from_str("-0xaaaa_aaaa@uint"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0x8000_0000_0000_0000@long").unwrap(),
-        //             vec![Token::Number(NumberLiteral::Long(
-        //                 -0x8000_0000_0000_0000_i64
-        //             ))]
-        //         );
-        //
-        //         // err: unsigned with minus sign
-        //         assert!(matches!(
-        //             lex_from_str("-0xaaaa_aaaa_aaaa_aaaa@ulong"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0b1000_0000@byte").unwrap(),
-        //             vec![Token::Number(NumberLiteral::Byte(-0x80_i8))]
-        //         );
-        //
-        //         // err: unsigned with minus sign
-        //         assert!(matches!(
-        //             lex_from_str("-0b11@ubyte"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0b1000_0000_0000_0000@short").unwrap(),
-        //             vec![Token::Number(NumberLiteral::Short(-0x8000_i16))]
-        //         );
-        //
-        //         // err: unsigned with minus sign
-        //         assert!(matches!(
-        //             lex_from_str("-0b1111@ushort"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         assert_eq!(
-        //             lex_from_str("-0b1000_0000_0000_0000__0000_0000_0000_0000@int").unwrap(),
-        //             vec![Token::Number(NumberLiteral::Int(-0x8000_0000_i32))]
-        //         );
-        //
-        //         // err: unsigned with minus sign
-        //         assert!(matches!(
-        //             lex_from_str("-0b1111_1111@uint"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         assert_eq!(
-        //                     lex_from_str("-0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000@long").unwrap(),
-        //                     vec![Token::Number(NumberLiteral::Long(-0x8000_0000_0000_0000_i64))]
-        //                 );
-        //
-        //         // err: unsigned with minus sign
-        //         assert!(matches!(
-        //             lex_from_str("-0b1111_1111_1111_1111@ulong"),
-        //             Err(Error::Message(_))
-        //         ));
-        //
-        //         // -3.1415927f32
-        //         assert_eq!(
-        //             lex_from_str("-0x1.921fb6p1").unwrap(),
-        //             vec![Token::Number(NumberLiteral::Float(-std::f32::consts::PI))]
-        //         );
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("2_147_483_648@int"),
+                Err(Error::Message(_))
+            ));
+
+            // err: negative overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("-2_147_483_649@int"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned number with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-1@uint"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // long
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+9_223_372_036_854_775_807@long").unwrap(),
+                vec![Token::Number(NumberLiteral::Long(
+                    9_223_372_036_854_775_807i64 as u64
+                )),]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-9_223_372_036_854_775_808@long").unwrap(),
+                vec![Token::Number(NumberLiteral::Long(
+                    -9_223_372_036_854_775_808i64 as u64
+                )),]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("9_223_372_036_854_775_808@long"),
+                Err(Error::Message(_))
+            ));
+
+            // err: negative overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("-9_223_372_036_854_775_809@long"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned number with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-1@ulong"),
+                Err(Error::Message(_))
+            ));
+        }
+    }
+
+    // check 'NaN' and 'Inf' also
+    #[test]
+    fn test_sanitize_plus_and_minus_floating_point_number() {
+        assert_eq!(
+            lex_and_sanitize_from_str("+3.402_823_5e+38").unwrap(),
+            vec![Token::Number(NumberLiteral::Float(3.402_823_5e38f32))]
+        );
+
+        assert_eq!(
+            lex_and_sanitize_from_str("-3.402_823_5e+38").unwrap(),
+            vec![Token::Number(NumberLiteral::Float(-3.402_823_5e38f32))]
+        );
+
+        // 0
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("0.0").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(0f32))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("+0.0").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(0f32))]
+            );
+
+            // +0 == -0
+            assert_eq!(
+                lex_and_sanitize_from_str("-0.0").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(0f32))]
+            );
+        }
+
+        // NaN
+        {
+            let t = lex_and_sanitize_from_str("NaN").unwrap();
+            assert!(matches!(t[0], Token::Number(NumberLiteral::Float(v)) if v.is_nan()));
+        }
+
+        // Inf
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("Inf").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(f32::INFINITY))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("+Inf").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(f32::INFINITY))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-Inf").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(f32::NEG_INFINITY))]
+            );
+        }
+
+        // err: +NaN
+        assert!(matches!(
+            lex_and_sanitize_from_str("+NaN"),
+            Err(Error::Message(_))
+        ));
+
+        // err: -NaN
+        assert!(matches!(
+            lex_and_sanitize_from_str("-NaN"),
+            Err(Error::Message(_))
+        ));
+    }
+
+    #[test]
+    fn test_sanitize_plus_and_minus_floating_point_number_with_explicit_type() {
+        // single precision
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+1.602176634e-19@float").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(1.602176634e-19f32))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-1.602176634e-19@float").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(-1.602176634e-19f32))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("0@float").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(0f32))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("+0@float").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(0f32))]
+            );
+
+            // +0 == -0
+            assert_eq!(
+                lex_and_sanitize_from_str("-0@float").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(0f32))]
+            );
+
+            let t = lex_and_sanitize_from_str("NaN@float").unwrap();
+            assert!(matches!(t[0], Token::Number(NumberLiteral::Float(v)) if v.is_nan()));
+
+            assert_eq!(
+                lex_and_sanitize_from_str("Inf@float").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(f32::INFINITY))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("+Inf@float").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(f32::INFINITY))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-Inf@float").unwrap(),
+                vec![Token::Number(NumberLiteral::Float(f32::NEG_INFINITY))]
+            );
+
+            // err: +NaN
+            assert!(matches!(
+                lex_and_sanitize_from_str("+NaN@float"),
+                Err(Error::Message(_))
+            ));
+
+            // err: -NaN
+            assert!(matches!(
+                lex_and_sanitize_from_str("-NaN@float"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // double
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("1.797_693_134_862_315_7e+308@double").unwrap(),
+                vec![Token::Number(NumberLiteral::Double(
+                    1.797_693_134_862_315_7e308_f64
+                )),]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-1.797_693_134_862_315_7e+308@double").unwrap(),
+                vec![Token::Number(NumberLiteral::Double(
+                    -1.797_693_134_862_315_7e308_f64
+                )),]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("0@double").unwrap(),
+                vec![Token::Number(NumberLiteral::Double(0f64))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("+0@double").unwrap(),
+                vec![Token::Number(NumberLiteral::Double(0f64))]
+            );
+
+            // +0 == -0
+            assert_eq!(
+                lex_and_sanitize_from_str("-0@double").unwrap(),
+                vec![Token::Number(NumberLiteral::Double(0f64))]
+            );
+
+            let t = lex_and_sanitize_from_str("NaN@double").unwrap();
+            assert!(matches!(t[0], Token::Number(NumberLiteral::Double(v)) if v.is_nan()));
+
+            assert_eq!(
+                lex_and_sanitize_from_str("Inf@double").unwrap(),
+                vec![Token::Number(NumberLiteral::Double(f64::INFINITY))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("+Inf@double").unwrap(),
+                vec![Token::Number(NumberLiteral::Double(f64::INFINITY))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-Inf@double").unwrap(),
+                vec![Token::Number(NumberLiteral::Double(f64::NEG_INFINITY))]
+            );
+
+            // err: +NaN
+            assert!(matches!(
+                lex_and_sanitize_from_str("+NaN@double"),
+                Err(Error::Message(_))
+            ));
+
+            // err: -NaN
+            assert!(matches!(
+                lex_and_sanitize_from_str("-NaN@double"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // err: error type for Inf
+        assert!(matches!(
+            lex_and_sanitize_from_str("Inf@int"),
+            Err(Error::Message(_))
+        ));
+
+        // err: error type for NaN
+        assert!(matches!(
+            lex_and_sanitize_from_str("NaN@int"),
+            Err(Error::Message(_))
+        ));
+    }
+
+    // check type range also
+    #[test]
+    fn test_sanitize_plus_and_minus_hex_number() {
+        // byte
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+0x7f@byte").unwrap(),
+                vec![Token::Number(NumberLiteral::Byte(0x7f_i8 as u8))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-0x80@byte").unwrap(),
+                vec![Token::Number(NumberLiteral::Byte(-0x80_i8 as u8))]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("0x80@byte"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-0x1@ubyte"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // short
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+0x7fff@short").unwrap(),
+                vec![Token::Number(NumberLiteral::Short(0x7fff_i16 as u16))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-0x8000@short").unwrap(),
+                vec![Token::Number(NumberLiteral::Short(-0x8000_i16 as u16))]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("0x8000@short"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-0x1@ushort"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // int
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+0x7fff_ffff@int").unwrap(),
+                vec![Token::Number(NumberLiteral::Int(0x7fff_ffff_i32 as u32))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-0x8000_0000@int").unwrap(),
+                vec![Token::Number(NumberLiteral::Int(-0x8000_0000_i32 as u32))]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("0x8000_0000@int"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-0x1@uint"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // long
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+0x7fff_ffff_ffff_ffff@long").unwrap(),
+                vec![Token::Number(NumberLiteral::Long(
+                    0x7fff_ffff_ffff_ffff_i64 as u64
+                ))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-0x8000_0000_0000_0000@long").unwrap(),
+                vec![Token::Number(NumberLiteral::Long(
+                    -0x8000_0000_0000_0000_i64 as u64
+                ))]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("0x8000_0000_0000_0000@long"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-0x1@ulong"),
+                Err(Error::Message(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn test_sanitize_plus_and_minus_hex_floating_point_number() {
+        // 3.1415927f32
+        assert_eq!(
+            lex_and_sanitize_from_str("+0x1.921fb6p1").unwrap(),
+            vec![Token::Number(NumberLiteral::Float(std::f32::consts::PI))]
+        );
+
+        // -2.718281828459045f64
+        assert_eq!(
+            lex_and_sanitize_from_str("-0x1.5bf0a8b145769p+1@double").unwrap(),
+            vec![Token::Number(NumberLiteral::Double(-std::f64::consts::E))]
+        );
+    }
+
+    // check type range also
+    #[test]
+    fn test_sanitize_plus_and_minus_binary_number() {
+        // byte
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("0b0111_1111@byte").unwrap(),
+                vec![Token::Number(NumberLiteral::Byte(0x7f_i8 as u8))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-0b1000_0000@byte").unwrap(),
+                vec![Token::Number(NumberLiteral::Byte(-0x80_i8 as u8))]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("0b1000_0000@byte"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-0b1@ubyte"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // short
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+0b0111_1111_1111_1111@short").unwrap(),
+                vec![Token::Number(NumberLiteral::Short(0x7fff_i16 as u16))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-0b1000_0000_0000_0000@short").unwrap(),
+                vec![Token::Number(NumberLiteral::Short(-0x8000_i16 as u16))]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("0b1000_0000_0000_0000@short"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-0b1@ushort"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // int
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("+0b0111_1111_1111_1111__1111_1111_1111_1111@int")
+                    .unwrap(),
+                vec![Token::Number(NumberLiteral::Int(0x7fff_ffff_i32 as u32))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-0b1000_0000_0000_0000__0000_0000_0000_0000@int")
+                    .unwrap(),
+                vec![Token::Number(NumberLiteral::Int(-0x8000_0000_i32 as u32))]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("0b1000_0000_0000_0000__0000_0000_0000_0000@int"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-0b1@uint"),
+                Err(Error::Message(_))
+            ));
+        }
+
+        // long
+        {
+            assert_eq!(
+                lex_and_sanitize_from_str("0b0111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111@long").unwrap(),
+                vec![Token::Number(NumberLiteral::Long(0x7fff_ffff_ffff_ffff_i64 as u64))]
+            );
+
+            assert_eq!(
+                lex_and_sanitize_from_str("-0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000@long").unwrap(),
+                vec![Token::Number(NumberLiteral::Long(-0x8000_0000_0000_0000_i64 as u64))]
+            );
+
+            // err: signed overflow
+            assert!(matches!(
+                lex_and_sanitize_from_str("0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000@long"),
+                Err(Error::Message(_))
+            ));
+
+            // err: unsigned with minus sign
+            assert!(matches!(
+                lex_and_sanitize_from_str("-0b1@ulong"),
+                Err(Error::Message(_))
+            ));
+        }
     }
 }

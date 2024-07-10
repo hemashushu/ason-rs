@@ -14,13 +14,17 @@ use chrono::{DateTime, FixedOffset};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum NumberLiteral {
-    Byte(i8),
+    // it is possible for literal to overflow for signed numbers,
+    // such as `-128`, which consists of a negative/minus sign
+    // and the number `128`, which is out of range for `i8`, so
+    // define the literal using `u8`.
+    Byte(u8),
     UByte(u8),
-    Short(i16),
+    Short(u16),
     UShort(u16),
-    Int(i32),
+    Int(u32),
     UInt(u32),
-    Long(i64),
+    Long(u64),
     ULong(u64),
     Float(f32),
     Double(f64),

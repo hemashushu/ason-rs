@@ -161,7 +161,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: de::Visitor<'de>,
     {
         if let Some(Token::Number(NumberLiteral::Byte(v))) = self.vec.next() {
-            visitor.visit_i8(v)
+            visitor.visit_i8(v as i8)
         } else {
             Err(Error::Message("Expect \"i8\".".to_owned()))
         }
@@ -172,7 +172,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: de::Visitor<'de>,
     {
         if let Some(Token::Number(NumberLiteral::Short(v))) = self.vec.next() {
-            visitor.visit_i16(v)
+            visitor.visit_i16(v as i16)
         } else {
             Err(Error::Message("Expect \"i16\".".to_owned()))
         }
@@ -183,7 +183,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: de::Visitor<'de>,
     {
         if let Some(Token::Number(NumberLiteral::Int(v))) = self.vec.next() {
-            visitor.visit_i32(v)
+            visitor.visit_i32(v as i32)
         } else {
             Err(Error::Message("Expect \"i32\".".to_owned()))
         }
@@ -194,7 +194,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: de::Visitor<'de>,
     {
         if let Some(Token::Number(NumberLiteral::Long(v))) = self.vec.next() {
-            visitor.visit_i64(v)
+            visitor.visit_i64(v as i64)
         } else {
             Err(Error::Message("Expect \"i64\".".to_owned()))
         }
