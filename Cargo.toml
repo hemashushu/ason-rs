@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2021"
 
 license = "MPL-2.0"
-description = "A data format designed to be easy for humans to read and write."
+description = "ASON is a data format that evolved from JSON, introducing strong data typing and support for variant types."
 homepage = "https://hemashushu.github.io/works/ason"
 documentation = "https://hemashushu.github.io/works/ason"
 repository = "https://github.com/hemashushu/ason-rs"

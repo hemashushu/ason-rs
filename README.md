@@ -2,9 +2,9 @@
 
 _ASON_ is a data format that evolved from JSON, introducing strong data typing and support for variant types, all while prioritizing readability and maintainability.
 
-ASON is well-suited for application configuration files and data transmission.
+ASON is well-suited for application configuration files, data interchange, and data storage.
 
-> _ASON_ stands for _XiaoXuan Script Object Notation_
+(_ASON_ stands for _XiaoXuan Script Object Notation_)
 
 **Features**
 
@@ -14,7 +14,7 @@ ASON is well-suited for application configuration files and data transmission.
 
 - **Strong Data Typing:** ASON numbers can be explicitly typed (e.g., byte, int, long, double), and integers can be represented in hexdecimal and binary formats. Additionally, new data types such as `date`, `tuple`, `byte data`, `char` are introduced, enabling more precise and rigorous data representation.
 
-- **Native Variant Data Type Support, Eliminating Null Values:** ASON natively supports variant data types (also known as _algebraic types_, similar to enums in Rust). This enables seamless serialization of complex data structures from high-level programming languages. Importantly, it eliminates the error-prone `null` value.
+- **Native Variant Data Type Support, Eliminating the Null Value:** ASON natively supports variant data types (also known as _algebraic types_, similar to enums in Rust). This enables seamless serialization of complex data structures from high-level programming languages. Importantly, it eliminates the error-prone `null` value.
 
 **Table of Content**
 
@@ -23,14 +23,16 @@ ASON is well-suited for application configuration files and data transmission.
 <!-- code_chunk_output -->
 
 - [Example](#example)
-- [File Extension](#file-extension)
 - [Comparison](#comparison)
-  - [JSON](#json)
-  - [YAML and TOML](#yaml-and-toml)
-- [Rust library](#rust-library)
-  - [The base processor](#the-base-processor)
-  - [Serde](#serde)
-- [Utilities](#utilities)
+  - [Compared to JSON](#compared-to-json)
+  - [Compared to YAML and TOML](#compared-to-yaml-and-toml)
+- [File Extension](#file-extension)
+- [Library and APIs](#library-and-apis)
+  - [Installation](#installation)
+  - [Serialization and  Deserialization](#serialization-and--deserialization)
+  - [Support for Rust Data Types](#support-for-rust-data-types)
+  - [Parser and Writer](#parser-and-writer)
+  - [Utilities](#utilities)
 - [Documentation](#documentation)
 - [Source code](#source-code)
 - [License](#license)
@@ -46,9 +48,9 @@ The following is an example of ASON document:
     string: "hello world"
     raw_string: r"[a-z]+\d+"
     number: 123
-    number_with_explicit_data_type: 123_456_789@long
+    number_with_explicit_type: 123_456_789@long
     float: 3.14
-    double: 6.626_070_15e-34@double
+    double: 6.62607015e-34@double
     bool: true
     date: d"2023-03-24 12:30:00+08:00"
     variant: Option::None
@@ -62,124 +64,57 @@ The following is an example of ASON document:
 }
 ```
 
+## Comparison
+
+### Compared to JSON
+
+ASON is an improvement over JSON. Overall, ASON's syntax is simpler, more  consistent, and more expressive than JSON. Specifically:
+
+- Trailing commas can be omitted.
+- Double quotes for object keys are omitted.
+- Numeric data types are added.
+- Hexadecimal and binary representations of integers are added.
+- Hexadecimal representation of floating-point numbers are added.
+- Support for long strings, "raw strings", and "auto-trimmed strings" is added.
+- Support for line comments, block comments, and documentation comment is added.
+- The `Variant` data type is added, and the `null` value is removed.
+- New data types such as `Date`, `Tuple`, `Byte Data`, and `Char` are added.
+- Improvement: Strings are consistently represented using double quotes.
+- Improvement: `List` requires all elements to be of the same data type.
+- Improvement: A trailing comma is allowed at the end of the last element of `List`, `Tuple` and `Object`.
+
+### Compared to YAML and TOML
+
+When the data document contains a small amount of contect, all three formats are simple (ASON may have one more pair of braces) and can express the content well. Therefor, any of them can be used as the configuration file for an application or project.
+
+However, when the data document is large, YAML uses indentation to represent hierarchical relationships, so the number of space characters in the prefix needs to be carefully controlled, and it is easy to make mistakes when retreating multiple layers. TOML is not good at expressing hierarchical relationships and lists.
+
+ASON, on the other hand, has good consistency regardless of the size of the data document.
+
 ## File Extension
 
 The file extension for ASON document is `*.ason`. Filename example:
 
 `sample.ason`, `package.ason`
 
-## Comparison
+## Library and APIs
 
-### JSON
+The Rust library [ason](https://github.com/hemashushu/ason-rs) provides two set of APIs for accessing ASON: one based on [serde](https://github.com/serde-rs/serde) for serialization and deserialization, and the other which is named Parser and Writer for low-level access.
 
-The syntax of ASON is similar to the JSON, but there are a few significant differences:
+In general, it is recommended to use the serde API as it is simple enough to meet most needs.
 
-- Numbers can have explicit data types.
-- Floating-point numbers do not support values such as `Inf`, `-Inf`, `-0` and `NaN`.
-- Hexadecimal and binary numbers are supported.
-- The `null` value is not allowed, and is replaced by a new type called `Variant`.
-- Object keys do not support double quotes.
-- Strings do not support single quotes.
-- Arrays require all of their elements to be of the same data type.
-- Multiple formats of strings and comments are supported.
-- `Date`, `Tuple`, `Byte Data`, `Char` and `Variant` data types are added.
-- Trailing commas can be omitted.
-- A comma can be added to the end of the last element of an array, tuple, or object.
+### Installation
 
-### YAML and TOML
+Run the command `$ cargo add ason` in the directory of your Rust project to add the `ason` library to your project.
 
-TODO
+### Serialization and  Deserialization
 
-## Rust library
-
-Currently, only the Rust implementation of ASON serialization and deserialization library is provided.
-
-Run the command `cargo add ason` in your project directory to add the ASON library to your project.
-
-### The base processor
-
-This library provides two functions:
-
-- `fn parse(s: &str) -> Result<AsonNode, ParseError>` for deserialization;
-- `fn write(n: &AsonNode) -> String` for serialization.
-
-**Parser**
-
-Suppose you have the following ASON text, which may come from a file or from the internet:
-
-```json5
-{
-    id: 123
-    name: "foo"
-}
-```
-
-The following code shows how to parse this text into an ASON object and check the value of each member:
-
-```rust
-use ason::process::parser::from_str;
-
-let text = r#"{
-    id: 123
-    name: "foo"
-}"#;
-
-let node = from_str(text).unwrap();
-
-assert_eq!(
-    node,
-    AsonNode::Object(vec![
-        NameValuePair {
-            name: "id".to_owned(),
-            value: Box::new(AsonNode::Number(NumberLiteral::Int(123)))
-        },
-        NameValuePair {
-            name: "name".to_owned(),
-            value: Box::new(AsonNode::String_("foo".to_owned()))
-        },
-    ])
-);
-```
-
-**Writer**
-
-Suppose there is an object with two fields, their names and values are:
-
-- name: "foo"
-- version: "0.1.0"
-
-The following code demonstrates how to convert this object into ASON text:
-
-```rust
-use use ason::process::writer::to_string;
-
-let node = AsonNode::Object(vec![
-    NameValuePair {
-        name: "name".to_owned(),
-        value: Box::new(AsonNode::String_("foo".to_owned())),
-    },
-    NameValuePair {
-        name: "version".to_owned(),
-        value: Box::new(AsonNode::String_("0.1.0".to_owned())),
-    },
-]);
-
-let text = to_string(&node);
-
-assert_eq!(
-    text,
-    r#"{
-    name: "foo"
-    version: "0.1.0"
-}"#
-    );
-```
-
-The output text should be:
+Consider the following ASON document:
 
 ```json5
 {
     name: "foo"
+    type: Type::Application
     version: "0.1.0"
     dependencies: [
         {
@@ -194,31 +129,145 @@ The output text should be:
 }
 ```
 
-### Serde
+As you can see, this document consists of two types of objects: a top-level object with `name` and `type` fields, and another object in the form of a list that only contains `name` and `version` fields. We need to create Rust structs corresponding to these two objects. First, create a struct named "Dependency":
 
-**Deserialization**
+```rust
+#[derive(Serialize, Deserialize)]
+struct Dependency {
+    name: String,
+    version: Option<String>,
+}
+```
 
-> A fixed-length array is treated as tuple
+Note that this struct has a `derive` attribute, in which `Serialize` and `Deserialize` are traits provided by the serde serialization framework. Applying them to a struct or enum allows the struct or enum to be serialized and deserialized.
 
-struct
-unit enum
-new type enum
+Then create a struct named "Package":
 
-does not support:
+```rust
+#[derive(Serialize, Deserialize)]
+struct Package {
+    name: String,
+
+    #[serde(rename = "type")]
+    pkg_type: Type,
+
+    version: String,
+    dependencies: Vec<Dependency>,
+}
+```
+
+Since "type" is a keyword in the Rust language, the above struct uses "pkg_type" as the field name, and then uses the `#[serde(rename = "type")]` attribute to tell serde to serialize the field as "type". We also need to note that the value of this field is an enum, so we create an enum named "Type":
+
+```rust
+#[derive(Serialize, Deserialize)]
+enum Type {
+    Application,
+    Library,
+}
+```
+
+Note that if the value of an enum contains a struct, or if a struct contains another struct, it is recommended to wrap the num or struct in a `Box`, e.g.
+
+```rust
+struct Address {...}
+struct User {
+    name: String,
+    address: Box<Address>
+}
+```
+
+Now that the preparation is done, the following statements can be used to deserialize the ASON document into a Rust struct instance:
+
+```rust
+let text = "..."; // The ASON document text
+let package = ason::from_str::<Package>(text).unwrap();
+```
+
+the following statements can be used to serialize a Rust struct instance to a string:
+
+```rust
+let package = Package{...}; // Build Package instance
+let text = ason::to_string(&package);
+```
+
+### Support for Rust Data Types
+
+ASON natively supports most Rust data types, including tuples, enums and vectors. Since ASON is also strongly typed, both serialization and deserialization can ensure data accuracy. ASON is more compatible with Rust's type system than other data formats (such as JSON, YAML and TOML). The following is a list of supported Rust data types:
+
+- Signed and unsigned integers, from i8 to i64 and from u8 to u64
+- Floating point numbers, including f32 and f64
+- Bool
+- Char
+- String
+- Vec
+- Enum
+- Struct
+- Tuple
+
+However, for simplicity, some Rust data types are not supported, such as:
+
 - &str
-- &[u8]
-- unit/()
-- unit struct
-- new type struct
-- tuple struct
-- tuple enum
-- struct enum
+- &[...]
+- Unit (i.e. `()`)
+- Unit struct, such as `sturct Foo;`
+- New type struct, such as `struct Width(u32);`
+- Tuple struct, such as `struct RGB(u8, u8, u8);`
+- Tuple enum, such as `enum Number { Complex(f32, f32), ...}`
+- Struct enum, such as `enum Shape { Rect {width: u32, height: u32}, ...}`
 
-**Serialization**
+It is worth nothing that the [serde framework's data model](https://serde.rs/data-model.html) does not include the `DateTime` type, so ASON's `Date` cannot be directly serialized or deserialized to Rust's `chrono::DateTime`. If you serialize a `chrono::DateTime` type value directly, you will get a regular string. A workaround is to wrap the `chrono::DateTime` value as an `ason::Date` type. For more details, please refer to the 'test_serialize' unit test in `ason::serde::serde_date::tests` in the library source code.
 
-## Utilities
+In addition, serde treats fixed-length arrays such as `[i32; 4]` as tuples rather than vectors, so the array `[11, 13, 17, 19]` will be serialized as "(11, 13, 17, 19)".
 
-The Rust ASON library also provides a utility "ason" which can be used to read and validate, or format an ASON document.
+### Parser and Writer
+
+This is an low-level API provided by the `ason` library. The parser is used to parse an ASON document into an AST (Abstract Syntax Tree), and the writer is used to convert the AST into a string. They can be used to achieve purposes such as validating ASON document syntax and formatting.
+
+Consider the following ASON document:
+
+```json5
+{
+    id: 123
+    name: "foo"
+    orders: [11, 13]
+}
+```
+
+The following code demostrates using the parser to convert the above document to an AST, and then using the writer to convert the AST to a string:
+
+```rust
+let text = "..."; // The above ASON document text
+let node = ason::process::parser::from_str(text).unwrap();
+
+assert_eq!(
+    node,
+    AsonNode::Object(vec![
+        NameValuePair {
+            name: "id".to_owned(),
+            value: Box::new(AsonNode::Number(NumberLiteral::Int(123)))
+        },
+        NameValuePair {
+            name: "name".to_owned(),
+            value: Box::new(AsonNode::String_("foo".to_owned()))
+        },
+        NameValuePair {
+            name: "orders".to_owned(),
+            value: Box::new(AsonNode::Array(vec![
+                AsonNode::Number(NumberLiteral::Int(11)),
+                AsonNode::Number(NumberLiteral::Int(13))
+            ]))
+        }
+    ])
+);
+
+let s = ason::process:writer::to_string(&node);
+assert_eq!(text, s);
+
+```
+
+### Utilities
+
+The Rust `ason` library also provides a utility which can be used to read and validate, or format an ASON document.
 
 First install the utility with the following command:
 
@@ -238,7 +287,7 @@ For example:
 
 If the document "test.ason" has no errors, the program prints the formatted document to the terminal. The output can be redirected to a new file, e.g.:
 
-`$ ason test.ason > new.ason`
+`$ ason test.ason > test_formatted.ason`
 
 ## Documentation
 
