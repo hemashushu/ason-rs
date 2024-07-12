@@ -366,12 +366,14 @@ fn lex_identifier_or_keyword(iter: &mut LookaheadIter<char>) -> Result<Token, Er
 // 1.23e+4
 // 1.23e-4
 // -1.23e4
-// 123K         // with metric suffix
-// 123Mi        // with binary metric suffix, equivalent to `123MB`
-// 123m         // with fractional metric suffix
-// -123n        // with minus sign
-// 123u_f64  // with fractional metric suffix and number type name
-//
+
+// DEPRECATED 2024-07-24
+// // 123K         // with metric suffix
+// // 123Mi        // with binary metric suffix, equivalent to `123MB`
+// // 123m         // with fractional metric suffix
+// // -123n        // with minus sign
+// // 123u_f64  // with fractional metric suffix and number type name
+
 // hex numbers:
 //
 // 0xabcd
@@ -379,6 +381,7 @@ fn lex_identifier_or_keyword(iter: &mut LookaheadIter<char>) -> Result<Token, Er
 // 0xabcd_u32
 //
 // hex floating-point numbers:
+// refer: https://www.ibm.com/docs/en/i/7.5?topic=literals-hexadecimal-floating-point
 //
 // 0x1.23p4
 // 0x1.23p+4
@@ -433,12 +436,12 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // T = terminator chars
 
     let mut num_string = String::new();
-    let mut num_prefix: Option<char> = None; // K, M, G, m, n, u etc.
     let mut num_type: Option<NumberType> = None; // _ixx, _uxx, _fxx
-
     let mut found_point = false;
     let mut found_e = false;
-    let mut found_binary_prefix = false; // Ki, KB, Mi, MB etc.
+
+    // let mut num_prefix: Option<char> = None; // K, M, G, m, n, u etc.
+    // let mut found_binary_prefix = false; // Ki, KB, Mi, MB etc.
 
     // samples:
     //
@@ -485,23 +488,23 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
             'i' | 'u' | 'f' if num_type.is_none() && matches!(iter.peek(1), Some('0'..='9')) => {
                 num_type.replace(lex_number_type(iter)?);
             }
-            'E' | 'P' | 'T' | 'G' | 'M' | 'K' if num_prefix.is_none() => {
-                if iter.equals(1, &'i') || iter.equals(1, &'B') {
-                    // https://en.wikipedia.org/wiki/Binary_prefix
-                    found_binary_prefix = true;
-                    num_prefix.replace(*current_char);
-                    iter.next();
-                    iter.next();
-                } else {
-                    // https://en.wikipedia.org/wiki/Unit_prefix
-                    num_prefix.replace(*current_char);
-                    iter.next();
-                }
-            }
-            'm' | 'u' | 'n' | 'p' | 'f' | 'a' if num_prefix.is_none() => {
-                num_prefix.replace(*current_char);
-                iter.next();
-            }
+            // 'E' | 'P' | 'T' | 'G' | 'M' | 'K' if num_prefix.is_none() => {
+            //     if iter.equals(1, &'i') || iter.equals(1, &'B') {
+            //         // https://en.wikipedia.org/wiki/Binary_prefix
+            //         found_binary_prefix = true;
+            //         num_prefix.replace(*current_char);
+            //         iter.next();
+            //         iter.next();
+            //     } else {
+            //         // https://en.wikipedia.org/wiki/Unit_prefix
+            //         num_prefix.replace(*current_char);
+            //         iter.next();
+            //     }
+            // }
+            // 'm' | 'u' | 'n' | 'p' | 'f' | 'a' if num_prefix.is_none() => {
+            //     num_prefix.replace(*current_char);
+            //     iter.next();
+            // }
             ' ' | '\t' | '\r' | '\n' | '(' | ')' | '{' | '}' | '[' | ']' | ',' | ':' | '/'
             | '\'' | '"' => {
                 // terminator chars
@@ -533,98 +536,98 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 
     // convert to primitive numbers
 
-    let has_integer_unit_prefix = |p: Option<char>| -> bool {
-        if let Some(c) = p {
-            matches!(c, 'E' | 'P' | 'T' | 'G' | 'M' | 'K')
-        } else {
-            false
-        }
-    };
-
-    let has_fraction_unit_prefix = |p: Option<char>| -> bool {
-        if let Some(c) = p {
-            matches!(c, 'm' | 'u' | 'n' | 'p' | 'f' | 'a')
-        } else {
-            false
-        }
-    };
-
-    let get_integer_unit_prefix_value = |p: Option<char>| -> u64 {
-        if let Some(c) = p {
-            if found_binary_prefix {
-                match c {
-                    'E' => 2_u64.pow(60),
-                    'P' => 2_u64.pow(50),
-                    'T' => 2_u64.pow(40),
-                    'G' => 2_u64.pow(30),
-                    'M' => 2_u64.pow(20),
-                    'K' => 2_u64.pow(10),
-                    _ => unreachable!(),
-                }
-            } else {
-                match c {
-                    'E' => 10_u64.pow(18),
-                    'P' => 10_u64.pow(15),
-                    'T' => 10_u64.pow(12),
-                    'G' => 10_u64.pow(9),
-                    'M' => 10_u64.pow(6),
-                    'K' => 10_u64.pow(3),
-                    _ => unreachable!(),
-                }
-            }
-        } else {
-            unreachable!()
-        }
-    };
-
-    let get_fraction_unit_prefix_value = |p: Option<char>| -> f64 {
-        if let Some(c) = p {
-            match c {
-                'a' => 10_f64.powi(18),
-                'f' => 10_f64.powi(15),
-                'p' => 10_f64.powi(12),
-                'n' => 10_f64.powi(9),
-                'u' => 10_f64.powi(6),
-                'm' => 10_f64.powi(3),
-                _ => unreachable!(),
-            }
-        } else {
-            unreachable!()
-        }
-    };
+//     let has_integer_unit_prefix = |p: Option<char>| -> bool {
+//         if let Some(c) = p {
+//             matches!(c, 'E' | 'P' | 'T' | 'G' | 'M' | 'K')
+//         } else {
+//             false
+//         }
+//     };
+//
+//     let has_fraction_unit_prefix = |p: Option<char>| -> bool {
+//         if let Some(c) = p {
+//             matches!(c, 'm' | 'u' | 'n' | 'p' | 'f' | 'a')
+//         } else {
+//             false
+//         }
+//     };
+//
+//     let get_integer_unit_prefix_value = |p: Option<char>| -> u64 {
+//         if let Some(c) = p {
+//             if found_binary_prefix {
+//                 match c {
+//                     'E' => 2_u64.pow(60),
+//                     'P' => 2_u64.pow(50),
+//                     'T' => 2_u64.pow(40),
+//                     'G' => 2_u64.pow(30),
+//                     'M' => 2_u64.pow(20),
+//                     'K' => 2_u64.pow(10),
+//                     _ => unreachable!(),
+//                 }
+//             } else {
+//                 match c {
+//                     'E' => 10_u64.pow(18),
+//                     'P' => 10_u64.pow(15),
+//                     'T' => 10_u64.pow(12),
+//                     'G' => 10_u64.pow(9),
+//                     'M' => 10_u64.pow(6),
+//                     'K' => 10_u64.pow(3),
+//                     _ => unreachable!(),
+//                 }
+//             }
+//         } else {
+//             unreachable!()
+//         }
+//     };
+//
+//     let get_fraction_unit_prefix_value = |p: Option<char>| -> f64 {
+//         if let Some(c) = p {
+//             match c {
+//                 'a' => 10_f64.powi(18),
+//                 'f' => 10_f64.powi(15),
+//                 'p' => 10_f64.powi(12),
+//                 'n' => 10_f64.powi(9),
+//                 'u' => 10_f64.powi(6),
+//                 'm' => 10_f64.powi(3),
+//                 _ => unreachable!(),
+//             }
+//         } else {
+//             unreachable!()
+//         }
+//     };
 
     let num_token: Number;
 
     if let Some(nt) = num_type {
-        if has_integer_unit_prefix(num_prefix) {
-            match nt {
-                NumberType::I32 | NumberType::U32 | NumberType::I64 | NumberType::U64 => {
-                    // pass
-                }
-                _ => {
-                    return Err(Error::Message(format!(
-                        "Only i32, u32, i64 and u64 type numbers can add integer unit prefix, \
-                            the current number type is: {}",
-                        nt
-                    )));
-                }
-            }
-        }
-
-        if has_fraction_unit_prefix(num_prefix) {
-            match nt {
-                NumberType::F32 | NumberType::F64 => {
-                    // pass
-                }
-                _ => {
-                    return Err(Error::Message(format!(
-                        "Only f32 and f64 type numbers can add fraction metric prefix, \
-                        the current number type is: {}",
-                        nt
-                    )));
-                }
-            }
-        }
+        // if has_integer_unit_prefix(num_prefix) {
+        //     match nt {
+        //         NumberType::I32 | NumberType::U32 | NumberType::I64 | NumberType::U64 => {
+        //             // pass
+        //         }
+        //         _ => {
+        //             return Err(Error::Message(format!(
+        //                 "Only i32, u32, i64 and u64 type numbers can add integer unit prefix, \
+        //                     the current number type is: {}",
+        //                 nt
+        //             )));
+        //         }
+        //     }
+        // }
+        //
+        // if has_fraction_unit_prefix(num_prefix) {
+        //     match nt {
+        //         NumberType::F32 | NumberType::F64 => {
+        //             // pass
+        //         }
+        //         _ => {
+        //             return Err(Error::Message(format!(
+        //                 "Only f32 and f64 type numbers can add fraction metric prefix, \
+        //                 the current number type is: {}",
+        //                 nt
+        //             )));
+        //         }
+        //     }
+        // }
 
         match nt {
             NumberType::I8 => {
@@ -666,117 +669,118 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                 num_token = Number::U16(v);
             }
             NumberType::I32 => {
-                let mut v = num_string.parse::<u32>().map_err(|e| {
+                let v = num_string.parse::<u32>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to i32 integer number, error: {}",
                         num_string, e
                     ))
                 })?;
 
-                if has_integer_unit_prefix(num_prefix) {
-                    match num_prefix {
-                        Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-                            return Err(Error::Message(format!(
-                                "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
-                                num_prefix.unwrap()
-                            )));
-                        }
-                        _ => {
-                            // pass
-                        }
-                    }
-
-                    v = v
-                        .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
-                        .ok_or(Error::Message(format!(
-                            "Integer number is overflow: {}{}",
-                            num_string,
-                            num_prefix.unwrap()
-                        )))?;
-                }
+//                 if has_integer_unit_prefix(num_prefix) {
+//                     match num_prefix {
+//                         Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+//                             return Err(Error::Message(format!(
+//                                 "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
+//                                 num_prefix.unwrap()
+//                             )));
+//                         }
+//                         _ => {
+//                             // pass
+//                         }
+//                     }
+//
+//                     v = v
+//                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
+//                         .ok_or(Error::Message(format!(
+//                             "Integer number is overflow: {}{}",
+//                             num_string,
+//                             num_prefix.unwrap()
+//                         )))?;
+//                 }
 
                 num_token = Number::I32(v);
             }
             NumberType::U32 => {
-                let mut v = num_string.parse::<u32>().map_err(|e| {
+                let v = num_string.parse::<u32>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to u32 integer number, error: {}",
                         num_string, e
                     ))
                 })?;
 
-                if has_integer_unit_prefix(num_prefix) {
-                    match num_prefix {
-                        Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-                            return Err(Error::Message(format!(
-                                "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
-                                num_prefix.unwrap()
-                            )));
-                        }
-                        _ => {
-                            // pass
-                        }
-                    }
-
-                    v = v
-                        .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
-                        .ok_or(Error::Message(format!(
-                            "Integer number is overflow: {}{}",
-                            num_string,
-                            num_prefix.unwrap()
-                        )))?;
-                }
+//                 if has_integer_unit_prefix(num_prefix) {
+//                     match num_prefix {
+//                         Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+//                             return Err(Error::Message(format!(
+//                                 "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
+//                                 num_prefix.unwrap()
+//                             )));
+//                         }
+//                         _ => {
+//                             // pass
+//                         }
+//                     }
+//
+//                     v = v
+//                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
+//                         .ok_or(Error::Message(format!(
+//                             "Integer number is overflow: {}{}",
+//                             num_string,
+//                             num_prefix.unwrap()
+//                         )))?;
+//                 }
 
                 num_token = Number::U32(v);
             }
             NumberType::I64 => {
-                let mut v = num_string.parse::<u64>().map_err(|e| {
+                let v = num_string.parse::<u64>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to i64 integer number, error: {}",
                         num_string, e
                     ))
                 })?;
 
-                if has_integer_unit_prefix(num_prefix) {
-                    v = v
-                        .checked_mul(get_integer_unit_prefix_value(num_prefix))
-                        .ok_or(Error::Message(format!(
-                            "Integer number is overflow: {}{}",
-                            num_string,
-                            num_prefix.unwrap()
-                        )))?;
-                }
+                // if has_integer_unit_prefix(num_prefix) {
+                //     v = v
+                //         .checked_mul(get_integer_unit_prefix_value(num_prefix))
+                //         .ok_or(Error::Message(format!(
+                //             "Integer number is overflow: {}{}",
+                //             num_string,
+                //             num_prefix.unwrap()
+                //         )))?;
+                // }
 
                 num_token = Number::I64(v);
             }
             NumberType::U64 => {
-                let mut v = num_string.parse::<u64>().map_err(|e| {
+                let v = num_string.parse::<u64>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to u64 integer number, error: {}",
                         num_string, e
                     ))
                 })?;
 
-                if has_integer_unit_prefix(num_prefix) {
-                    v = v
-                        .checked_mul(get_integer_unit_prefix_value(num_prefix))
-                        .ok_or(Error::Message(format!(
-                            "Integer number is overflow: {}{}",
-                            num_string,
-                            num_prefix.unwrap()
-                        )))?;
-                }
+                // if has_integer_unit_prefix(num_prefix) {
+                //     v = v
+                //         .checked_mul(get_integer_unit_prefix_value(num_prefix))
+                //         .ok_or(Error::Message(format!(
+                //             "Integer number is overflow: {}{}",
+                //             num_string,
+                //             num_prefix.unwrap()
+                //         )))?;
+                // }
 
                 num_token = Number::U64(v);
             }
             NumberType::F32 => {
-                let mut v = num_string.parse::<f32>().map_err(|e| {
+                let v = num_string.parse::<f32>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to f32 floating-point number, error: {}",
                         num_string, e
                     ))
                 })?;
 
+                // overflow actually
                 if v.is_infinite() {
                     return Err(Error::Message(format!(
                         "F32 floating point number overflow: {}.",
@@ -784,27 +788,28 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                     )));
                 }
 
-                if v.is_nan() {
-                    return Err(Error::Message(format!(
-                        "Invalid f32 floating point number: {}.",
-                        num_string
-                    )));
-                }
-
-                if has_fraction_unit_prefix(num_prefix) {
-                    v /= get_fraction_unit_prefix_value(num_prefix) as f32;
-                }
+//                 if v.is_nan() {
+//                     return Err(Error::Message(format!(
+//                         "Invalid f32 floating point number: {}.",
+//                         num_string
+//                     )));
+//                 }
+//
+//                 if has_fraction_unit_prefix(num_prefix) {
+//                     v /= get_fraction_unit_prefix_value(num_prefix) as f32;
+//                 }
 
                 num_token = Number::F32(v);
             }
             NumberType::F64 => {
-                let mut v = num_string.parse::<f64>().map_err(|e| {
+                let v = num_string.parse::<f64>().map_err(|e| {
                     Error::Message(format!(
                         "Can not convert \"{}\" to f64 floating-point number, error: {}",
                         num_string, e
                     ))
                 })?;
 
+                // overflow actually
                 if v.is_infinite() {
                     return Err(Error::Message(format!(
                         "F64 floating point number overflow: {}.",
@@ -812,76 +817,76 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                     )));
                 }
 
-                if v.is_nan() {
-                    return Err(Error::Message(format!(
-                        "Invalid f64 floating point number: {}.",
-                        num_string
-                    )));
-                }
-
-                if has_fraction_unit_prefix(num_prefix) {
-                    v /= get_fraction_unit_prefix_value(num_prefix);
-                }
+//                 if v.is_nan() {
+//                     return Err(Error::Message(format!(
+//                         "Invalid f64 floating point number: {}.",
+//                         num_string
+//                     )));
+//                 }
+//
+//                 if has_fraction_unit_prefix(num_prefix) {
+//                     v /= get_fraction_unit_prefix_value(num_prefix);
+//                 }
 
                 num_token = Number::F64(v);
             }
         }
-    } else if has_integer_unit_prefix(num_prefix) {
-        // i32
-        let mut v = num_string.parse::<u32>().map_err(|e| {
-            Error::Message(format!(
-                "Can not convert \"{}\" to i32 integer number, error: {}",
-                num_string, e
-            ))
-        })?;
-
-        match num_prefix {
-            Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-                return Err(Error::Message(format!(
-                    "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
-                    num_prefix.unwrap()
-                )));
-            }
-            _ => {
-                // pass
-            }
-        }
-
-        v = v
-            .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
-            .ok_or(Error::Message(format!(
-                "Integer number is overflow: {}{}",
-                num_string,
-                num_prefix.unwrap()
-            )))?;
-
-        num_token = Number::I32(v);
-    } else if has_fraction_unit_prefix(num_prefix) {
-        // f64
-        let mut v = num_string.parse::<f64>().map_err(|e| {
-            Error::Message(format!(
-                "Can not convert \"{}\" to f64 floating-point number, error: {}",
-                num_string, e
-            ))
-        })?;
-
-        if v.is_infinite() {
-            return Err(Error::Message(format!(
-                "F64 floating point number overflow: {}.",
-                num_string
-            )));
-        }
-
-        if v.is_nan() {
-            return Err(Error::Message(format!(
-                "Invalid f64 floating point number: {}.",
-                num_string
-            )));
-        }
-
-        v /= get_fraction_unit_prefix_value(num_prefix);
-
-        num_token = Number::F64(v);
+//     } else if has_integer_unit_prefix(num_prefix) {
+//         // i32
+//         let mut v = num_string.parse::<u32>().map_err(|e| {
+//             Error::Message(format!(
+//                 "Can not convert \"{}\" to i32 integer number, error: {}",
+//                 num_string, e
+//             ))
+//         })?;
+//
+//         match num_prefix {
+//             Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+//                 return Err(Error::Message(format!(
+//                     "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
+//                     num_prefix.unwrap()
+//                 )));
+//             }
+//             _ => {
+//                 // pass
+//             }
+//         }
+//
+//         v = v
+//             .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
+//             .ok_or(Error::Message(format!(
+//                 "Integer number is overflow: {}{}",
+//                 num_string,
+//                 num_prefix.unwrap()
+//             )))?;
+//
+//         num_token = Number::I32(v);
+//     } else if has_fraction_unit_prefix(num_prefix) {
+//         // f64
+//         let mut v = num_string.parse::<f64>().map_err(|e| {
+//             Error::Message(format!(
+//                 "Can not convert \"{}\" to f64 floating-point number, error: {}",
+//                 num_string, e
+//             ))
+//         })?;
+//
+//         if v.is_infinite() {
+//             return Err(Error::Message(format!(
+//                 "F64 floating point number overflow: {}.",
+//                 num_string
+//             )));
+//         }
+//
+//         if v.is_nan() {
+//             return Err(Error::Message(format!(
+//                 "Invalid f64 floating point number: {}.",
+//                 num_string
+//             )));
+//         }
+//
+//         v /= get_fraction_unit_prefix_value(num_prefix);
+//
+//         num_token = Number::F64(v);
     } else if found_point || found_e {
         // the default floating-point number type is f64
         // f64
@@ -2597,195 +2602,195 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_lex_decimal_number_with_unit_prefix() {
-        // metric prefix
-        {
-            assert_eq!(
-                lex_from_str("1K").unwrap(),
-                vec![Token::Number(Number::I32(10_i32.pow(3) as u32))]
-            );
-
-            assert_eq!(
-                lex_from_str("1M").unwrap(),
-                vec![Token::Number(Number::I32(10_i32.pow(6) as u32))]
-            );
-
-            assert_eq!(
-                lex_from_str("1G").unwrap(),
-                vec![Token::Number(Number::I32(10_i32.pow(9) as u32))]
-            );
-        }
-
-        // both metric prefix and number type
-        {
-            assert_eq!(
-                lex_from_str("1K_i64").unwrap(),
-                vec![Token::Number(Number::I64(10_i64.pow(3) as u64))]
-            );
-
-            assert_eq!(
-                lex_from_str("1M_i64").unwrap(),
-                vec![Token::Number(Number::I64(10_i64.pow(6) as u64))]
-            );
-
-            assert_eq!(
-                lex_from_str("1G_i64").unwrap(),
-                vec![Token::Number(Number::I64(10_i64.pow(9) as u64))]
-            );
-
-            assert_eq!(
-                lex_from_str("1T_u64").unwrap(),
-                vec![Token::Number(Number::U64(10_u64.pow(12)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1P_u64").unwrap(),
-                vec![Token::Number(Number::U64(10_u64.pow(15)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1E_u64").unwrap(),
-                vec![Token::Number(Number::U64(10_u64.pow(18)))]
-            );
-        }
-
-        // binary unit prefix
-        {
-            assert_eq!(
-                lex_from_str("1Ki").unwrap(),
-                vec![Token::Number(Number::I32(2_i32.pow(10) as u32))]
-            );
-
-            assert_eq!(
-                lex_from_str("1Mi").unwrap(),
-                vec![Token::Number(Number::I32(2_i32.pow(20) as u32))]
-            );
-
-            assert_eq!(
-                lex_from_str("1Gi").unwrap(),
-                vec![Token::Number(Number::I32(2_i32.pow(30) as u32))]
-            );
-        }
-
-        // both binary prefix and number type
-        {
-            assert_eq!(
-                lex_from_str("1Ki_i64").unwrap(),
-                vec![Token::Number(Number::I64(2_i64.pow(10) as u64))]
-            );
-
-            assert_eq!(
-                lex_from_str("1Mi_i64").unwrap(),
-                vec![Token::Number(Number::I64(2_i64.pow(20) as u64))]
-            );
-
-            assert_eq!(
-                lex_from_str("1Gi_i64").unwrap(),
-                vec![Token::Number(Number::I64(2_i64.pow(30) as u64))]
-            );
-
-            assert_eq!(
-                lex_from_str("1Ti_u64").unwrap(),
-                vec![Token::Number(Number::U64(2_u64.pow(40)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1Pi_u64").unwrap(),
-                vec![Token::Number(Number::U64(2_u64.pow(50)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1Ei_u64").unwrap(),
-                vec![Token::Number(Number::U64(2_u64.pow(60)))]
-            );
-        }
-
-        // binary unit prefix alternative
-        {
-            assert_eq!(
-                lex_from_str("1KB").unwrap(),
-                vec![Token::Number(Number::I32(2_i32.pow(10) as u32))]
-            );
-
-            assert_eq!(
-                lex_from_str("1MB").unwrap(),
-                vec![Token::Number(Number::I32(2_i32.pow(20) as u32))]
-            );
-
-            assert_eq!(
-                lex_from_str("1GB").unwrap(),
-                vec![Token::Number(Number::I32(2_i32.pow(30) as u32))]
-            );
-        }
-
-        // fraction metric prefix
-        {
-            assert_eq!(
-                lex_from_str("1m").unwrap(),
-                vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(3)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1u").unwrap(),
-                vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(6)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1n").unwrap(),
-                vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(9)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1p").unwrap(),
-                vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(12)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1f").unwrap(),
-                vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(15)))]
-            );
-
-            assert_eq!(
-                lex_from_str("1a").unwrap(),
-                vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(18)))]
-            );
-        }
-
-        // both fraction metric prefix and number type
-        {
-            assert_eq!(
-                lex_from_str("1m_f32").unwrap(),
-                vec![Token::Number(Number::F32(0.001))]
-            );
-
-            assert_eq!(
-                lex_from_str("1m_f64").unwrap(),
-                vec![Token::Number(Number::F64(0.001))]
-            );
-        }
-
-        // err: invalid unit prefix
-        assert!(matches!(lex_from_str("1Z"), Err(Error::Message(_))));
-
-        // err: out of range
-        assert!(matches!(lex_from_str("8G"), Err(Error::Message(_))));
-
-        // err: out of range
-        assert!(matches!(lex_from_str("1T"), Err(Error::Message(_))));
-
-        // err: out of range
-        assert!(matches!(lex_from_str("1P"), Err(Error::Message(_))));
-
-        // err: out of range
-        assert!(matches!(lex_from_str("1E"), Err(Error::Message(_))));
-
-        // err: invalid type
-        assert!(matches!(lex_from_str("1K_i16"), Err(Error::Message(_))));
-
-        // err: invalid type
-        assert!(matches!(lex_from_str("1m_i32"), Err(Error::Message(_))));
-    }
+//     #[test]
+//     fn test_lex_decimal_number_with_unit_prefix() {
+//         // metric prefix
+//         {
+//             assert_eq!(
+//                 lex_from_str("1K").unwrap(),
+//                 vec![Token::Number(Number::I32(10_i32.pow(3) as u32))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1M").unwrap(),
+//                 vec![Token::Number(Number::I32(10_i32.pow(6) as u32))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1G").unwrap(),
+//                 vec![Token::Number(Number::I32(10_i32.pow(9) as u32))]
+//             );
+//         }
+//
+//         // both metric prefix and number type
+//         {
+//             assert_eq!(
+//                 lex_from_str("1K_i64").unwrap(),
+//                 vec![Token::Number(Number::I64(10_i64.pow(3) as u64))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1M_i64").unwrap(),
+//                 vec![Token::Number(Number::I64(10_i64.pow(6) as u64))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1G_i64").unwrap(),
+//                 vec![Token::Number(Number::I64(10_i64.pow(9) as u64))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1T_u64").unwrap(),
+//                 vec![Token::Number(Number::U64(10_u64.pow(12)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1P_u64").unwrap(),
+//                 vec![Token::Number(Number::U64(10_u64.pow(15)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1E_u64").unwrap(),
+//                 vec![Token::Number(Number::U64(10_u64.pow(18)))]
+//             );
+//         }
+//
+//         // binary unit prefix
+//         {
+//             assert_eq!(
+//                 lex_from_str("1Ki").unwrap(),
+//                 vec![Token::Number(Number::I32(2_i32.pow(10) as u32))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1Mi").unwrap(),
+//                 vec![Token::Number(Number::I32(2_i32.pow(20) as u32))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1Gi").unwrap(),
+//                 vec![Token::Number(Number::I32(2_i32.pow(30) as u32))]
+//             );
+//         }
+//
+//         // both binary prefix and number type
+//         {
+//             assert_eq!(
+//                 lex_from_str("1Ki_i64").unwrap(),
+//                 vec![Token::Number(Number::I64(2_i64.pow(10) as u64))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1Mi_i64").unwrap(),
+//                 vec![Token::Number(Number::I64(2_i64.pow(20) as u64))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1Gi_i64").unwrap(),
+//                 vec![Token::Number(Number::I64(2_i64.pow(30) as u64))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1Ti_u64").unwrap(),
+//                 vec![Token::Number(Number::U64(2_u64.pow(40)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1Pi_u64").unwrap(),
+//                 vec![Token::Number(Number::U64(2_u64.pow(50)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1Ei_u64").unwrap(),
+//                 vec![Token::Number(Number::U64(2_u64.pow(60)))]
+//             );
+//         }
+//
+//         // binary unit prefix alternative
+//         {
+//             assert_eq!(
+//                 lex_from_str("1KB").unwrap(),
+//                 vec![Token::Number(Number::I32(2_i32.pow(10) as u32))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1MB").unwrap(),
+//                 vec![Token::Number(Number::I32(2_i32.pow(20) as u32))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1GB").unwrap(),
+//                 vec![Token::Number(Number::I32(2_i32.pow(30) as u32))]
+//             );
+//         }
+//
+//         // fraction metric prefix
+//         {
+//             assert_eq!(
+//                 lex_from_str("1m").unwrap(),
+//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(3)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1u").unwrap(),
+//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(6)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1n").unwrap(),
+//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(9)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1p").unwrap(),
+//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(12)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1f").unwrap(),
+//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(15)))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1a").unwrap(),
+//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(18)))]
+//             );
+//         }
+//
+//         // both fraction metric prefix and number type
+//         {
+//             assert_eq!(
+//                 lex_from_str("1m_f32").unwrap(),
+//                 vec![Token::Number(Number::F32(0.001))]
+//             );
+//
+//             assert_eq!(
+//                 lex_from_str("1m_f64").unwrap(),
+//                 vec![Token::Number(Number::F64(0.001))]
+//             );
+//         }
+//
+//         // err: invalid unit prefix
+//         assert!(matches!(lex_from_str("1Z"), Err(Error::Message(_))));
+//
+//         // err: out of range
+//         assert!(matches!(lex_from_str("8G"), Err(Error::Message(_))));
+//
+//         // err: out of range
+//         assert!(matches!(lex_from_str("1T"), Err(Error::Message(_))));
+//
+//         // err: out of range
+//         assert!(matches!(lex_from_str("1P"), Err(Error::Message(_))));
+//
+//         // err: out of range
+//         assert!(matches!(lex_from_str("1E"), Err(Error::Message(_))));
+//
+//         // err: invalid type
+//         assert!(matches!(lex_from_str("1K_i16"), Err(Error::Message(_))));
+//
+//         // err: invalid type
+//         assert!(matches!(lex_from_str("1m_i32"), Err(Error::Message(_))));
+//     }
 
     #[test]
     fn test_lex_hex_number() {
@@ -2874,13 +2879,13 @@ mod tests {
             vec![Token::Number(Number::U64(0xffff_ffff_ffff_ffff_u64))]
         );
 
-        // it is not hex floating pointer number
+        // note: it is not hex floating pointer number
         assert_eq!(
             lex_from_str("0xaa_f32").unwrap(),
             vec![Token::Number(Number::I32(0xaaf32))]
         );
 
-        // it is not hex floating pointer number
+        // note: it is not hex floating pointer number
         assert_eq!(
             lex_from_str("0xbb_f64").unwrap(),
             vec![Token::Number(Number::I32(0xbbf64))]
