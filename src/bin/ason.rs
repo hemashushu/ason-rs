@@ -6,6 +6,10 @@
 
 use std::process;
 
+fn main() {
+}
+
+/*
 use ason::process::{parser::from_str, writer::to_string};
 
 fn main() {
@@ -56,3 +60,4 @@ fn main() {
     let text = to_string(&node);
     println!("{}", text);
 }
+ */

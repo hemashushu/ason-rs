@@ -6,38 +6,38 @@
 
 use chrono::{DateTime, FixedOffset};
 
-use super::{AsonNode, NameValuePair, NumberLiteral, VariantItem};
+use super::{AsonNode, KeyValuePair, Number, Variant};
 
 pub const INDENT_SPACES: &str = "    ";
 
-fn write_number(v: &NumberLiteral) -> String {
+fn write_number(v: &Number) -> String {
     match v {
-        NumberLiteral::Byte(v) => {
+        Number::I8(v) => {
             format!("{}@byte", *v as i8)
         }
-        NumberLiteral::UByte(v) => {
+        Number::U8(v) => {
             format!("{}@ubyte", v)
         }
-        NumberLiteral::Short(v) => {
+        Number::I16(v) => {
             format!("{}@short", *v as i16)
         }
-        NumberLiteral::UShort(v) => {
+        Number::U16(v) => {
             format!("{}@ushort", v)
         }
-        NumberLiteral::Int(v) => {
+        Number::I32(v) => {
             // default integer number type
             format!("{}", *v as i32)
         }
-        NumberLiteral::UInt(v) => {
+        Number::U32(v) => {
             format!("{}@uint", v)
         }
-        NumberLiteral::Long(v) => {
+        Number::I64(v) => {
             format!("{}@long", *v as i64)
         }
-        NumberLiteral::ULong(v) => {
+        Number::U64(v) => {
             format!("{}@ulong", v)
         }
-        NumberLiteral::Float(v) => {
+        Number::F32(v) => {
             // default floating-point number type
             let mut s = v.to_string();
             if !s.contains('.') {
@@ -45,7 +45,7 @@ fn write_number(v: &NumberLiteral) -> String {
             }
             s
         }
-        NumberLiteral::Double(v) => {
+        Number::F64(v) => {
             format!("{}@double", v)
         }
     }
@@ -109,7 +109,7 @@ fn write_date(v: &DateTime<FixedOffset>) -> String {
     format!("d\"{}\"", v.to_rfc3339())
 }
 
-fn write_variant(v: &VariantItem, level: usize) -> String {
+fn write_variant(v: &Variant, level: usize) -> String {
     if let Some(val) = &v.value {
         format!("{}({})", v.fullname, write_ason_node(val, level))
     } else {
@@ -155,13 +155,13 @@ fn write_tuple(v: &[AsonNode], level: usize) -> String {
     )
 }
 
-fn write_object(v: &[NameValuePair], level: usize) -> String {
-    let write_name_value_pair = |name_value_pair: &NameValuePair, current_level: usize| -> String {
+fn write_object(v: &[KeyValuePair], level: usize) -> String {
+    let write_name_value_pair = |name_value_pair: &KeyValuePair, current_level: usize| -> String {
         let leading_space = INDENT_SPACES.repeat(current_level);
         format!(
             "{}{}: {}",
             leading_space,
-            name_value_pair.name,
+            name_value_pair.key,
             write_ason_node(&name_value_pair.value, current_level)
         )
     };
@@ -180,13 +180,13 @@ fn write_object(v: &[NameValuePair], level: usize) -> String {
 fn write_ason_node(node: &AsonNode, level: usize) -> String {
     match node {
         AsonNode::Number(v) => write_number(v),
-        AsonNode::Boolean(v) => write_boolean(v),
+        AsonNode::Bool(v) => write_boolean(v),
         AsonNode::Char(v) => write_char(v),
         AsonNode::String_(v) => write_string(v),
         AsonNode::Date(v) => write_date(v),
         AsonNode::Variant(v) => write_variant(v, level),
         AsonNode::ByteData(v) => write_byte_data(v),
-        AsonNode::Array(v) => write_array(v, level),
+        AsonNode::List(v) => write_array(v, level),
         AsonNode::Tuple(v) => write_tuple(v, level),
         AsonNode::Object(v) => write_object(v, level),
     }

@@ -55,7 +55,7 @@ The following is an example of ASON document:
     date: d"2023-03-24 12:30:00+08:00"
     variant: Option::None
     variant_with_value: Option::Some(123)
-    array: [1, 2, 3]
+    list: [1, 2, 3]
     tuple: (1, "foo", true)
     object: {
         id: 456
@@ -199,6 +199,7 @@ ASON natively supports most Rust data types, including tuples, enums and vectors
 - Bool
 - Char
 - String
+- Array, such as `[i32; 4]`
 - Vec
 - Enum
 - Struct
@@ -208,6 +209,7 @@ However, for simplicity, some Rust data types are not supported, such as:
 
 - &str
 - &[...]
+- Octal representation of integers
 - Unit (i.e. `()`)
 - Unit struct, such as `sturct Foo;`
 - New type struct, such as `struct Width(u32);`

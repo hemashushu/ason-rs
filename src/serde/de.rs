@@ -12,7 +12,7 @@ use crate::{
     process::{
         lexer::{lex, normalize, Token},
         lookaheaditer::LookaheadIter,
-        NumberLiteral,
+        Number,
     },
 };
 
@@ -160,7 +160,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::Byte(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::I8(v))) = self.vec.next() {
             visitor.visit_i8(v as i8)
         } else {
             Err(Error::Message("Expect \"i8\".".to_owned()))
@@ -171,7 +171,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::Short(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::I16(v))) = self.vec.next() {
             visitor.visit_i16(v as i16)
         } else {
             Err(Error::Message("Expect \"i16\".".to_owned()))
@@ -182,7 +182,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::Int(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::I32(v))) = self.vec.next() {
             visitor.visit_i32(v as i32)
         } else {
             Err(Error::Message("Expect \"i32\".".to_owned()))
@@ -193,7 +193,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::Long(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::I64(v))) = self.vec.next() {
             visitor.visit_i64(v as i64)
         } else {
             Err(Error::Message("Expect \"i64\".".to_owned()))
@@ -204,7 +204,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::UByte(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::U8(v))) = self.vec.next() {
             visitor.visit_u8(v)
         } else {
             Err(Error::Message("Expect \"u8\".".to_owned()))
@@ -215,7 +215,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::UShort(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::U16(v))) = self.vec.next() {
             visitor.visit_u16(v)
         } else {
             Err(Error::Message("Expect \"u16\".".to_owned()))
@@ -226,7 +226,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::UInt(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::U32(v))) = self.vec.next() {
             visitor.visit_u32(v)
         } else {
             Err(Error::Message("Expect \"u32\".".to_owned()))
@@ -237,7 +237,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::ULong(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::U64(v))) = self.vec.next() {
             visitor.visit_u64(v)
         } else {
             Err(Error::Message("Expect \"u64\".".to_owned()))
@@ -248,7 +248,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::Float(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::F32(v))) = self.vec.next() {
             visitor.visit_f32(v)
         } else {
             Err(Error::Message("Expect \"f32\".".to_owned()))
@@ -259,7 +259,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberLiteral::Double(v))) = self.vec.next() {
+        if let Some(Token::Number(Number::F64(v))) = self.vec.next() {
             visitor.visit_f64(v)
         } else {
             Err(Error::Message("Expect \"f64\".".to_owned()))

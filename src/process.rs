@@ -6,67 +6,73 @@
 
 pub mod lexer;
 pub mod lookaheaditer;
-// pub mod lookaheadvec;
-pub mod parser;
-pub mod writer;
+// pub mod parser;
+// pub mod writer;
 
 use chrono::{DateTime, FixedOffset};
 
+// Number literal
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum NumberLiteral {
+pub enum Number {
     // it is possible for literal to overflow for signed numbers,
     // such as `-128`, which consists of a negative/minus sign
     // and the number `128`, which is out of range for `i8`, so
     // define the literal using `u8`.
-    Byte(u8),
-    UByte(u8),
-    Short(u16),
-    UShort(u16),
-    Int(u32),
-    UInt(u32),
-    Long(u64),
-    ULong(u64),
-    Float(f32),
-    Double(f64),
+    I8(u8),
+    U8(u8),
+    I16(u16),
+    U16(u16),
+    I32(u32),
+    U32(u32),
+    I64(u64),
+    U64(u64),
+    F32(f32),
+    F64(f64),
 }
 
 #[derive(Debug, PartialEq)]
-pub struct NameValuePair {
-    pub name: String,
+pub struct KeyValuePair {
+    pub key: String,
     pub value: Box<AsonNode>,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct VariantItem {
-    // the variant item full name, which includes the variant name and the member name, e.g.
+pub struct Variant {
+    // the variant item full name, which includes
+    // the variant type name and the variant member name, e.g.
     // - "Option::None"
     // - "Option::Some"
-    pub fullname: String,
+    // pub fullname: String,
+
+    pub type_name: String,
+    pub member_name: String,
 
     // set to `None` when the variant item has no value, e.g. Option::None
-    pub value: Option<Box<AsonNode>>,
+    // pub value: Option<Box<AsonNode>>,
+    pub values: Vec<AsonNode>
 }
 
 #[derive(Debug, PartialEq)]
 pub enum AsonNode {
-    Number(NumberLiteral),
-    Boolean(bool),
+    Number(Number),
+    Bool(bool),
     Char(char),
     String_(String),
     Date(DateTime<FixedOffset>),
-    Variant(VariantItem),
+    Variant(Variant),
     ByteData(Vec<u8>),
-    Array(Vec<AsonNode>),
+    List(Vec<AsonNode>),
     Tuple(Vec<AsonNode>),
-    Object(Vec<NameValuePair>),
+    Object(Vec<KeyValuePair>),
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::process::{
-        parser::from_str, writer::to_string, AsonNode, NameValuePair, NumberLiteral, VariantItem,
+        parser::from_str, writer::to_string, AsonNode, KeyValuePair, Number, Variant,
     };
 
     #[test]
@@ -82,19 +88,19 @@ mod tests {
         assert_eq!(
             node,
             AsonNode::Object(vec![
-                NameValuePair {
-                    name: "id".to_owned(),
-                    value: Box::new(AsonNode::Number(NumberLiteral::Int(123)))
+                KeyValuePair {
+                    key: "id".to_owned(),
+                    value: Box::new(AsonNode::Number(Number::I32(123)))
                 },
-                NameValuePair {
-                    name: "name".to_owned(),
+                KeyValuePair {
+                    key: "name".to_owned(),
                     value: Box::new(AsonNode::String_("foo".to_owned()))
                 },
-                NameValuePair {
-                    name: "orders".to_owned(),
-                    value: Box::new(AsonNode::Array(vec![
-                        AsonNode::Number(NumberLiteral::Int(11)),
-                        AsonNode::Number(NumberLiteral::Int(13))
+                KeyValuePair {
+                    key: "orders".to_owned(),
+                    value: Box::new(AsonNode::List(vec![
+                        AsonNode::Number(Number::I32(11)),
+                        AsonNode::Number(Number::I32(13))
                     ]))
                 }
             ])
@@ -104,45 +110,45 @@ mod tests {
     #[test]
     fn test_write() {
         let node = AsonNode::Object(vec![
-            NameValuePair {
-                name: "name".to_owned(),
+            KeyValuePair {
+                key: "name".to_owned(),
                 value: Box::new(AsonNode::String_("foo".to_owned())),
             },
-            NameValuePair {
-                name: "type".to_owned(),
-                value: Box::new(AsonNode::Variant(VariantItem {
+            KeyValuePair {
+                key: "type".to_owned(),
+                value: Box::new(AsonNode::Variant(Variant {
                     fullname: "Type::Application".to_owned(),
                     value: None,
                 })),
             },
-            NameValuePair {
-                name: "version".to_owned(),
+            KeyValuePair {
+                key: "version".to_owned(),
                 value: Box::new(AsonNode::String_("0.1.0".to_owned())),
             },
-            NameValuePair {
-                name: "dependencies".to_owned(),
-                value: Box::new(AsonNode::Array(vec![
+            KeyValuePair {
+                key: "dependencies".to_owned(),
+                value: Box::new(AsonNode::List(vec![
                     AsonNode::Object(vec![
-                        NameValuePair {
-                            name: "name".to_owned(),
+                        KeyValuePair {
+                            key: "name".to_owned(),
                             value: Box::new(AsonNode::String_("random".to_owned())),
                         },
-                        NameValuePair {
-                            name: "version".to_owned(),
-                            value: Box::new(AsonNode::Variant(VariantItem {
+                        KeyValuePair {
+                            key: "version".to_owned(),
+                            value: Box::new(AsonNode::Variant(Variant {
                                 fullname: "Option::None".to_owned(),
                                 value: None,
                             })),
                         },
                     ]),
                     AsonNode::Object(vec![
-                        NameValuePair {
-                            name: "name".to_owned(),
+                        KeyValuePair {
+                            key: "name".to_owned(),
                             value: Box::new(AsonNode::String_("regex".to_owned())),
                         },
-                        NameValuePair {
-                            name: "version".to_owned(),
-                            value: Box::new(AsonNode::Variant(VariantItem {
+                        KeyValuePair {
+                            key: "version".to_owned(),
+                            value: Box::new(AsonNode::Variant(Variant {
                                 fullname: "Option::Some".to_owned(),
                                 value: Some(Box::new(AsonNode::String_("1.0.1".to_owned()))),
                             })),
@@ -406,3 +412,4 @@ mod tests {
         );
     }
 }
+*/
