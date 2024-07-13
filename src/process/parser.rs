@@ -12,20 +12,17 @@ use super::{
     AsonNode, KeyValuePair, Variant,
 };
 
-pub fn from_str(s: &str) -> Result<AsonNode, Error> {
+pub fn parse(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
     let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
-    let effective_tokens = normalize(tokens)?;
-    let mut token_iter = effective_tokens.into_iter();
+    let normalized_tokens = normalize(tokens)?;
+    let mut token_iter = normalized_tokens.into_iter();
     let mut lookahead_iter = LookaheadIter::new(&mut token_iter, 2);
-    parse(&mut lookahead_iter)
-}
 
-pub fn parse(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
-    let root = parse_node(iter)?;
+    let root = parse_node(&mut lookahead_iter)?;
 
-    if iter.peek(0).is_some() {
+    if lookahead_iter.peek(0).is_some() {
         return Err(Error::Message(
             "The ASON document does not end properly.".to_owned(),
         ));
@@ -48,7 +45,7 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
                 v
             }
             Token::Boolean(b) => {
-                let v = AsonNode::Bool(*b);
+                let v = AsonNode::Boolean(*b);
                 iter.next();
                 v
             }
@@ -67,14 +64,16 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
                 iter.next();
                 v
             }
-            Token::Variant(v) => {
+            Token::Variant(type_name, member_name) => {
                 if iter.equals(1, &Token::LeftParen) {
-                    parse_variant_item(iter)?
+                    // tuple variant (includes the new type variant)
+                    parse_tuple_variant(iter)?
+                } else if iter.equals(1, &Token::LeftBrace) {
+                    // struct variant
+                    parse_struct_variant(iter)?
                 } else {
-                    let v = AsonNode::Variant(Variant {
-                        fullname: v.to_owned(),
-                        value: None,
-                    });
+                    // unit variant
+                    let v = AsonNode::Variant(Variant::new(type_name, member_name));
                     iter.next();
                     v
                 }
@@ -105,48 +104,83 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     Err(Error::Message("Incomplete ASON document.".to_owned()))
 }
 
-fn parse_variant_item(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
-    // name(...)?  //
-    // ^        ^__// to here
-    // |-----------// current token
+fn parse_tuple_variant(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+    // type::member(...)?  //
+    // ^                ^__// to here
+    // |-------------------// current token
 
-    let name = if let Some(Token::Variant(n)) = iter.peek(0) {
-        let v = n.to_owned();
-        iter.next();
-        v
-    } else {
-        unreachable!()
-    };
+    let (type_name, member_name) =
+        if let Some(Token::Variant(type_name, member_name)) = iter.peek(0) {
+            let v = (type_name.to_owned(), member_name.to_owned());
+            iter.next();
+            v
+        } else {
+            unreachable!()
+        };
 
     consume_left_paren(iter)?;
     consume_new_line_when_exist(iter);
 
+    let mut values = vec![];
+
     let value = parse_node(iter)?;
-    let variant_item = Variant {
-        fullname: name,
-        value: Some(Box::new(value)),
-    };
+    values.push(value);
 
     consume_new_line_when_exist(iter);
+
+    while !iter.equals(0, &Token::RightParen) {
+        let value = parse_node(iter)?;
+        values.push(value);
+        consume_new_line_when_exist(iter);
+    }
+
+    let variant_item = if values.len() == 1 {
+        Variant::with_value(&type_name, &member_name, values.remove(0))
+    } else {
+        Variant::with_values(&type_name, &member_name, values)
+    };
+
     consume_right_paren(iter)?;
 
     Ok(AsonNode::Variant(variant_item))
 }
 
-fn parse_object(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+fn parse_struct_variant(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+    // type::member{...}?  //
+    // ^                ^__// to here
+    // |-------------------// current token
+
+    let (type_name, member_name) =
+        if let Some(Token::Variant(type_name, member_name)) = iter.peek(0) {
+            let v = (type_name.to_owned(), member_name.to_owned());
+            iter.next();
+            v
+        } else {
+            unreachable!()
+        };
+
+    let kvps = parse_key_value_pairs(iter)?;
+
+    Ok(AsonNode::Variant(Variant::with_object(
+        &type_name,
+        &member_name,
+        kvps,
+    )))
+}
+
+fn parse_key_value_pairs(iter: &mut LookaheadIter<Token>) -> Result<Vec<KeyValuePair>, Error> {
     // {...}?  //
     // ^    ^__// to here
     // |-------// current char
 
     iter.next(); // consume '{'
 
-    let mut entries: Vec<KeyValuePair> = vec![];
+    let mut kvps: Vec<KeyValuePair> = vec![];
 
     loop {
         consume_new_line_when_exist(iter);
 
         if iter.equals(0, &Token::RightBrace) {
-            iter.next(); // consume '}'
             break;
         }
 
@@ -169,10 +203,17 @@ fn parse_object(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
             key: name,
             value: Box::new(value),
         };
-        entries.push(name_value_pair);
+        kvps.push(name_value_pair);
     }
 
-    Ok(AsonNode::Object(entries))
+    iter.next(); // consume '}'
+
+    Ok(kvps)
+}
+
+fn parse_object(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+    let kvps = parse_key_value_pairs(iter)?;
+    Ok(AsonNode::Object(kvps))
 }
 
 fn parse_array(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
@@ -266,7 +307,7 @@ mod tests {
 
     use crate::{
         error::Error,
-        process::{parser::from_str, KeyValuePair, Number, Variant},
+        process::{parser::parse, KeyValuePair, Number, Variant},
     };
 
     use super::AsonNode;
@@ -274,7 +315,7 @@ mod tests {
     #[test]
     fn test_parse_simple_value() {
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             123
             "#
@@ -284,17 +325,17 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             true
             "#
             )
             .unwrap(),
-            AsonNode::Bool(true)
+            AsonNode::Boolean(true)
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             '🍒'
             "#
@@ -304,7 +345,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             "hello"
             "#
@@ -314,7 +355,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             d"2024-03-17 10:01:11+08:00"
             "#
@@ -322,42 +363,84 @@ mod tests {
             .unwrap(),
             AsonNode::Date(DateTime::parse_from_rfc3339("2024-03-17 10:01:11+08:00").unwrap())
         );
+    }
 
-        // variant
+    #[test]
+    fn test_parse_byte_data() {
         assert_eq!(
-            from_str(
-                r#"
-            Option::None
-            "#
-            )
-            .unwrap(),
-            AsonNode::Variant(Variant {
-                fullname: "Option::None".to_owned(),
-                value: None
-            })
-        );
-
-        assert_eq!(
-            from_str(
-                r#"
-            Option::Some(123)
-            "#
-            )
-            .unwrap(),
-            AsonNode::Variant(Variant {
-                fullname: "Option::Some".to_owned(),
-                value: Some(Box::new(AsonNode::Number(Number::I32(123)))),
-            })
-        );
-
-        assert_eq!(
-            from_str(
+            parse(
                 r#"
             h"11:13:17:19"
             "#
             )
             .unwrap(),
             AsonNode::ByteData(vec![0x11u8, 0x13, 0x17, 0x19])
+        );
+    }
+
+    #[test]
+    fn test_parse_variant() {
+        // empty value
+        assert_eq!(
+            parse(
+                r#"
+            Option::None
+            "#
+            )
+            .unwrap(),
+            AsonNode::Variant(Variant::new("Option", "None"))
+        );
+
+        // single value
+        assert_eq!(
+            parse(
+                r#"
+            Option::Some(123)
+            "#
+            )
+            .unwrap(),
+            AsonNode::Variant(Variant::with_value(
+                "Option",
+                "Some",
+                AsonNode::Number(Number::I32(123))
+            ))
+        );
+
+        // multiple values
+        assert_eq!(
+            parse(
+                r#"
+            Color::RGB(100,75,0)
+            "#
+            )
+            .unwrap(),
+            AsonNode::Variant(Variant::with_values(
+                "Color",
+                "RGB",
+                vec![
+                    AsonNode::Number(Number::I32(100)),
+                    AsonNode::Number(Number::I32(75)),
+                    AsonNode::Number(Number::I32(0)),
+                ]
+            ))
+        );
+
+        // object value
+        assert_eq!(
+            parse(
+                r#"
+            Shape::Rect{width:123, height:456}
+            "#
+            )
+            .unwrap(),
+            AsonNode::Variant(Variant::with_object(
+                "Shape",
+                "Rect",
+                vec![
+                    KeyValuePair::new("width", AsonNode::Number(Number::I32(123))),
+                    KeyValuePair::new("height", AsonNode::Number(Number::I32(456))),
+                ]
+            ))
         );
     }
 
@@ -375,7 +458,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             {id:123,name:"foo"}
             "#
@@ -385,7 +468,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             {
                 id:123
@@ -398,7 +481,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             {
                 id:123,
@@ -411,7 +494,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             {
                 id: 123,
@@ -424,7 +507,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             {
                 id: 123
@@ -443,29 +526,27 @@ mod tests {
                 },
                 KeyValuePair {
                     key: "addr".to_owned(),
-                    value: Box::new(AsonNode::Variant(Variant {
-                        fullname: "Option::Some".to_owned(),
-                        value: Some(Box::new(AsonNode::Object(vec![
+                    value: Box::new(AsonNode::Variant(Variant::with_value(
+                        "Option",
+                        "Some",
+                        AsonNode::Object(vec![
                             KeyValuePair {
                                 key: "city".to_owned(),
                                 value: Box::new(AsonNode::String_("ShenZhen".to_owned())),
                             },
                             KeyValuePair {
                                 key: "street".to_owned(),
-                                value: Box::new(AsonNode::Variant(Variant {
-                                    fullname: "Option::None".to_owned(),
-                                    value: None,
-                                })),
+                                value: Box::new(AsonNode::Variant(Variant::new("Option", "None"))),
                             },
-                        ]))),
-                    })),
+                        ])
+                    ))),
                 },
             ])
         );
 
         // err: key name with quote
         assert!(matches!(
-            from_str(
+            parse(
                 r#"
             {
                 "id": 123,
@@ -478,25 +559,25 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_array() {
-        let expect_array1 = AsonNode::List(vec![
+    fn test_parse_list() {
+        let expect_list1 = AsonNode::List(vec![
             AsonNode::Number(Number::I32(123)),
             AsonNode::Number(Number::I32(456)),
             AsonNode::Number(Number::I32(789)),
         ]);
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             [123,456,789]
             "#
             )
             .unwrap(),
-            expect_array1
+            expect_list1
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             [
                 123
@@ -506,11 +587,11 @@ mod tests {
             "#
             )
             .unwrap(),
-            expect_array1
+            expect_list1
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             [
                 123,
@@ -520,11 +601,11 @@ mod tests {
             "#
             )
             .unwrap(),
-            expect_array1
+            expect_list1
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             [
                 123,
@@ -534,7 +615,7 @@ mod tests {
             "#
             )
             .unwrap(),
-            expect_array1
+            expect_list1
         );
     }
 
@@ -543,11 +624,11 @@ mod tests {
         let expect_tuple1 = AsonNode::Tuple(vec![
             AsonNode::Number(Number::I32(123)),
             AsonNode::String_("foo".to_owned()),
-            AsonNode::Bool(true),
+            AsonNode::Boolean(true),
         ]);
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             (123,"foo",true)
             "#
@@ -557,7 +638,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             (
                 123
@@ -571,7 +652,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             (
                 123,
@@ -585,7 +666,7 @@ mod tests {
         );
 
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             (
                 123,
@@ -600,9 +681,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_complex() {
+    fn test_parse_compound() {
         assert_eq!(
-            from_str(
+            parse(
                 r#"
             {
                 id:123
@@ -637,12 +718,12 @@ mod tests {
                         AsonNode::Tuple(vec![
                             AsonNode::Number(Number::I32(1)),
                             AsonNode::String_("foo".to_owned()),
-                            AsonNode::Bool(true),
+                            AsonNode::Boolean(true),
                         ]),
                         AsonNode::Tuple(vec![
                             AsonNode::Number(Number::I32(2)),
                             AsonNode::String_("bar".to_owned()),
-                            AsonNode::Bool(false),
+                            AsonNode::Boolean(false),
                         ]),
                     ])),
                 },
@@ -651,7 +732,7 @@ mod tests {
                     value: Box::new(AsonNode::Object(vec![
                         KeyValuePair {
                             key: "active".to_owned(),
-                            value: Box::new(AsonNode::Bool(true)),
+                            value: Box::new(AsonNode::Boolean(true)),
                         },
                         KeyValuePair {
                             key: "permissions".to_owned(),
@@ -683,9 +764,9 @@ mod tests {
             ])
         );
 
-        // err: does not end properly
+        // err: document does not end properly
         assert!(matches!(
-            from_str(
+            parse(
                 r#"
                 {id: 123, name: "foo"} true
                 "#

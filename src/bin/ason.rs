@@ -6,11 +6,7 @@
 
 use std::process;
 
-fn main() {
-}
-
-/*
-use ason::process::{parser::from_str, writer::to_string};
+use ason::{parse, write};
 
 fn main() {
     let mut args = std::env::args();
@@ -46,7 +42,7 @@ fn main() {
         }
     };
 
-    let node = match from_str(&source) {
+    let node = match parse(&source) {
         Ok(n) => n,
         Err(e) => {
             eprintln!(
@@ -57,7 +53,6 @@ fn main() {
         }
     };
 
-    let text = to_string(&node);
+    let text = write(&node);
     println!("{}", text);
 }
- */

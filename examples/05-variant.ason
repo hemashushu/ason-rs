@@ -1,0 +1,15 @@
+// variants
+{
+    variant_without_value: Option::None
+    variant_single_value: Option::Some(123)
+    variant_multiple_values: Color::RGB(255, 127, 63)
+    variant_object: Shape::Rect{
+        width: 200
+        height: 100
+    }
+
+    // variants with single compound value
+    variant_single_value: Option::Some((11, 13))
+    variant_single_value: Option::Some([17, 19, 23, 29])
+    variant_single_value: Option::Some({id: 123, name: "foo"})
+}

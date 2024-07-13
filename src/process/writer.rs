@@ -13,40 +13,40 @@ pub const INDENT_SPACES: &str = "    ";
 fn write_number(v: &Number) -> String {
     match v {
         Number::I8(v) => {
-            format!("{}@byte", *v as i8)
+            format!("{}_i8", *v as i8)
         }
         Number::U8(v) => {
-            format!("{}@ubyte", v)
+            format!("{}_u8", v)
         }
         Number::I16(v) => {
-            format!("{}@short", *v as i16)
+            format!("{}_i16", *v as i16)
         }
         Number::U16(v) => {
-            format!("{}@ushort", v)
+            format!("{}_u16", v)
         }
         Number::I32(v) => {
             // default integer number type
             format!("{}", *v as i32)
         }
         Number::U32(v) => {
-            format!("{}@uint", v)
+            format!("{}_u32", v)
         }
         Number::I64(v) => {
-            format!("{}@long", *v as i64)
+            format!("{}_i64", *v as i64)
         }
         Number::U64(v) => {
-            format!("{}@ulong", v)
+            format!("{}_u64", v)
         }
         Number::F32(v) => {
+            format!("{}_f32", v)
+        }
+        Number::F64(v) => {
             // default floating-point number type
             let mut s = v.to_string();
             if !s.contains('.') {
                 s.push_str(".0");
             }
             s
-        }
-        Number::F64(v) => {
-            format!("{}@double", v)
         }
     }
 }
@@ -110,10 +110,32 @@ fn write_date(v: &DateTime<FixedOffset>) -> String {
 }
 
 fn write_variant(v: &Variant, level: usize) -> String {
-    if let Some(val) = &v.value {
-        format!("{}({})", v.fullname, write_ason_node(val, level))
-    } else {
-        v.fullname.to_owned()
+    let (type_name, member_name, value) = (&v.type_name, &v.member_name, &v.value);
+
+    match value {
+        super::VariantValue::Empty => format!("{}::{}", type_name, member_name),
+        super::VariantValue::Single(v) => format!(
+            "{}::{}({})",
+            type_name,
+            member_name,
+            write_ason_node(v, level)
+        ),
+        super::VariantValue::Multiple(v) => {
+            let s = v
+                .iter()
+                .map(|node| write_ason_node(node, level))
+                .collect::<Vec<String>>()
+                .join(", ");
+            format!("{}::{}({})", type_name, member_name, s)
+        }
+        super::VariantValue::Object(kvps) => {
+            format!(
+                "{}::{}{}",
+                type_name,
+                member_name,
+                write_object(kvps, level)
+            )
+        }
     }
 }
 
@@ -127,7 +149,7 @@ fn write_byte_data(v: &[u8]) -> String {
     )
 }
 
-fn write_array(v: &[AsonNode], level: usize) -> String {
+fn write_list(v: &[AsonNode], level: usize) -> String {
     let leading_space = INDENT_SPACES.repeat(level);
     let sub_level = level + 1;
     let element_leading_space = INDENT_SPACES.repeat(sub_level);
@@ -180,23 +202,19 @@ fn write_object(v: &[KeyValuePair], level: usize) -> String {
 fn write_ason_node(node: &AsonNode, level: usize) -> String {
     match node {
         AsonNode::Number(v) => write_number(v),
-        AsonNode::Bool(v) => write_boolean(v),
+        AsonNode::Boolean(v) => write_boolean(v),
         AsonNode::Char(v) => write_char(v),
         AsonNode::String_(v) => write_string(v),
         AsonNode::Date(v) => write_date(v),
         AsonNode::Variant(v) => write_variant(v, level),
         AsonNode::ByteData(v) => write_byte_data(v),
-        AsonNode::List(v) => write_array(v, level),
+        AsonNode::List(v) => write_list(v, level),
         AsonNode::Tuple(v) => write_tuple(v, level),
         AsonNode::Object(v) => write_object(v, level),
     }
 }
 
-// pub fn write(node: &AsonNode) -> String {
-//     write_ason_node(node, 0)
-// }
-
-pub fn to_string(node: &AsonNode) -> String {
+pub fn write(node: &AsonNode) -> String {
     write_ason_node(node, 0)
 }
 
@@ -205,19 +223,19 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    use crate::process::parser::from_str;
+    use crate::process::parser::parse;
 
-    use super::to_string;
+    use super::write;
 
-    fn format_ason_document(s: &str) -> String {
-        let node = from_str(s).unwrap();
-        to_string(&node)
+    fn format(s: &str) -> String {
+        let node = parse(s).unwrap();
+        write(&node)
     }
 
     #[test]
     fn test_format_simple_value() {
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             123
             "#
@@ -226,7 +244,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             1.23
             "#
@@ -235,16 +253,25 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
-            123@float
+            123f64
             "#
             ),
             "123.0"
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
+                r#"
+            123f32
+            "#
+            ),
+            "123_f32"
+        );
+
+        assert_eq!(
+            format(
                 r#"
             true
             "#
@@ -253,7 +280,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             '🍒'
             "#
@@ -262,7 +289,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             '\n'
             "#
@@ -271,7 +298,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             "hello\"world"
             "#
@@ -280,34 +307,19 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             d"2024-03-17 10:01:11+08:00"
             "#
             ),
             "d\"2024-03-17T10:01:11+08:00\""
         );
+    }
 
+    #[test]
+    fn test_format_byte_data() {
         assert_eq!(
-            format_ason_document(
-                r#"
-                    Option::None
-                    "#
-            ),
-            "Option::None"
-        );
-
-        assert_eq!(
-            format_ason_document(
-                r#"
-                    Option::Some(123)
-                    "#
-            ),
-            "Option::Some(123)"
-        );
-
-        assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             h"11:13:17:19"
             "#
@@ -319,7 +331,7 @@ mod tests {
     #[test]
     fn test_format_object() {
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             {id:123,name:"foo"}
             "#
@@ -331,7 +343,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             {id:123,name:{first:"foo", last:"bar"}}
             "#
@@ -346,7 +358,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
                     {id:123,name:Option::Some({first:"foo", last:"bar"}),result:Result::Ok(456)}
                     "#
@@ -363,9 +375,9 @@ mod tests {
     }
 
     #[test]
-    fn test_format_array() {
+    fn test_format_list() {
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             [123,456,789]
             "#
@@ -378,7 +390,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             [{id:123, name:"abc"},{id:456, name:"def"},{id:789,name:"xyz"}]
             "#
@@ -403,12 +415,29 @@ mod tests {
     #[test]
     fn test_format_tuple() {
         assert_eq!(
-            format_ason_document(
+            format(
                 r#"
             (123,"foo",true)
             "#
             ),
             "(123, \"foo\", true)"
+        );
+    }
+
+    #[test]
+    fn test_format_variant() {
+        assert_eq!(format(r#"Option::None"#), "Option::None");
+        assert_eq!(format(r#"Option::Some(123)"#), "Option::Some(123)");
+        assert_eq!(
+            format(r#"Color::RGB(255,200,100)"#),
+            "Color::RGB(255, 200, 100)"
+        );
+        assert_eq!(
+            format(r#"Shape::Rect{width:11, height:13}"#),
+            r#"Shape::Rect{
+    width: 11
+    height: 13
+}"#
         );
     }
 }

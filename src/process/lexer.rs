@@ -1988,7 +1988,7 @@ fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 // - checks if the signed number is overflowed
 // - remove document leading newline and tailing newline.
 pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
-    let mut effective_tokens = vec![];
+    let mut normalized_tokens = vec![];
 
     let mut into = tokens.into_iter();
     let mut iter = LookaheadIter::new(&mut into, 2);
@@ -2007,7 +2007,7 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
             }
             Token::NewLine | Token::Comma => {
                 iter.next();
-                effective_tokens.push(Token::NewLine);
+                normalized_tokens.push(Token::NewLine);
 
                 // - treat commas as newlines
                 // - consume multiple continuous newlines
@@ -2060,7 +2060,7 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
                                     let token = Token::Number(Number::F32(v.neg()));
                                     iter.next();
                                     iter.next();
-                                    effective_tokens.push(token);
+                                    normalized_tokens.push(token);
                                 }
                             }
                             Number::F64(v) => {
@@ -2073,7 +2073,7 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
                                     let token = Token::Number(Number::F64(v.neg()));
                                     iter.next();
                                     iter.next();
-                                    effective_tokens.push(token);
+                                    normalized_tokens.push(token);
                                 }
                             }
                             Number::I8(v) => {
@@ -2088,7 +2088,7 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
                                 ));
                                 iter.next();
                                 iter.next();
-                                effective_tokens.push(token);
+                                normalized_tokens.push(token);
                             }
                             Number::I16(v) => {
                                 // consume the minus sign and the number literal token
@@ -2102,7 +2102,7 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
                                 ));
                                 iter.next();
                                 iter.next();
-                                effective_tokens.push(token);
+                                normalized_tokens.push(token);
                             }
                             Number::I32(v) => {
                                 // consume the minus sign and the number literal token
@@ -2116,7 +2116,7 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
                                 ));
                                 iter.next();
                                 iter.next();
-                                effective_tokens.push(token);
+                                normalized_tokens.push(token);
                             }
                             Number::I64(v) => {
                                 // consume the minus sign and the number literal token
@@ -2130,7 +2130,7 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
                                 ));
                                 iter.next();
                                 iter.next();
-                                effective_tokens.push(token);
+                                normalized_tokens.push(token);
                             }
                             Number::U8(_) | Number::U16(_) | Number::U32(_) | Number::U64(_) => {
                                 return Err(Error::Message(
@@ -2178,17 +2178,17 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
             }
             _ => {
                 let token = iter.next().unwrap();
-                effective_tokens.push(token);
+                normalized_tokens.push(token);
             }
         }
     }
 
     // remove the trailing newline token of document
-    if let Some(Token::NewLine) = effective_tokens.last() {
-        effective_tokens.pop();
+    if let Some(Token::NewLine) = normalized_tokens.last() {
+        normalized_tokens.pop();
     }
 
-    Ok(effective_tokens)
+    Ok(normalized_tokens)
 }
 
 #[cfg(test)]

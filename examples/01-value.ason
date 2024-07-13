@@ -1,0 +1,133 @@
+{
+    // integer numbers
+
+    integer: 123
+    integer_negative: -123
+
+    // integer number with type names
+
+    byte: 11_i8
+    short: 17_i16
+    int: 23_i32
+    long: 31_i64
+
+    unsigned_byte: 13_u8
+    unsigned_short: 19_u16
+    unsigned_int: 29_u32
+    unsigned_long: 37_u64
+
+    // floating point numbers
+
+    floating_point: 3.14
+    floating_point_with_exponent: 6.022e23
+    floating_point_with_negative_exponent: 6.6738e-11
+
+    single_precision: 3.14_f32
+    double_precision: 6.626_f64
+
+    hexadecimal_integer: 0xbeef
+    hexadecimal_integer_negative: -0xbeef
+
+    hexadecimal_byte: 0x7f_i8
+    hexadecimal_short: 0x7fff_i16
+    hexadecimal_int: 0x7fff_ffff_i32
+    hexadecimal_long: 0x7fff_ffff_ffff_ffff_i64
+
+    hexadecimal_unsigned_byte: 0xff_u8
+    hexadecimal_unsigned_short: 0xffff_u16
+    hexadecimal_unsigned_int: 0xffff_ffff_u32
+    hexadecimal_unsigned_long: 0xffff_ffff_ffff_ffff_u64
+
+    hexadecimal_floating_point: 0x1.4p3
+    hexadecimal_single_precison: 0x1.921fb6p1_f32
+    hexadecimal_double_precison: 0x1.5bf0a8b145769p+1_f64
+
+    binary_integer: 0b1001
+    binary_integer_negative: -0b1001
+
+    binary_byte: 0b0111_1111_i8
+    binary_short: 0b0111_1111_1111_1111_i16
+    binary_int: 0b0111_1111_1111_1111_1111_1111_1111_1111_i32
+    binary_long: 0b0111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_i64
+
+    binary_unsigned_byte: 0b1111_1111_u8
+    binary_unsigned_short: 0b1111_1111_1111_1111_u16
+    binary_unsigned_int: 0b1111_1111_1111_1111_1111_1111_1111_1111_u32
+    binary_unsigned_long: 0b1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_u64
+
+    boolean_true: true
+    boolean_false: false
+
+    datatime: d"2023-02-23 10:23:45"
+    datatime_with_timezone: d"2023-02-23 10:23:45+08:00"
+    datatime_rfc3339: d"2023-02-23T10:23:45+08:00"
+    datatime_rfc3339_zero_timezone: d"2023-02-23T10:23:45Z"
+
+    char: 'c'
+    char_unicode: '文'
+    char_emoji: '🍋'
+    char_escaped: '\n'
+    char_escaped_zero: '\0'
+    char_escaped_unicode: '\u{6CB3}'
+
+    string: "hello world"
+    string_unicode: "中文🍀emoji👋🏻"
+    multiline_string: "one
+        two
+        three"
+    multiline_string_with_new_line_escaped: "one\
+        two\
+        three"
+    string_with_escaped_chars: "\
+        double quote:\"
+        single quote:\'
+        slash:\\
+        tab:\t
+        line feed:\n"
+    string_with_escaped_unicode: "\u{6CB3}\u{9A6C}"
+    raw_string: r"hello"
+    raw_string_with_hash: r#"hello "programming" world"#
+    auto_trimmed_string: r|"
+        heading 1
+          heading 2
+            heading 3
+        "|
+
+    // value starts on a new line
+    new_line:
+        "value1"
+
+    // both the colon and value starts on a new line
+    new_line_variant
+    :
+    "value2"
+
+    // whitespaces between the key and value
+    space   :   "value3"
+
+    // line comment
+    line_comment: 101
+    line_comment_in_tail: 103 // trailing comment
+
+    block_comment: /* block comment */ 107
+
+    /*
+     * multiline block comment
+     */
+    multiline_block_comment: 109
+
+    """
+    document comment
+    # heading 1
+    ## heading 2
+    ### heading 3
+    """
+
+    document_comment: 113
+
+    inline_comma_1: 211, inline_comma_2: 223, inline_comma_3: 227
+
+    tail_comma_1: 229,
+    tail_comma_2: 233,
+    tail_comma_3: 239
+}

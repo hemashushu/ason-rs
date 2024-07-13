@@ -30,8 +30,8 @@ where
     let mut chars = input.chars();
     let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
-    let effective_tokens = normalize(tokens)?;
-    let mut token_iter = effective_tokens.into_iter();
+    let normalized_tokens = normalize(tokens)?;
+    let mut token_iter = normalized_tokens.into_iter();
     let mut lookahead_tokens = LookaheadIter::new(&mut token_iter, 2);
     let mut deserializer = Deserializer::from_tokens(&mut lookahead_tokens);
     let t = T::deserialize(&mut deserializer)?;

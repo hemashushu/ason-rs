@@ -6,8 +6,8 @@
 
 pub mod lexer;
 pub mod lookaheaditer;
-// pub mod parser;
-// pub mod writer;
+pub mod parser;
+pub mod writer;
 
 use chrono::{DateTime, FixedOffset};
 
@@ -36,26 +36,76 @@ pub struct KeyValuePair {
     pub value: Box<AsonNode>,
 }
 
+impl KeyValuePair {
+    pub fn new(key: &str, value: AsonNode) -> Self {
+        Self {
+            key: key.to_owned(),
+            value: Box::new(value),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Variant {
-    // the variant item full name, which includes
-    // the variant type name and the variant member name, e.g.
-    // - "Option::None"
-    // - "Option::Some"
-    // pub fullname: String,
-
+    // variant type name, e.g. the "Option" of "Option::None"
     pub type_name: String,
+
+    // variant member name, e.g. the "None" of "Option::None"
     pub member_name: String,
 
-    // set to `None` when the variant item has no value, e.g. Option::None
-    // pub value: Option<Box<AsonNode>>,
-    pub values: Vec<AsonNode>
+    pub value: VariantValue,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum VariantValue {
+    Empty,                     // unit variant
+    Single(Box<AsonNode>),     // new type variant
+    Multiple(Vec<AsonNode>),   // tuple variant
+    Object(Vec<KeyValuePair>), // struct variant
+}
+
+impl Variant {
+    pub fn new(type_name: &str, member_name: &str) -> Self {
+        Self {
+            type_name: type_name.to_owned(),
+            member_name: member_name.to_owned(),
+            value: VariantValue::Empty,
+        }
+    }
+
+    pub fn with_value(type_name: &str, member_name: &str, value: AsonNode) -> Self {
+        Self {
+            type_name: type_name.to_owned(),
+            member_name: member_name.to_owned(),
+            value: VariantValue::Single(Box::new(value)),
+        }
+    }
+
+    pub fn with_values(type_name: &str, member_name: &str, values: Vec<AsonNode>) -> Self {
+        Self {
+            type_name: type_name.to_owned(),
+            member_name: member_name.to_owned(),
+            value: VariantValue::Multiple(values),
+        }
+    }
+
+    pub fn with_object(
+        type_name: &str,
+        member_name: &str,
+        key_value_pairs: Vec<KeyValuePair>,
+    ) -> Self {
+        Self {
+            type_name: type_name.to_owned(),
+            member_name: member_name.to_owned(),
+            value: VariantValue::Object(key_value_pairs),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum AsonNode {
     Number(Number),
-    Bool(bool),
+    Boolean(bool),
     Char(char),
     String_(String),
     Date(DateTime<FixedOffset>),
@@ -66,13 +116,20 @@ pub enum AsonNode {
     Object(Vec<KeyValuePair>),
 }
 
-/*
+impl AsonNode {
+    pub fn new_string(s: &str) -> Self {
+        Self::String_(s.to_owned())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use crate::process::{
-        parser::from_str, writer::to_string, AsonNode, KeyValuePair, Number, Variant,
+    use crate::{
+        parse,
+        process::{AsonNode, KeyValuePair, Number, Variant},
+        write,
     };
 
     #[test]
@@ -83,26 +140,20 @@ mod tests {
             orders: [11, 13]
         }"#;
 
-        let node = from_str(text).unwrap();
+        let node = parse(text).unwrap();
 
         assert_eq!(
             node,
             AsonNode::Object(vec![
-                KeyValuePair {
-                    key: "id".to_owned(),
-                    value: Box::new(AsonNode::Number(Number::I32(123)))
-                },
-                KeyValuePair {
-                    key: "name".to_owned(),
-                    value: Box::new(AsonNode::String_("foo".to_owned()))
-                },
-                KeyValuePair {
-                    key: "orders".to_owned(),
-                    value: Box::new(AsonNode::List(vec![
+                KeyValuePair::new("id", AsonNode::Number(Number::I32(123))),
+                KeyValuePair::new("name", AsonNode::new_string("foo")),
+                KeyValuePair::new(
+                    "orders",
+                    AsonNode::List(vec![
                         AsonNode::Number(Number::I32(11)),
                         AsonNode::Number(Number::I32(13))
-                    ]))
-                }
+                    ])
+                )
             ])
         );
     }
@@ -110,55 +161,38 @@ mod tests {
     #[test]
     fn test_write() {
         let node = AsonNode::Object(vec![
-            KeyValuePair {
-                key: "name".to_owned(),
-                value: Box::new(AsonNode::String_("foo".to_owned())),
-            },
-            KeyValuePair {
-                key: "type".to_owned(),
-                value: Box::new(AsonNode::Variant(Variant {
-                    fullname: "Type::Application".to_owned(),
-                    value: None,
-                })),
-            },
-            KeyValuePair {
-                key: "version".to_owned(),
-                value: Box::new(AsonNode::String_("0.1.0".to_owned())),
-            },
-            KeyValuePair {
-                key: "dependencies".to_owned(),
-                value: Box::new(AsonNode::List(vec![
+            KeyValuePair::new("name", AsonNode::new_string("foo")),
+            KeyValuePair::new(
+                "type",
+                AsonNode::Variant(Variant::new("Type", "Application")),
+            ),
+            KeyValuePair::new("version", AsonNode::new_string("0.1.0")),
+            KeyValuePair::new(
+                "dependencies",
+                AsonNode::List(vec![
                     AsonNode::Object(vec![
-                        KeyValuePair {
-                            key: "name".to_owned(),
-                            value: Box::new(AsonNode::String_("random".to_owned())),
-                        },
-                        KeyValuePair {
-                            key: "version".to_owned(),
-                            value: Box::new(AsonNode::Variant(Variant {
-                                fullname: "Option::None".to_owned(),
-                                value: None,
-                            })),
-                        },
+                        KeyValuePair::new("name", AsonNode::new_string("random")),
+                        KeyValuePair::new(
+                            "version",
+                            AsonNode::Variant(Variant::new("Option", "None")),
+                        ),
                     ]),
                     AsonNode::Object(vec![
-                        KeyValuePair {
-                            key: "name".to_owned(),
-                            value: Box::new(AsonNode::String_("regex".to_owned())),
-                        },
-                        KeyValuePair {
-                            key: "version".to_owned(),
-                            value: Box::new(AsonNode::Variant(Variant {
-                                fullname: "Option::Some".to_owned(),
-                                value: Some(Box::new(AsonNode::String_("1.0.1".to_owned()))),
-                            })),
-                        },
+                        KeyValuePair::new("name", AsonNode::new_string("regex")),
+                        KeyValuePair::new(
+                            "version",
+                            AsonNode::Variant(Variant::with_value(
+                                "Option",
+                                "Some",
+                                AsonNode::new_string("1.0.1"),
+                            )),
+                        ),
                     ]),
-                ])),
-            },
+                ]),
+            ),
         ]);
 
-        let text = to_string(&node);
+        let text = write(&node);
 
         assert_eq!(
             text,
@@ -199,9 +233,9 @@ mod tests {
 
     #[test]
     fn test_example_file_01() {
-        let s = read_example_file_to_string("01-object.ason");
-        let n = from_str(&s).unwrap();
-        let t = to_string(&n);
+        let s = read_example_file_to_string("01-value.ason");
+        let n = parse(&s).unwrap();
+        let t = write(&n);
 
         // note that the suffix 'a' should be '0.000000000000000001', but
         // in the debug mode, it may be '0.0000000000000000009999999' and
@@ -212,94 +246,72 @@ mod tests {
             r#"{
     integer: 123
     integer_negative: -123
-    byte: 11@byte
-    ubyte: 13@ubyte
-    short: 17@short
-    ushort: 19@ushort
+    byte: 11_i8
+    short: 17_i16
     int: 23
-    uint: 29@uint
-    long: 31@long
-    ulong: 37@ulong
+    long: 31_i64
+    unsigned_byte: 13_u8
+    unsigned_short: 19_u16
+    unsigned_int: 29_u32
+    unsigned_long: 37_u64
     floating_point: 3.14
-    float: 3.14
-    double: 6.626@double
-    float_with_exp: 602200000000000000000000.0
-    float_with_exp_negative: 0.000000000066738
-    suffix_K: 1000
-    suffix_M: 1000000
-    suffix_G: 1000000000
-    suffix_T: 1000000000000@long
-    suffix_P: 1000000000000000@long
-    suffix_E: 1000000000000000000@long
-    suffix_m: 0.001
-    suffix_u: 0.000001
-    suffix_n: 0.000000001
-    suffix_p: 0.000000000001
-    suffix_f: 0.000000000000001
-    suffix_a: 0.0000000000000000009999999
-    suffix_Ki: 1024
-    suffix_Mi: 1048576
-    suffix_Gi: 1073741824
-    suffix_Ti: 1099511627776@long
-    suffix_Pi: 1125899906842624@long
-    suffix_Ei: 1152921504606846976@long
-    both_metric_suffix_and_type_long: 1000000000@long
-    both_metric_suffix_and_type_double: 0.000001@double
-    hex_integer: 48879
-    hex_integer_negative: -48879
-    hex_floating_point: 3.1415927
-    hex_byte: 127@byte
-    hex_ubyte: 255@ubyte
-    hex_short: 32767@short
-    hex_ushort: 65535@ushort
-    hex_int: 2147483647
-    hex_uint: 4294967295@uint
-    hex_long: 9223372036854775807@long
-    hex_ulong: 18446744073709551615@ulong
-    hex_float: 3.1415927
-    hex_double: 2.718281828459045@double
-    bin_integer: 9
-    bin_integer_negative: -9
-    bin_byte: 127@byte
-    bin_ubyte: 255@ubyte
-    bin_short: 32767@short
-    bin_ushort: 65535@ushort
-    bin_int: 2147483647
-    bin_uint: 4294967295@uint
-    bin_long: 140737488355327@long
-    bin_ulong: 281474976710655@ulong
-    bool_true: true
-    bool_false: false
-    data_time: d"2023-02-23T10:23:45+00:00"
-    data_time_tz: d"2023-02-23T10:23:45+08:00"
+    floating_point_with_exponent: 602200000000000000000000.0
+    floating_point_with_negative_exponent: 0.000000000066738
+    single_precision: 3.14_f32
+    double_precision: 6.626
+    hexadecimal_integer: 48879
+    hexadecimal_integer_negative: -48879
+    hexadecimal_byte: 127_i8
+    hexadecimal_short: 32767_i16
+    hexadecimal_int: 2147483647
+    hexadecimal_long: 9223372036854775807_i64
+    hexadecimal_unsigned_byte: 255_u8
+    hexadecimal_unsigned_short: 65535_u16
+    hexadecimal_unsigned_int: 4294967295_u32
+    hexadecimal_unsigned_long: 18446744073709551615_u64
+    hexadecimal_floating_point: 10.0
+    hexadecimal_single_precison: 3.1415927_f32
+    hexadecimal_double_precison: 2.718281828459045
+    binary_integer: 9
+    binary_integer_negative: -9
+    binary_byte: 127_i8
+    binary_short: 32767_i16
+    binary_int: 2147483647
+    binary_long: 140737488355327_i64
+    binary_unsigned_byte: 255_u8
+    binary_unsigned_short: 65535_u16
+    binary_unsigned_int: 4294967295_u32
+    binary_unsigned_long: 281474976710655_u64
+    boolean_true: true
+    boolean_false: false
+    datatime: d"2023-02-23T10:23:45+00:00"
+    datatime_with_timezone: d"2023-02-23T10:23:45+08:00"
+    datatime_rfc3339: d"2023-02-23T10:23:45+08:00"
+    datatime_rfc3339_zero_timezone: d"2023-02-23T10:23:45+00:00"
     char: 'c'
     char_unicode: '文'
-    char_escape: '\n'
-    char_escape_zero: '\0'
-    char_escape_unicode: '河'
+    char_emoji: '🍋'
+    char_escaped: '\n'
+    char_escaped_zero: '\0'
+    char_escaped_unicode: '河'
     string: "hello world"
     string_unicode: "中文🍀emoji👋🏻"
     multiline_string: "one
         two
         three"
-    multiline_string_with_new_line_escape: "onetwothree"
-    string_escape_chars: "double quote:\"
+    multiline_string_with_new_line_escaped: "onetwothree"
+    string_with_escaped_chars: "double quote:\"
         single quote:'
         slash:\\
         tab:\t
         line feed:
 "
-    string_escape_unicode: "河马"
+    string_with_escaped_unicode: "河马"
     raw_string: "hello"
-    raw_string_variant: "hello \"programming\" world"
+    raw_string_with_hash: "hello \"programming\" world"
     auto_trimmed_string: "heading 1
   heading 2
     heading 3"
-    variant_none: Option::None
-    variant_some: Option::Some(123)
-    variant_object: Option::Some({
-        id: 123
-    })
     new_line: "value1"
     new_line_variant: "value2"
     space: "value3"
@@ -320,9 +332,9 @@ mod tests {
 
     #[test]
     fn test_example_file_02() {
-        let s = read_example_file_to_string("02-array.ason");
-        let n = from_str(&s).unwrap();
-        let t = to_string(&n);
+        let s = read_example_file_to_string("02-list.ason");
+        let n = parse(&s).unwrap();
+        let t = write(&n);
 
         assert_eq!(
             t,
@@ -365,8 +377,8 @@ mod tests {
     #[test]
     fn test_example_file_03() {
         let s = read_example_file_to_string("03-tuple.ason");
-        let n = from_str(&s).unwrap();
-        let t = to_string(&n);
+        let n = parse(&s).unwrap();
+        let t = write(&n);
 
         assert_eq!(
             t,
@@ -382,9 +394,9 @@ mod tests {
 
     #[test]
     fn test_example_file_04() {
-        let s = read_example_file_to_string("04-nested.ason");
-        let n = from_str(&s).unwrap();
-        let t = to_string(&n);
+        let s = read_example_file_to_string("04-object.ason");
+        let n = parse(&s).unwrap();
+        let t = write(&n);
 
         assert_eq!(
             t,
@@ -411,5 +423,35 @@ mod tests {
 }"#
         );
     }
+
+    #[test]
+    fn test_example_file_05() {
+        let s = read_example_file_to_string("05-variant.ason");
+        let n = parse(&s).unwrap();
+        let t = write(&n);
+
+        assert_eq!(
+            t,
+            r#"{
+    variant_without_value: Option::None
+    variant_single_value: Option::Some(123)
+    variant_multiple_values: Color::RGB(255, 127, 63)
+    variant_object: Shape::Rect{
+        width: 200
+        height: 100
+    }
+    variant_single_value: Option::Some((11, 13))
+    variant_single_value: Option::Some([
+        17
+        19
+        23
+        29
+    ])
+    variant_single_value: Option::Some({
+        id: 123
+        name: "foo"
+    })
+}"#
+        );
+    }
 }
-*/
