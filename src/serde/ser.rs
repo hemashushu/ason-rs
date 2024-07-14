@@ -856,6 +856,7 @@ mod tests {
 
     #[test]
     fn test_variant_with_multiple_values() {
+        #[allow(clippy::upper_case_acronyms)]
         #[derive(Serialize)]
         enum Color {
             RGB(u8, u8, u8),

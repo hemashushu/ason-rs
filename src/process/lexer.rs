@@ -229,15 +229,8 @@ pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
                 // raw string with hash symbol
                 tokens.push(lex_raw_string_with_hash(iter)?);
             }
-            // 'r' if iter.equals(1, &'|') && iter.equals(2, &'"') => {
-            //     // auto-trimmed string
-            //     tokens.push(lex_auto_trimmed_string(iter)?);
-            // }
             '"' => {
                 if iter.equals(1, &'"') && iter.equals(2, &'"') {
-                    // document comment
-                    // tokens.push(lex_document_comment(iter)?);
-
                     // auto-trimmed string
                     tokens.push(lex_auto_trimmed_string(iter)?);
                 } else {
@@ -254,10 +247,19 @@ pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
                 tokens.push(lex_line_comment(iter)?);
             }
             '/' if iter.equals(1, &'*') => {
-                if iter.equals(2, &'*') {
-                    // document comment
-                    tokens.push(lex_document_comment(iter)?);
-                } else {
+                #[cfg(feature = "doc_comment")]
+                {
+                    if iter.equals(2, &'*') {
+                        // document comment
+                        tokens.push(lex_document_comment(iter)?);
+                    } else {
+                        // block comment
+                        tokens.push(lex_block_comment(iter)?);
+                    }
+                }
+
+                #[cfg(not(feature = "doc_comment"))]
+                {
                     // block comment
                     tokens.push(lex_block_comment(iter)?);
                 }
@@ -1985,6 +1987,7 @@ fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::Comment(Comment::Block(comment_string)))
 }
 
+#[cfg(feature = "doc_comment")]
 fn lex_document_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // /**...**/?  //
     // ^        ^__// to here
@@ -3881,6 +3884,7 @@ mod tests {
     //         ));
     //     }
 
+    #[cfg(feature = "doc_comment")]
     #[test]
     fn test_lex_document_comment() {
         assert_eq!(

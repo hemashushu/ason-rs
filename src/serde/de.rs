@@ -77,11 +77,6 @@ impl<'de> Deserializer<'de> {
         self.consume_token(Token::Colon)
     }
 
-    // consume '('
-    fn consume_left_paren(&mut self) -> Result<()> {
-        self.consume_token(Token::LeftParen)
-    }
-
     // consume ')'
     fn consume_right_paren(&mut self) -> Result<()> {
         self.consume_token(Token::RightParen)
@@ -300,7 +295,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 if member_name == "None" && !self.vec.equals(0, &Token::LeftParen) {
                     visitor.visit_none()
                 } else if member_name == "Some" && self.vec.equals(0, &Token::LeftParen) {
-                    self.consume_left_paren()?;
+                    self.vec.next(); // consume '('
                     let v = visitor.visit_some(&mut *self);
                     self.consume_right_paren()?;
                     v
@@ -370,6 +365,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
 
             self.consume_new_line_when_exist(); // consume additional newlines
             self.consume_right_paren()?; // consume ')'
+
             self.consume_new_line_when_exist(); // consume trailing newlines
 
             Ok(value)
@@ -402,7 +398,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         // When serializing, the length may or may not be known before
         // iterating through all the entries. When deserializing,
         // the length is determined by looking at the serialized data.
-        Err(Error::Message("ASON does not support \"map\".".to_owned()))
+        Err(Error::Message("ASON does not support Map.".to_owned()))
     }
 
     fn deserialize_struct<V>(
@@ -419,6 +415,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
 
             self.consume_new_line_when_exist(); // consume additional newlines
             self.consume_right_brace()?; // consume '}'
+
             self.consume_new_line_when_exist(); // consume trailing newlines
 
             Ok(value)
@@ -439,14 +436,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         if let Some(Token::Variant(type_name, member_name)) = self.vec.next() {
             if type_name == name {
                 if self.vec.equals(0, &Token::LeftParen) {
-                    // variant with value
-                    // consume '('
-                    self.consume_left_paren()?;
-                    // parse the value
+                    // variant with single value or multiple values
                     let v = visitor.visit_enum(VariantAccessor::new(self, &member_name))?;
-                    // consume ')'
-                    self.consume_right_paren()?;
-
+                    Ok(v)
+                } else if self.vec.equals(0, &Token::LeftBrace) {
+                    // variant with struct value
+                    let v = visitor.visit_enum(VariantAccessor::new(self, &member_name))?;
                     Ok(v)
                 } else {
                     // variant without value
@@ -591,23 +586,29 @@ impl<'de, 'a> VariantAccess<'de> for VariantAccessor<'a, 'de> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        seed.deserialize(self.de)
+        self.de.vec.next(); // consume '('
+        self.de.consume_new_line_when_exist();
+
+        let v = seed.deserialize(&mut *self.de);
+        self.de.consume_new_line_when_exist();
+
+        self.de.vec.next(); // consume ')'
+        self.de.consume_new_line_when_exist();
+        v
     }
 
-    fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
+    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        // todo.................
-        todo!()
+        de::Deserializer::deserialize_tuple(self.de, len, visitor)
     }
 
-    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
+    fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        // todo.................
-        todo!()
+        de::Deserializer::deserialize_struct(self.de, "", fields, visitor)
     }
 }
 
@@ -783,431 +784,474 @@ mod tests {
         }
     }
 
-//     #[test]
-//     fn test_bytes() {
-//         assert_eq!(
-//             from_str::<ByteBuf>(r#"h"0b:0d:11:13""#).unwrap(),
-//             ByteBuf::from(vec![11u8, 13, 17, 19])
-//         );
-//
-//         assert_eq!(
-//             from_str::<ByteBuf>(r#"h"61:62:63""#).unwrap(),
-//             ByteBuf::from(b"abc")
-//         );
-//     }
-//
-//     #[test]
-//     fn test_option() {
-//         assert_eq!(from_str::<Option<i32>>(r#"Option::None"#).unwrap(), None);
-//         assert_eq!(
-//             from_str::<Option<i32>>(r#"Option::Some(123)"#).unwrap(),
-//             Some(123)
-//         );
-//     }
-//
-//     #[test]
-//     fn test_variant() {
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         enum Color {
-//             Red,
-//             Green,
-//             Blue,
-//             Grey(u8),
-//         }
-//
-//         assert_eq!(from_str::<Color>(r#"Color::Red"#).unwrap(), Color::Red);
-//         assert_eq!(from_str::<Color>(r#"Color::Green"#).unwrap(), Color::Green);
-//         assert_eq!(
-//             from_str::<Color>(r#"Color::Grey(11@ubyte)"#).unwrap(),
-//             Color::Grey(11)
-//         );
-//
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         enum Member {
-//             Code(i32),
-//             Name(String),
-//         }
-//
-//         assert_eq!(
-//             from_str::<Member>(r#"Member::Code(11)"#).unwrap(),
-//             Member::Code(11)
-//         );
-//
-//         assert_eq!(
-//             from_str::<Member>(r#"Member::Name("foo")"#).unwrap(),
-//             Member::Name("foo".to_owned())
-//         );
-//
-//         // nested
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         enum Apperance {
-//             Transparent,
-//             Color(Color),
-//         }
-//
-//         assert_eq!(
-//             from_str::<Apperance>(r#"Apperance::Transparent"#).unwrap(),
-//             Apperance::Transparent
-//         );
-//
-//         assert_eq!(
-//             from_str::<Apperance>(r#"Apperance::Color(Color::Blue)"#).unwrap(),
-//             Apperance::Color(Color::Blue)
-//         );
-//
-//         assert_eq!(
-//             from_str::<Apperance>(r#"Apperance::Color(Color::Grey(13@ubyte))"#).unwrap(),
-//             Apperance::Color(Color::Grey(13))
-//         );
-//     }
-//
-//     #[test]
-//     fn test_array() {
-//         assert_eq!(
-//             from_str::<Vec<i32>>(r#"[11,13,17,19]"#).unwrap(),
-//             vec![11, 13, 17, 19]
-//         );
-//
-//         assert_eq!(
-//             from_str::<Vec<u8>>(
-//                 r#"[
-//     97@ubyte
-//     98@ubyte
-//     99@ubyte
-// ]"#
-//             )
-//             .unwrap(),
-//             b"abc"
-//         );
-//
-//         assert_eq!(
-//             from_str::<Vec<String>>(
-//                 r#"[
-//     "foo"
-//     "bar"
-//     "2024"
-// ]"#
-//             )
-//             .unwrap(),
-//             vec!["foo", "bar", "2024"]
-//         );
-//
-//         // variants
-//         assert_eq!(
-//             from_str::<Vec<Option<i32>>>(
-//                 r#"[
-//             Option::Some(11)
-//             Option::None
-//             Option::Some(13)
-//         ]"#
-//             )
-//             .unwrap(),
-//             vec![Some(11), None, Some(13)]
-//         );
-//
-//         // nested seq
-//         assert_eq!(
-//             from_str::<Vec<Vec<i32>>>(
-//                 r#"[
-//     [11,13]
-//     [17,19]
-//     [23,29]
-// ]"#
-//             )
-//             .unwrap(),
-//             vec![vec![11, 13], vec![17, 19], vec![23, 29]]
-//         );
-//     }
-//
-//     #[test]
-//     fn test_tuple() {
-//         assert_eq!(
-//             from_str::<(i32, i32, i32, i32)>(r#"(11, 13, 17, 19)"#).unwrap(),
-//             (11, 13, 17, 19)
-//         );
-//
-//         // a fixed-length array is treated as tuple
-//         assert_eq!(
-//             from_str::<[u8; 3]>(
-//                 r#"(
-// 97@ubyte
-// 98@ubyte
-// 99@ubyte
-// )"#
-//             )
-//             .unwrap(),
-//             b"abc".to_owned()
-//         );
-//
-//         assert_eq!(
-//             from_str::<(String, String, String)>(
-//                 r#"(
-// "foo", "bar", "2024", )"#
-//             )
-//             .unwrap(),
-//             ("foo".to_owned(), "bar".to_owned(), "2024".to_owned())
-//         );
-//
-//         // variant
-//         assert_eq!(
-//             from_str::<(Option<i32>, Option<i32>, Option<i32>)>(
-//                 r#"(
-//         Option::Some(11), Option::None, Option::Some(13))"#
-//             )
-//             .unwrap(),
-//             (Option::Some(11), Option::<i32>::None, Option::Some(13))
-//         );
-//
-//         // nested tuple
-//         assert_eq!(
-//             from_str::<((i32, i32), (i32, i32), (i32, i32))>(r#"((11, 13), (17, 19), (23, 29))"#)
-//                 .unwrap(),
-//             ((11, 13), (17, 19), (23, 29))
-//         );
-//     }
-//
-//     #[test]
-//     fn test_object() {
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct Object {
-//             id: i32,
-//             name: String,
-//             checked: bool,
-//         }
-//
-//         assert_eq!(
-//             from_str::<Object>(r#"{id: 123, name: "foo", checked: true}"#).unwrap(),
-//             Object {
-//                 id: 123,
-//                 name: "foo".to_owned(),
-//                 checked: true
-//             }
-//         );
-//
-//         // nested object
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct Address {
-//             code: i32,
-//             city: String,
-//         }
-//
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct NestedObject {
-//             id: i32,
-//             name: String,
-//             address: Box<Address>,
-//         }
-//
-//         assert_eq!(
-//             from_str::<NestedObject>(
-//                 r#"{
-//     id: 456
-//     name: "bar"
-//     address: {
-//         code: 518000
-//         city: "sz"
-//     }
-// }"#
-//             )
-//             .unwrap(),
-//             NestedObject {
-//                 id: 456,
-//                 name: "bar".to_owned(),
-//                 address: Box::new(Address {
-//                     code: 518000,
-//                     city: "sz".to_owned()
-//                 })
-//             }
-//         )
-//     }
-//
-//     #[test]
-//     fn test_mix_array_and_tuple() {
-//         assert_eq!(
-//             from_str::<Vec<(i32, String)>>(
-//                 r#"[
-//     (1, "foo")
-//     (2, "bar")
-// ]"#
-//             )
-//             .unwrap(),
-//             vec![(1, "foo".to_owned()), (2, "bar".to_owned())]
-//         );
-//
-//         assert_eq!(
-//             from_str::<(Vec<i32>, Vec<String>)>(
-//                 r#"([
-//     11
-//     13
-// ], [
-//     "foo"
-//     "bar"
-// ])"#
-//             )
-//             .unwrap(),
-//             (vec![11, 13], vec!["foo".to_owned(), "bar".to_owned()])
-//         );
-//     }
-//
-//     #[test]
-//     fn test_mix_array_and_object() {
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct Object {
-//             id: i32,
-//             name: String,
-//         }
-//
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct ObjectList {
-//             id: i32,
-//             items: Vec<i32>,
-//         }
-//
-//         assert_eq!(
-//             from_str::<Vec<Object>>(
-//                 r#"[
-//     {
-//         id: 11
-//         name: "foo"
-//     }
-//     {
-//         id: 13
-//         name: "bar"
-//     }
-// ]"#
-//             )
-//             .unwrap(),
-//             vec![
-//                 Object {
-//                     id: 11,
-//                     name: "foo".to_owned()
-//                 },
-//                 Object {
-//                     id: 13,
-//                     name: "bar".to_owned()
-//                 }
-//             ]
-//         );
-//
-//         assert_eq!(
-//             from_str::<ObjectList>(
-//                 r#"{
-//     id: 456
-//     items: [
-//         11
-//         13
-//         17
-//         19
-//     ]
-// }"#
-//             )
-//             .unwrap(),
-//             ObjectList {
-//                 id: 456,
-//                 items: vec![11, 13, 17, 19]
-//             }
-//         );
-//     }
-//
-//     #[test]
-//     fn test_mix_tuple_and_object() {
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct Object {
-//             id: i32,
-//             name: String,
-//         }
-//
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct ObjectDetail {
-//             id: i32,
-//             address: (i32, String),
-//         }
-//
-//         assert_eq!(
-//             from_str::<(i32, Object)>(
-//                 r#"(123, {
-//                 id: 11
-//                 name: "foo"
-//             })"#
-//             )
-//             .unwrap(),
-//             (
-//                 123,
-//                 Object {
-//                     id: 11,
-//                     name: "foo".to_owned()
-//                 }
-//             )
-//         );
-//
-//         assert_eq!(
-//             from_str::<ObjectDetail>(
-//                 r#"{
-//     id: 456
-//     address: (11, "sz")
-// }"#
-//             )
-//             .unwrap(),
-//             ObjectDetail {
-//                 id: 456,
-//                 address: (11, "sz".to_owned())
-//             }
-//         );
-//     }
-//
-//     #[test]
-//     fn test_mix_variant_object() {
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct Simple {
-//             id: i32,
-//             name: String,
-//         }
-//
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         struct Complex {
-//             id: i32,
-//             checked: bool,
-//             fullname: String,
-//         }
-//
-//         #[derive(Deserialize, Debug, PartialEq)]
-//         enum Item {
-//             Empty,
-//             Minimal(i32),
-//             Simple(Simple),
-//             Complex(Complex),
-//         }
-//
-//         assert_eq!(
-//             from_str::<Vec<Item>>(
-//                 r#"[
-//     Item::Empty
-//     Item::Minimal(11)
-//     Item::Simple({
-//         id: 13
-//         name: "foo"
-//     })
-//     Item::Complex({
-//         id: 17
-//         checked: true
-//         fullname: "foobar"
-//     })
-// ]"#
-//             )
-//             .unwrap(),
-//             vec![
-//                 Item::Empty,
-//                 Item::Minimal(11),
-//                 Item::Simple(Simple {
-//                     id: 13,
-//                     name: "foo".to_owned()
-//                 }),
-//                 Item::Complex(Complex {
-//                     id: 17,
-//                     checked: true,
-//                     fullname: "foobar".to_owned()
-//                 })
-//             ]
-//         );
-//     }
+    #[test]
+    fn test_byte_data() {
+        assert_eq!(
+            from_str::<ByteBuf>(r#"h"0b:0d:11:13""#).unwrap(),
+            ByteBuf::from(vec![11u8, 13, 17, 19])
+        );
+
+        assert_eq!(
+            from_str::<ByteBuf>(r#"h"61:62:63""#).unwrap(),
+            ByteBuf::from(b"abc")
+        );
+    }
+
+    #[test]
+    fn test_option() {
+        assert_eq!(from_str::<Option<i32>>(r#"Option::None"#).unwrap(), None);
+        assert_eq!(
+            from_str::<Option<i32>>(r#"Option::Some(123)"#).unwrap(),
+            Some(123)
+        );
+    }
+
+    #[test]
+    fn test_list() {
+        assert_eq!(
+            from_str::<Vec<i32>>(r#"[11,13,17,19]"#).unwrap(),
+            vec![11, 13, 17, 19]
+        );
+
+        assert_eq!(
+            from_str::<Vec<u8>>(
+                r#"[
+    97_u8
+    98_u8
+    99_u8
+]"#
+            )
+            .unwrap(),
+            b"abc"
+        );
+
+        assert_eq!(
+            from_str::<Vec<String>>(
+                r#"[
+    "foo"
+    "bar"
+    "2024"
+]"#
+            )
+            .unwrap(),
+            vec!["foo", "bar", "2024"]
+        );
+
+        // // variants
+        // assert_eq!(
+        //     from_str::<Vec<Option<i32>>>(
+        //         r#"[
+        //     Option::Some(11)
+        //     Option::None
+        //     Option::Some(13)
+        // ]"#
+        //     )
+        //     .unwrap(),
+        //     vec![Some(11), None, Some(13)]
+        // );
+
+        // nested list
+        assert_eq!(
+            from_str::<Vec<Vec<i32>>>(
+                r#"[
+    [11,13]
+    [17,19]
+    [23,29]
+]"#
+            )
+            .unwrap(),
+            vec![vec![11, 13], vec![17, 19], vec![23, 29]]
+        );
+    }
+
+    #[test]
+    fn test_tuple() {
+        assert_eq!(
+            from_str::<(i32, i32, i32, i32)>(r#"(11, 13, 17, 19)"#).unwrap(),
+            (11, 13, 17, 19)
+        );
+
+        // a fixed-length array is treated as tuple
+        assert_eq!(
+            from_str::<[u8; 3]>(
+                r#"(
+97_u8
+98_u8
+99_u8
+)"#
+            )
+            .unwrap(),
+            b"abc".to_owned()
+        );
+
+        assert_eq!(
+            from_str::<(String, String, String)>(
+                r#"(
+"foo", "bar", "2024", )"#
+            )
+            .unwrap(),
+            ("foo".to_owned(), "bar".to_owned(), "2024".to_owned())
+        );
+
+        // // variant
+        // assert_eq!(
+        //     from_str::<(Option<i32>, Option<i32>, Option<i32>)>(
+        //         r#"(
+        // Option::Some(11), Option::None, Option::Some(13))"#
+        //     )
+        //     .unwrap(),
+        //     (Option::Some(11), Option::<i32>::None, Option::Some(13))
+        // );
+
+        // nested tuple
+        assert_eq!(
+            from_str::<((i32, i32), (i32, i32), (i32, i32))>(r#"((11, 13), (17, 19), (23, 29))"#)
+                .unwrap(),
+            ((11, 13), (17, 19), (23, 29))
+        );
+    }
+
+    #[test]
+    fn test_object() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Object {
+            id: i32,
+            name: String,
+            checked: bool,
+        }
+
+        assert_eq!(
+            from_str::<Object>(r#"{id: 123, name: "foo", checked: true}"#).unwrap(),
+            Object {
+                id: 123,
+                name: "foo".to_owned(),
+                checked: true
+            }
+        );
+
+        // nested object
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Address {
+            code: i32,
+            city: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct NestedObject {
+            id: i32,
+            name: String,
+            address: Box<Address>,
+        }
+
+        assert_eq!(
+            from_str::<NestedObject>(
+                r#"{
+    id: 456
+    name: "bar"
+    address: {
+        code: 518000
+        city: "sz"
+    }
+}"#
+            )
+            .unwrap(),
+            NestedObject {
+                id: 456,
+                name: "bar".to_owned(),
+                address: Box::new(Address {
+                    code: 518000,
+                    city: "sz".to_owned()
+                })
+            }
+        )
+    }
+
+    #[test]
+    fn test_variant_with_single_value() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Color {
+            Red,
+            Green,
+            Blue,
+            Grey(u8),
+        }
+
+        assert_eq!(from_str::<Color>(r#"Color::Red"#).unwrap(), Color::Red);
+        assert_eq!(from_str::<Color>(r#"Color::Green"#).unwrap(), Color::Green);
+        assert_eq!(
+            from_str::<Color>(r#"Color::Grey(11_u8)"#).unwrap(),
+            Color::Grey(11)
+        );
+
+        //         #[derive(Deserialize, Debug, PartialEq)]
+        //         enum Member {
+        //             Code(i32),
+        //             Name(String),
+        //         }
+        //
+        //         assert_eq!(
+        //             from_str::<Member>(r#"Member::Code(11)"#).unwrap(),
+        //             Member::Code(11)
+        //         );
+        //
+        //         assert_eq!(
+        //             from_str::<Member>(r#"Member::Name("foo")"#).unwrap(),
+        //             Member::Name("foo".to_owned())
+        //         );
+
+        // nested
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Apperance {
+            Transparent,
+            Color(Color),
+        }
+
+        assert_eq!(
+            from_str::<Apperance>(r#"Apperance::Transparent"#).unwrap(),
+            Apperance::Transparent
+        );
+
+        assert_eq!(
+            from_str::<Apperance>(r#"Apperance::Color(Color::Blue)"#).unwrap(),
+            Apperance::Color(Color::Blue)
+        );
+
+        assert_eq!(
+            from_str::<Apperance>(r#"Apperance::Color(Color::Grey(13_u8))"#).unwrap(),
+            Apperance::Color(Color::Grey(13))
+        );
+    }
+
+    #[test]
+    fn test_variant_with_multiple_values() {
+        #[allow(clippy::upper_case_acronyms)]
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Color {
+            RGB(u8, u8, u8),
+            Grey(u8),
+        }
+
+        assert_eq!(
+            from_str::<Color>(r#"Color::RGB(255_u8,127_u8,63_u8)"#).unwrap(),
+            Color::RGB(255, 127, 63)
+        );
+    }
+
+    #[test]
+    fn test_variant_with_object_value() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Shape {
+            Circle(i32),
+            Rect { width: i32, height: i32 },
+        }
+
+        assert_eq!(
+            from_str::<Shape>(
+                r#"Shape::Rect{
+    width: 200
+    height: 100
+}"#
+            )
+            .unwrap(),
+            Shape::Rect {
+                width: 200,
+                height: 100
+            }
+        );
+
+        assert_eq!(
+            from_str::<Shape>(r#"Shape::Circle(127)"#).unwrap(),
+            Shape::Circle(127)
+        );
+    }
+
+    #[test]
+    fn test_mix_list_and_tuple() {
+        assert_eq!(
+            from_str::<Vec<(i32, String)>>(
+                r#"[
+    (1, "foo")
+    (2, "bar")
+]"#
+            )
+            .unwrap(),
+            vec![(1, "foo".to_owned()), (2, "bar".to_owned())]
+        );
+
+        assert_eq!(
+            from_str::<(Vec<i32>, Vec<String>)>(
+                r#"([
+    11
+    13
+], [
+    "foo"
+    "bar"
+])"#
+            )
+            .unwrap(),
+            (vec![11, 13], vec!["foo".to_owned(), "bar".to_owned()])
+        );
+    }
+
+    #[test]
+    fn test_mix_list_and_object() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Object {
+            id: i32,
+            name: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct ObjectList {
+            id: i32,
+            items: Vec<i32>,
+        }
+
+        assert_eq!(
+            from_str::<Vec<Object>>(
+                r#"[
+    {
+        id: 11
+        name: "foo"
+    }
+    {
+        id: 13
+        name: "bar"
+    }
+]"#
+            )
+            .unwrap(),
+            vec![
+                Object {
+                    id: 11,
+                    name: "foo".to_owned()
+                },
+                Object {
+                    id: 13,
+                    name: "bar".to_owned()
+                }
+            ]
+        );
+
+        assert_eq!(
+            from_str::<ObjectList>(
+                r#"{
+    id: 456
+    items: [
+        11
+        13
+        17
+        19
+    ]
+}"#
+            )
+            .unwrap(),
+            ObjectList {
+                id: 456,
+                items: vec![11, 13, 17, 19]
+            }
+        );
+    }
+
+    #[test]
+    fn test_mix_tuple_and_object() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Object {
+            id: i32,
+            name: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct ObjectDetail {
+            id: i32,
+            address: (i32, String),
+        }
+
+        assert_eq!(
+            from_str::<(i32, Object)>(
+                r#"(123, {
+                id: 11
+                name: "foo"
+            })"#
+            )
+            .unwrap(),
+            (
+                123,
+                Object {
+                    id: 11,
+                    name: "foo".to_owned()
+                }
+            )
+        );
+
+        assert_eq!(
+            from_str::<ObjectDetail>(
+                r#"{
+    id: 456
+    address: (11, "sz")
+}"#
+            )
+            .unwrap(),
+            ObjectDetail {
+                id: 456,
+                address: (11, "sz".to_owned())
+            }
+        );
+    }
+
+    #[test]
+    fn test_mix_variant_object() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Simple {
+            id: i32,
+            name: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Complex {
+            id: i32,
+            checked: bool,
+            fullname: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Item {
+            Empty,
+            Minimal(i32),
+            Simple(Simple),
+            Complex(Complex),
+        }
+
+        assert_eq!(
+            from_str::<Vec<Item>>(
+                r#"[
+    Item::Empty
+    Item::Minimal(11)
+    Item::Simple({
+        id: 13
+        name: "foo"
+    })
+    Item::Complex({
+        id: 17
+        checked: true
+        fullname: "foobar"
+    })
+]"#
+            )
+            .unwrap(),
+            vec![
+                Item::Empty,
+                Item::Minimal(11),
+                Item::Simple(Simple {
+                    id: 13,
+                    name: "foo".to_owned()
+                }),
+                Item::Complex(Complex {
+                    id: 17,
+                    checked: true,
+                    fullname: "foobar".to_owned()
+                })
+            ]
+        );
+    }
 }
