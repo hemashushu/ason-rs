@@ -79,13 +79,13 @@ impl Token {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Comment {
-    // `// ...`
+    // `//...`
     Line(String),
 
-    // `/* ... */`
+    // `/*...*/`
     Block(String),
 
-    // starts with `\s*"""\n` and ends with `\s*"""\n`
+    // `/**...**/`
     Document(String),
 }
 
@@ -229,14 +229,17 @@ pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
                 // raw string with hash symbol
                 tokens.push(lex_raw_string_with_hash(iter)?);
             }
-            'r' if iter.equals(1, &'|') && iter.equals(2, &'"') => {
-                // auto-trimmed string
-                tokens.push(lex_auto_trimmed_string(iter)?);
-            }
+            // 'r' if iter.equals(1, &'|') && iter.equals(2, &'"') => {
+            //     // auto-trimmed string
+            //     tokens.push(lex_auto_trimmed_string(iter)?);
+            // }
             '"' => {
                 if iter.equals(1, &'"') && iter.equals(2, &'"') {
                     // document comment
-                    tokens.push(lex_document_comment(iter)?);
+                    // tokens.push(lex_document_comment(iter)?);
+
+                    // auto-trimmed string
+                    tokens.push(lex_auto_trimmed_string(iter)?);
                 } else {
                     // normal string
                     tokens.push(lex_string(iter)?);
@@ -251,8 +254,13 @@ pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
                 tokens.push(lex_line_comment(iter)?);
             }
             '/' if iter.equals(1, &'*') => {
-                // block comment
-                tokens.push(lex_block_comment(iter)?);
+                if iter.equals(2, &'*') {
+                    // document comment
+                    tokens.push(lex_document_comment(iter)?);
+                } else {
+                    // block comment
+                    tokens.push(lex_block_comment(iter)?);
+                }
             }
             'a'..='z' | 'A'..='Z' | '_' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
                 // identifier (key name) or keyword
@@ -536,65 +544,65 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 
     // convert to primitive numbers
 
-//     let has_integer_unit_prefix = |p: Option<char>| -> bool {
-//         if let Some(c) = p {
-//             matches!(c, 'E' | 'P' | 'T' | 'G' | 'M' | 'K')
-//         } else {
-//             false
-//         }
-//     };
-//
-//     let has_fraction_unit_prefix = |p: Option<char>| -> bool {
-//         if let Some(c) = p {
-//             matches!(c, 'm' | 'u' | 'n' | 'p' | 'f' | 'a')
-//         } else {
-//             false
-//         }
-//     };
-//
-//     let get_integer_unit_prefix_value = |p: Option<char>| -> u64 {
-//         if let Some(c) = p {
-//             if found_binary_prefix {
-//                 match c {
-//                     'E' => 2_u64.pow(60),
-//                     'P' => 2_u64.pow(50),
-//                     'T' => 2_u64.pow(40),
-//                     'G' => 2_u64.pow(30),
-//                     'M' => 2_u64.pow(20),
-//                     'K' => 2_u64.pow(10),
-//                     _ => unreachable!(),
-//                 }
-//             } else {
-//                 match c {
-//                     'E' => 10_u64.pow(18),
-//                     'P' => 10_u64.pow(15),
-//                     'T' => 10_u64.pow(12),
-//                     'G' => 10_u64.pow(9),
-//                     'M' => 10_u64.pow(6),
-//                     'K' => 10_u64.pow(3),
-//                     _ => unreachable!(),
-//                 }
-//             }
-//         } else {
-//             unreachable!()
-//         }
-//     };
-//
-//     let get_fraction_unit_prefix_value = |p: Option<char>| -> f64 {
-//         if let Some(c) = p {
-//             match c {
-//                 'a' => 10_f64.powi(18),
-//                 'f' => 10_f64.powi(15),
-//                 'p' => 10_f64.powi(12),
-//                 'n' => 10_f64.powi(9),
-//                 'u' => 10_f64.powi(6),
-//                 'm' => 10_f64.powi(3),
-//                 _ => unreachable!(),
-//             }
-//         } else {
-//             unreachable!()
-//         }
-//     };
+    //     let has_integer_unit_prefix = |p: Option<char>| -> bool {
+    //         if let Some(c) = p {
+    //             matches!(c, 'E' | 'P' | 'T' | 'G' | 'M' | 'K')
+    //         } else {
+    //             false
+    //         }
+    //     };
+    //
+    //     let has_fraction_unit_prefix = |p: Option<char>| -> bool {
+    //         if let Some(c) = p {
+    //             matches!(c, 'm' | 'u' | 'n' | 'p' | 'f' | 'a')
+    //         } else {
+    //             false
+    //         }
+    //     };
+    //
+    //     let get_integer_unit_prefix_value = |p: Option<char>| -> u64 {
+    //         if let Some(c) = p {
+    //             if found_binary_prefix {
+    //                 match c {
+    //                     'E' => 2_u64.pow(60),
+    //                     'P' => 2_u64.pow(50),
+    //                     'T' => 2_u64.pow(40),
+    //                     'G' => 2_u64.pow(30),
+    //                     'M' => 2_u64.pow(20),
+    //                     'K' => 2_u64.pow(10),
+    //                     _ => unreachable!(),
+    //                 }
+    //             } else {
+    //                 match c {
+    //                     'E' => 10_u64.pow(18),
+    //                     'P' => 10_u64.pow(15),
+    //                     'T' => 10_u64.pow(12),
+    //                     'G' => 10_u64.pow(9),
+    //                     'M' => 10_u64.pow(6),
+    //                     'K' => 10_u64.pow(3),
+    //                     _ => unreachable!(),
+    //                 }
+    //             }
+    //         } else {
+    //             unreachable!()
+    //         }
+    //     };
+    //
+    //     let get_fraction_unit_prefix_value = |p: Option<char>| -> f64 {
+    //         if let Some(c) = p {
+    //             match c {
+    //                 'a' => 10_f64.powi(18),
+    //                 'f' => 10_f64.powi(15),
+    //                 'p' => 10_f64.powi(12),
+    //                 'n' => 10_f64.powi(9),
+    //                 'u' => 10_f64.powi(6),
+    //                 'm' => 10_f64.powi(3),
+    //                 _ => unreachable!(),
+    //             }
+    //         } else {
+    //             unreachable!()
+    //         }
+    //     };
 
     let num_token: Number;
 
@@ -676,27 +684,27 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                     ))
                 })?;
 
-//                 if has_integer_unit_prefix(num_prefix) {
-//                     match num_prefix {
-//                         Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-//                             return Err(Error::Message(format!(
-//                                 "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
-//                                 num_prefix.unwrap()
-//                             )));
-//                         }
-//                         _ => {
-//                             // pass
-//                         }
-//                     }
-//
-//                     v = v
-//                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
-//                         .ok_or(Error::Message(format!(
-//                             "Integer number is overflow: {}{}",
-//                             num_string,
-//                             num_prefix.unwrap()
-//                         )))?;
-//                 }
+                //                 if has_integer_unit_prefix(num_prefix) {
+                //                     match num_prefix {
+                //                         Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+                //                             return Err(Error::Message(format!(
+                //                                 "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
+                //                                 num_prefix.unwrap()
+                //                             )));
+                //                         }
+                //                         _ => {
+                //                             // pass
+                //                         }
+                //                     }
+                //
+                //                     v = v
+                //                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
+                //                         .ok_or(Error::Message(format!(
+                //                             "Integer number is overflow: {}{}",
+                //                             num_string,
+                //                             num_prefix.unwrap()
+                //                         )))?;
+                //                 }
 
                 num_token = Number::I32(v);
             }
@@ -708,27 +716,27 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                     ))
                 })?;
 
-//                 if has_integer_unit_prefix(num_prefix) {
-//                     match num_prefix {
-//                         Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-//                             return Err(Error::Message(format!(
-//                                 "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
-//                                 num_prefix.unwrap()
-//                             )));
-//                         }
-//                         _ => {
-//                             // pass
-//                         }
-//                     }
-//
-//                     v = v
-//                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
-//                         .ok_or(Error::Message(format!(
-//                             "Integer number is overflow: {}{}",
-//                             num_string,
-//                             num_prefix.unwrap()
-//                         )))?;
-//                 }
+                //                 if has_integer_unit_prefix(num_prefix) {
+                //                     match num_prefix {
+                //                         Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+                //                             return Err(Error::Message(format!(
+                //                                 "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
+                //                                 num_prefix.unwrap()
+                //                             )));
+                //                         }
+                //                         _ => {
+                //                             // pass
+                //                         }
+                //                     }
+                //
+                //                     v = v
+                //                         .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
+                //                         .ok_or(Error::Message(format!(
+                //                             "Integer number is overflow: {}{}",
+                //                             num_string,
+                //                             num_prefix.unwrap()
+                //                         )))?;
+                //                 }
 
                 num_token = Number::U32(v);
             }
@@ -788,16 +796,16 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                     )));
                 }
 
-//                 if v.is_nan() {
-//                     return Err(Error::Message(format!(
-//                         "Invalid f32 floating point number: {}.",
-//                         num_string
-//                     )));
-//                 }
-//
-//                 if has_fraction_unit_prefix(num_prefix) {
-//                     v /= get_fraction_unit_prefix_value(num_prefix) as f32;
-//                 }
+                //                 if v.is_nan() {
+                //                     return Err(Error::Message(format!(
+                //                         "Invalid f32 floating point number: {}.",
+                //                         num_string
+                //                     )));
+                //                 }
+                //
+                //                 if has_fraction_unit_prefix(num_prefix) {
+                //                     v /= get_fraction_unit_prefix_value(num_prefix) as f32;
+                //                 }
 
                 num_token = Number::F32(v);
             }
@@ -817,76 +825,76 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
                     )));
                 }
 
-//                 if v.is_nan() {
-//                     return Err(Error::Message(format!(
-//                         "Invalid f64 floating point number: {}.",
-//                         num_string
-//                     )));
-//                 }
-//
-//                 if has_fraction_unit_prefix(num_prefix) {
-//                     v /= get_fraction_unit_prefix_value(num_prefix);
-//                 }
+                //                 if v.is_nan() {
+                //                     return Err(Error::Message(format!(
+                //                         "Invalid f64 floating point number: {}.",
+                //                         num_string
+                //                     )));
+                //                 }
+                //
+                //                 if has_fraction_unit_prefix(num_prefix) {
+                //                     v /= get_fraction_unit_prefix_value(num_prefix);
+                //                 }
 
                 num_token = Number::F64(v);
             }
         }
-//     } else if has_integer_unit_prefix(num_prefix) {
-//         // i32
-//         let mut v = num_string.parse::<u32>().map_err(|e| {
-//             Error::Message(format!(
-//                 "Can not convert \"{}\" to i32 integer number, error: {}",
-//                 num_string, e
-//             ))
-//         })?;
-//
-//         match num_prefix {
-//             Some(c) if c == 'T' || c == 'P' || c == 'E' => {
-//                 return Err(Error::Message(format!(
-//                     "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
-//                     num_prefix.unwrap()
-//                 )));
-//             }
-//             _ => {
-//                 // pass
-//             }
-//         }
-//
-//         v = v
-//             .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
-//             .ok_or(Error::Message(format!(
-//                 "Integer number is overflow: {}{}",
-//                 num_string,
-//                 num_prefix.unwrap()
-//             )))?;
-//
-//         num_token = Number::I32(v);
-//     } else if has_fraction_unit_prefix(num_prefix) {
-//         // f64
-//         let mut v = num_string.parse::<f64>().map_err(|e| {
-//             Error::Message(format!(
-//                 "Can not convert \"{}\" to f64 floating-point number, error: {}",
-//                 num_string, e
-//             ))
-//         })?;
-//
-//         if v.is_infinite() {
-//             return Err(Error::Message(format!(
-//                 "F64 floating point number overflow: {}.",
-//                 num_string
-//             )));
-//         }
-//
-//         if v.is_nan() {
-//             return Err(Error::Message(format!(
-//                 "Invalid f64 floating point number: {}.",
-//                 num_string
-//             )));
-//         }
-//
-//         v /= get_fraction_unit_prefix_value(num_prefix);
-//
-//         num_token = Number::F64(v);
+    //     } else if has_integer_unit_prefix(num_prefix) {
+    //         // i32
+    //         let mut v = num_string.parse::<u32>().map_err(|e| {
+    //             Error::Message(format!(
+    //                 "Can not convert \"{}\" to i32 integer number, error: {}",
+    //                 num_string, e
+    //             ))
+    //         })?;
+    //
+    //         match num_prefix {
+    //             Some(c) if c == 'T' || c == 'P' || c == 'E' => {
+    //                 return Err(Error::Message(format!(
+    //                     "The unit prefix {} is out of range for integer numbers, consider adding i64 or u64 types.",
+    //                     num_prefix.unwrap()
+    //                 )));
+    //             }
+    //             _ => {
+    //                 // pass
+    //             }
+    //         }
+    //
+    //         v = v
+    //             .checked_mul(get_integer_unit_prefix_value(num_prefix) as u32)
+    //             .ok_or(Error::Message(format!(
+    //                 "Integer number is overflow: {}{}",
+    //                 num_string,
+    //                 num_prefix.unwrap()
+    //             )))?;
+    //
+    //         num_token = Number::I32(v);
+    //     } else if has_fraction_unit_prefix(num_prefix) {
+    //         // f64
+    //         let mut v = num_string.parse::<f64>().map_err(|e| {
+    //             Error::Message(format!(
+    //                 "Can not convert \"{}\" to f64 floating-point number, error: {}",
+    //                 num_string, e
+    //             ))
+    //         })?;
+    //
+    //         if v.is_infinite() {
+    //             return Err(Error::Message(format!(
+    //                 "F64 floating point number overflow: {}.",
+    //                 num_string
+    //             )));
+    //         }
+    //
+    //         if v.is_nan() {
+    //             return Err(Error::Message(format!(
+    //                 "Invalid f64 floating point number: {}.",
+    //                 num_string
+    //             )));
+    //         }
+    //
+    //         v /= get_fraction_unit_prefix_value(num_prefix);
+    //
+    //         num_token = Number::F64(v);
     } else if found_point || found_e {
         // the default floating-point number type is f64
         // f64
@@ -1653,14 +1661,15 @@ fn lex_raw_string_with_hash(iter: &mut LookaheadIter<char>) -> Result<Token, Err
 }
 
 fn lex_auto_trimmed_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
-    // r|"                    //
+    // """                    //
     // ^  auto-trimmed string //
-    // |  "|\n?               //
-    // |      ^_______________// to here ('?' = any chars or EOF)
+    // |  ...                 //
+    // |  """?                //
+    // |     ^________________// to here ('?' = any chars or EOF)
     // |______________________// current char
 
-    iter.next(); // consume char r
-    iter.next(); // consume char |
+    iter.next(); // consume char "
+    iter.next(); // consume char "
     iter.next(); // consume char "
 
     if iter.equals(0, &'\n') {
@@ -1674,7 +1683,7 @@ fn lex_auto_trimmed_string(iter: &mut LookaheadIter<char>) -> Result<Token, Erro
         ));
     }
 
-    let leading_whitespaces = consume_leading_whitespaces(iter)?;
+    let leading_whitespace_count = consume_leading_whitespaces(iter)?;
     let mut total_string = String::new();
     let mut line_leading = String::new();
 
@@ -1685,17 +1694,21 @@ fn lex_auto_trimmed_string(iter: &mut LookaheadIter<char>) -> Result<Token, Erro
                     '\n' => {
                         total_string.push('\n');
                         line_leading.clear();
-                        skip_leading_whitespaces(iter, leading_whitespaces);
+                        skip_leading_whitespaces(iter, leading_whitespace_count);
                     }
                     '\r' if iter.equals(0, &'\n') => {
                         iter.next(); // consume '\n'
 
                         total_string.push_str("\r\n");
                         line_leading.clear();
-                        skip_leading_whitespaces(iter, leading_whitespaces);
+                        skip_leading_whitespaces(iter, leading_whitespace_count);
                     }
-                    '"' if line_leading.trim().is_empty() && iter.equals(0, &'|') => {
-                        iter.next(); // consume '|'
+                    '"' if line_leading.trim().is_empty()
+                        && iter.equals(0, &'"')
+                        && iter.equals(1, &'"') =>
+                    {
+                        iter.next(); // consume '"'
+                        iter.next(); // consume '"'
                         break;
                     }
                     _ => {
@@ -1712,95 +1725,89 @@ fn lex_auto_trimmed_string(iter: &mut LookaheadIter<char>) -> Result<Token, Erro
         }
     }
 
-    // the actual starting mark is `r|"\n`, and the actual ending mark is `\n"|`.
     Ok(Token::String_(total_string.trim_end().to_owned()))
 }
 
-fn lex_document_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
-    // """                  //
-    // ^  document comment  //
-    // |  """\n?            //
-    // |       ^____________// to here ('?' = any chars or EOF)
-    // |____________________// current char
-
-    // consume 3 chars (""")
-    iter.next();
-    iter.next();
-    iter.next();
-
-    if iter.equals(0, &'\n') {
-        iter.next();
-    } else if iter.equals(0, &'\r') && iter.equals(1, &'\n') {
-        iter.next();
-        iter.next();
-    } else {
-        return Err(Error::Message(
-            "The content of document comment should start on a new line.".to_owned(),
-        ));
-    }
-
-    let leading_whitespaces = consume_leading_whitespaces(iter)?;
-    let mut comment_string = String::new();
-    let mut line_leading = String::new();
-
-    loop {
-        match iter.next() {
-            Some(previous_char) => {
-                match previous_char {
-                    '\n' => {
-                        comment_string.push('\n');
-                        line_leading.clear();
-                        skip_leading_whitespaces(iter, leading_whitespaces);
-                    }
-                    '\r' if iter.equals(0, &'\n') => {
-                        iter.next(); // consume '\n'
-
-                        comment_string.push_str("\r\n");
-                        line_leading.clear();
-                        skip_leading_whitespaces(iter, leading_whitespaces);
-                    }
-                    '"' if line_leading.trim().is_empty()
-                        && iter.equals(0, &'"')
-                        && iter.equals(1, &'"') =>
-                    {
-                        iter.next(); // consume '"'
-                        iter.next(); // consume '"'
-
-                        // only (""") which occupies a single line, is considered to be
-                        // the ending mark of a paragraph string.
-                        // note that the ending marker includes the new line chars (\n or \r\n),
-                        // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
-                        // the ending marker.
-                        if iter.equals(0, &'\n') {
-                            iter.next();
-                            break;
-                        } else if iter.equals(0, &'\r') && iter.equals(1, &'\n') {
-                            iter.next();
-                            iter.next();
-                            break;
-                        } else {
-                            // it's not a valid ending mark.
-                            comment_string.push_str("\"\"\"");
-                        }
-                    }
-                    _ => {
-                        comment_string.push(previous_char);
-                        line_leading.push(previous_char);
-                    }
-                }
-            }
-            None => {
-                return Err(Error::Message(
-                    "Missing the ending marker for the paragraph string.".to_owned(),
-                ));
-            }
-        }
-    }
-
-    Ok(Token::Comment(Comment::Document(
-        comment_string.trim_end().to_owned(),
-    )))
-}
+// fn lex_document_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+//     // """                  //
+//     // ^  document comment  //
+//     // |  ...               //
+//     // |  """?              //
+//     // |     ^______________// to here ('?' = \r, \n or EOF)
+//     // |____________________// current char
+//
+//     // consume 3 chars (""")
+//     iter.next();
+//     iter.next();
+//     iter.next();
+//
+//     if iter.equals(0, &'\n') {
+//         iter.next();
+//     } else if iter.equals(0, &'\r') && iter.equals(1, &'\n') {
+//         iter.next();
+//         iter.next();
+//     } else {
+//         return Err(Error::Message(
+//             "The content of document comment should start on a new line.".to_owned(),
+//         ));
+//     }
+//
+//     let leading_whitespaces = consume_leading_whitespaces(iter)?;
+//     let mut comment_string = String::new();
+//     let mut line_leading = String::new();
+//
+//     loop {
+//         match iter.next() {
+//             Some(previous_char) => {
+//                 match previous_char {
+//                     '\n' => {
+//                         comment_string.push('\n');
+//                         line_leading.clear();
+//                         skip_leading_whitespaces(iter, leading_whitespaces);
+//                     }
+//                     '\r' if iter.equals(0, &'\n') => {
+//                         iter.next(); // consume '\n'
+//
+//                         comment_string.push_str("\r\n");
+//                         line_leading.clear();
+//                         skip_leading_whitespaces(iter, leading_whitespaces);
+//                     }
+//                     '"' if line_leading.trim().is_empty()
+//                         && iter.equals(0, &'"')
+//                         && iter.equals(1, &'"') =>
+//                     {
+//                         iter.next(); // consume '"'
+//                         iter.next(); // consume '"'
+//
+//                         // only (""") which occupies a single line, is considered to be
+//                         // the ending mark of a paragraph string.
+//                         // i.e., ("""\n), ("""\r\n), or ("""EOF)
+//
+//                         if let Some('\r') | Some('\n') | None = iter.peek(0) {
+//                             break;
+//                         } else {
+//                             // it's not a valid ending mark.
+//                             comment_string.push_str("\"\"\"");
+//                         }
+//                     }
+//                     _ => {
+//                         comment_string.push(previous_char);
+//                         line_leading.push(previous_char);
+//                     }
+//                 }
+//             }
+//             None => {
+//                 return Err(Error::Message(
+//                     "Missing the ending marker for the paragraph string.".to_owned(),
+//                 ));
+//             }
+//         }
+//     }
+//
+//     Ok(Token::Comment(Comment::Document(
+//         comment_string.trim_end().to_owned(),
+//     )))
+// }
 
 fn lex_date(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // d"2024-03-16T16:30:50+08:00"?  //
@@ -1935,11 +1942,9 @@ fn lex_line_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 }
 
 fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
-    // x*...*x?  //
+    // /*...*/?  //
     // ^      ^__// to here
     // |_________// current char
-    //
-    // x == '/'
 
     iter.next(); // consume char '/'
     iter.next(); // consume char '*'
@@ -1978,6 +1983,40 @@ fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     }
 
     Ok(Token::Comment(Comment::Block(comment_string)))
+}
+
+fn lex_document_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+    // /**...**/?  //
+    // ^        ^__// to here
+    // |___________// current char
+
+    iter.next(); // consume char '/'
+    iter.next(); // consume char '*'
+    iter.next(); // consume char '*'
+
+    let mut comment_string = String::new();
+
+    loop {
+        match iter.next() {
+            Some(previous_char) => match previous_char {
+                '*' if iter.equals(0, &'*') && iter.equals(1, &'/') => {
+                    iter.next();
+                    iter.next();
+
+                    break;
+                }
+                _ => {
+                    // ignore all chars except "**/"
+                    // note that line comments and block comments within block comments are ignored.
+                    // document comment does not support nested.
+                    comment_string.push(previous_char);
+                }
+            },
+            None => return Err(Error::Message("Incomplete document comment.".to_owned())),
+        }
+    }
+
+    Ok(Token::Comment(Comment::Document(comment_string)))
 }
 
 // - remove all comments.
@@ -2602,195 +2641,195 @@ mod tests {
         }
     }
 
-//     #[test]
-//     fn test_lex_decimal_number_with_unit_prefix() {
-//         // metric prefix
-//         {
-//             assert_eq!(
-//                 lex_from_str("1K").unwrap(),
-//                 vec![Token::Number(Number::I32(10_i32.pow(3) as u32))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1M").unwrap(),
-//                 vec![Token::Number(Number::I32(10_i32.pow(6) as u32))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1G").unwrap(),
-//                 vec![Token::Number(Number::I32(10_i32.pow(9) as u32))]
-//             );
-//         }
-//
-//         // both metric prefix and number type
-//         {
-//             assert_eq!(
-//                 lex_from_str("1K_i64").unwrap(),
-//                 vec![Token::Number(Number::I64(10_i64.pow(3) as u64))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1M_i64").unwrap(),
-//                 vec![Token::Number(Number::I64(10_i64.pow(6) as u64))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1G_i64").unwrap(),
-//                 vec![Token::Number(Number::I64(10_i64.pow(9) as u64))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1T_u64").unwrap(),
-//                 vec![Token::Number(Number::U64(10_u64.pow(12)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1P_u64").unwrap(),
-//                 vec![Token::Number(Number::U64(10_u64.pow(15)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1E_u64").unwrap(),
-//                 vec![Token::Number(Number::U64(10_u64.pow(18)))]
-//             );
-//         }
-//
-//         // binary unit prefix
-//         {
-//             assert_eq!(
-//                 lex_from_str("1Ki").unwrap(),
-//                 vec![Token::Number(Number::I32(2_i32.pow(10) as u32))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1Mi").unwrap(),
-//                 vec![Token::Number(Number::I32(2_i32.pow(20) as u32))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1Gi").unwrap(),
-//                 vec![Token::Number(Number::I32(2_i32.pow(30) as u32))]
-//             );
-//         }
-//
-//         // both binary prefix and number type
-//         {
-//             assert_eq!(
-//                 lex_from_str("1Ki_i64").unwrap(),
-//                 vec![Token::Number(Number::I64(2_i64.pow(10) as u64))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1Mi_i64").unwrap(),
-//                 vec![Token::Number(Number::I64(2_i64.pow(20) as u64))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1Gi_i64").unwrap(),
-//                 vec![Token::Number(Number::I64(2_i64.pow(30) as u64))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1Ti_u64").unwrap(),
-//                 vec![Token::Number(Number::U64(2_u64.pow(40)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1Pi_u64").unwrap(),
-//                 vec![Token::Number(Number::U64(2_u64.pow(50)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1Ei_u64").unwrap(),
-//                 vec![Token::Number(Number::U64(2_u64.pow(60)))]
-//             );
-//         }
-//
-//         // binary unit prefix alternative
-//         {
-//             assert_eq!(
-//                 lex_from_str("1KB").unwrap(),
-//                 vec![Token::Number(Number::I32(2_i32.pow(10) as u32))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1MB").unwrap(),
-//                 vec![Token::Number(Number::I32(2_i32.pow(20) as u32))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1GB").unwrap(),
-//                 vec![Token::Number(Number::I32(2_i32.pow(30) as u32))]
-//             );
-//         }
-//
-//         // fraction metric prefix
-//         {
-//             assert_eq!(
-//                 lex_from_str("1m").unwrap(),
-//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(3)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1u").unwrap(),
-//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(6)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1n").unwrap(),
-//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(9)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1p").unwrap(),
-//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(12)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1f").unwrap(),
-//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(15)))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1a").unwrap(),
-//                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(18)))]
-//             );
-//         }
-//
-//         // both fraction metric prefix and number type
-//         {
-//             assert_eq!(
-//                 lex_from_str("1m_f32").unwrap(),
-//                 vec![Token::Number(Number::F32(0.001))]
-//             );
-//
-//             assert_eq!(
-//                 lex_from_str("1m_f64").unwrap(),
-//                 vec![Token::Number(Number::F64(0.001))]
-//             );
-//         }
-//
-//         // err: invalid unit prefix
-//         assert!(matches!(lex_from_str("1Z"), Err(Error::Message(_))));
-//
-//         // err: out of range
-//         assert!(matches!(lex_from_str("8G"), Err(Error::Message(_))));
-//
-//         // err: out of range
-//         assert!(matches!(lex_from_str("1T"), Err(Error::Message(_))));
-//
-//         // err: out of range
-//         assert!(matches!(lex_from_str("1P"), Err(Error::Message(_))));
-//
-//         // err: out of range
-//         assert!(matches!(lex_from_str("1E"), Err(Error::Message(_))));
-//
-//         // err: invalid type
-//         assert!(matches!(lex_from_str("1K_i16"), Err(Error::Message(_))));
-//
-//         // err: invalid type
-//         assert!(matches!(lex_from_str("1m_i32"), Err(Error::Message(_))));
-//     }
+    //     #[test]
+    //     fn test_lex_decimal_number_with_unit_prefix() {
+    //         // metric prefix
+    //         {
+    //             assert_eq!(
+    //                 lex_from_str("1K").unwrap(),
+    //                 vec![Token::Number(Number::I32(10_i32.pow(3) as u32))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1M").unwrap(),
+    //                 vec![Token::Number(Number::I32(10_i32.pow(6) as u32))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1G").unwrap(),
+    //                 vec![Token::Number(Number::I32(10_i32.pow(9) as u32))]
+    //             );
+    //         }
+    //
+    //         // both metric prefix and number type
+    //         {
+    //             assert_eq!(
+    //                 lex_from_str("1K_i64").unwrap(),
+    //                 vec![Token::Number(Number::I64(10_i64.pow(3) as u64))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1M_i64").unwrap(),
+    //                 vec![Token::Number(Number::I64(10_i64.pow(6) as u64))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1G_i64").unwrap(),
+    //                 vec![Token::Number(Number::I64(10_i64.pow(9) as u64))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1T_u64").unwrap(),
+    //                 vec![Token::Number(Number::U64(10_u64.pow(12)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1P_u64").unwrap(),
+    //                 vec![Token::Number(Number::U64(10_u64.pow(15)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1E_u64").unwrap(),
+    //                 vec![Token::Number(Number::U64(10_u64.pow(18)))]
+    //             );
+    //         }
+    //
+    //         // binary unit prefix
+    //         {
+    //             assert_eq!(
+    //                 lex_from_str("1Ki").unwrap(),
+    //                 vec![Token::Number(Number::I32(2_i32.pow(10) as u32))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1Mi").unwrap(),
+    //                 vec![Token::Number(Number::I32(2_i32.pow(20) as u32))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1Gi").unwrap(),
+    //                 vec![Token::Number(Number::I32(2_i32.pow(30) as u32))]
+    //             );
+    //         }
+    //
+    //         // both binary prefix and number type
+    //         {
+    //             assert_eq!(
+    //                 lex_from_str("1Ki_i64").unwrap(),
+    //                 vec![Token::Number(Number::I64(2_i64.pow(10) as u64))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1Mi_i64").unwrap(),
+    //                 vec![Token::Number(Number::I64(2_i64.pow(20) as u64))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1Gi_i64").unwrap(),
+    //                 vec![Token::Number(Number::I64(2_i64.pow(30) as u64))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1Ti_u64").unwrap(),
+    //                 vec![Token::Number(Number::U64(2_u64.pow(40)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1Pi_u64").unwrap(),
+    //                 vec![Token::Number(Number::U64(2_u64.pow(50)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1Ei_u64").unwrap(),
+    //                 vec![Token::Number(Number::U64(2_u64.pow(60)))]
+    //             );
+    //         }
+    //
+    //         // binary unit prefix alternative
+    //         {
+    //             assert_eq!(
+    //                 lex_from_str("1KB").unwrap(),
+    //                 vec![Token::Number(Number::I32(2_i32.pow(10) as u32))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1MB").unwrap(),
+    //                 vec![Token::Number(Number::I32(2_i32.pow(20) as u32))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1GB").unwrap(),
+    //                 vec![Token::Number(Number::I32(2_i32.pow(30) as u32))]
+    //             );
+    //         }
+    //
+    //         // fraction metric prefix
+    //         {
+    //             assert_eq!(
+    //                 lex_from_str("1m").unwrap(),
+    //                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(3)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1u").unwrap(),
+    //                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(6)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1n").unwrap(),
+    //                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(9)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1p").unwrap(),
+    //                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(12)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1f").unwrap(),
+    //                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(15)))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1a").unwrap(),
+    //                 vec![Token::Number(Number::F64(1_f64 / 10_f64.powi(18)))]
+    //             );
+    //         }
+    //
+    //         // both fraction metric prefix and number type
+    //         {
+    //             assert_eq!(
+    //                 lex_from_str("1m_f32").unwrap(),
+    //                 vec![Token::Number(Number::F32(0.001))]
+    //             );
+    //
+    //             assert_eq!(
+    //                 lex_from_str("1m_f64").unwrap(),
+    //                 vec![Token::Number(Number::F64(0.001))]
+    //             );
+    //         }
+    //
+    //         // err: invalid unit prefix
+    //         assert!(matches!(lex_from_str("1Z"), Err(Error::Message(_))));
+    //
+    //         // err: out of range
+    //         assert!(matches!(lex_from_str("8G"), Err(Error::Message(_))));
+    //
+    //         // err: out of range
+    //         assert!(matches!(lex_from_str("1T"), Err(Error::Message(_))));
+    //
+    //         // err: out of range
+    //         assert!(matches!(lex_from_str("1P"), Err(Error::Message(_))));
+    //
+    //         // err: out of range
+    //         assert!(matches!(lex_from_str("1E"), Err(Error::Message(_))));
+    //
+    //         // err: invalid type
+    //         assert!(matches!(lex_from_str("1K_i16"), Err(Error::Message(_))));
+    //
+    //         // err: invalid type
+    //         assert!(matches!(lex_from_str("1m_i32"), Err(Error::Message(_))));
+    //     }
 
     #[test]
     fn test_lex_hex_number() {
@@ -3330,12 +3369,12 @@ mod tests {
         assert_eq!(
             lex_from_str(
                 r#"
-                r|"
+                """
                 one
                   two
                     three
                 end
-                "|
+                """
                 "#
             )
             .unwrap(),
@@ -3349,12 +3388,12 @@ mod tests {
         assert_eq!(
             lex_from_str(
                 r#"
-                r|"
+                """
                 one
               two
             three
                 end
-                "|
+                """
                 "#
             )
             .unwrap(),
@@ -3368,11 +3407,11 @@ mod tests {
         assert_eq!(
             lex_from_str(
                 r#"
-                r|"
+                """
                     one\\\"\t\r\n\u{1234}
 
                     end
-                "|
+                """
                 "#
             )
             .unwrap(),
@@ -3383,21 +3422,21 @@ mod tests {
             ]
         );
 
-        // test the ending mark ("|) does not start in a new line
+        // test the ending mark (""") does not start in a new line
 
         assert_eq!(
             lex_from_str(
                 r#"
-                r|"
-                    one"|
+                """
+                    one"""
                     two
-                "|
+                """
                 "#
             )
             .unwrap(),
             vec![
                 Token::NewLine,
-                Token::new_string("one\"|\ntwo"),
+                Token::new_string("one\"\"\"\ntwo"),
                 Token::NewLine,
             ]
         );
@@ -3406,9 +3445,9 @@ mod tests {
         assert_eq!(
             lex_from_str(
                 r#"
-                11 r|"
+                11 """
                     abc
-                "| 13
+                """ 13
                 "#
             )
             .unwrap(),
@@ -3425,7 +3464,8 @@ mod tests {
         assert!(matches!(
             lex_from_str(
                 r#"
-                r|"hello"|
+                """hello
+                """
                 "#
             ),
             Err(Error::Message(_))
@@ -3435,8 +3475,8 @@ mod tests {
         assert!(matches!(
             lex_from_str(
                 r#"
-            r|"
-            hello"|
+            """
+            hello"""
             "#
             ),
             Err(Error::Message(_))
@@ -3446,7 +3486,7 @@ mod tests {
         assert!(matches!(
             lex_from_str(
                 r#"
-                r|"
+                """
                 hello
                 "#
             ),
@@ -3695,114 +3735,204 @@ mod tests {
         ));
     }
 
+    //     #[test]
+    //     fn test_lex_document_comment() {
+    //         // expect:
+    //         //      "one\ntwo\nthree"
+    //         // not:
+    //         //      "\none\ntwo\nthree\n"
+    //         assert_eq!(
+    //             lex_from_str(
+    //                 r#"
+    //                 """
+    //                 one
+    //                 two
+    //                 three
+    //                 """"#
+    //             )
+    //             .unwrap(),
+    //             vec![
+    //                 Token::NewLine,
+    //                 Token::Comment(Comment::Document("one\ntwo\nthree".to_owned())),
+    //             ]
+    //         );
+    //
+    //         assert_eq!(
+    //             lex_from_str(
+    //                 r#"
+    //                 """
+    //                 one
+    //                   two
+    //                     three
+    //                 end
+    //                 """
+    //                 "#
+    //             )
+    //             .unwrap(),
+    //             vec![
+    //                 Token::NewLine,
+    //                 Token::Comment(Comment::Document("one\n  two\n    three\nend".to_owned())),
+    //                 Token::NewLine
+    //             ]
+    //         );
+    //
+    //         assert_eq!(
+    //             lex_from_str(
+    //                 r#"
+    //                 """
+    //                 one
+    //               two
+    //             three
+    //                 end
+    //                 """
+    //                 "#
+    //             )
+    //             .unwrap(),
+    //             vec![
+    //                 Token::NewLine,
+    //                 Token::Comment(Comment::Document("one\ntwo\nthree\nend".to_owned())),
+    //                 Token::NewLine
+    //             ]
+    //         );
+    //
+    //         assert_eq!(
+    //             lex_from_str(
+    //                 r#"
+    //                 """
+    //                     one\\\"\t\r\n\u{1234}
+    //
+    //                     end
+    //                 """
+    //                 "#
+    //             )
+    //             .unwrap(),
+    //             vec![
+    //                 Token::NewLine,
+    //                 Token::Comment(Comment::Document(
+    //                     "one\\\\\\\"\\t\\r\\n\\u{1234}\n\nend".to_owned()
+    //                 )),
+    //                 Token::NewLine
+    //             ]
+    //         );
+    //
+    //         assert_eq!(
+    //             lex_from_str(
+    //                 r#"
+    //                 """
+    //                     one"""
+    //                     """two
+    //                     """"
+    //                     end
+    //                 """
+    //                 "#
+    //             )
+    //             .unwrap(),
+    //             vec![
+    //                 Token::NewLine,
+    //                 Token::Comment(Comment::Document(
+    //                     "one\"\"\"\n\"\"\"two\n\"\"\"\"\nend".to_owned()
+    //                 )),
+    //                 Token::NewLine
+    //             ]
+    //         );
+    //
+    //         // err: the content does not start on a new line
+    //         assert!(matches!(
+    //             lex_from_str(
+    //                 r#"
+    //                 """hello"""
+    //                 "#
+    //             ),
+    //             Err(Error::Message(_))
+    //         ));
+    //
+    //         // err: the ending marker does not start on a new line
+    //         assert!(matches!(
+    //             lex_from_str(
+    //                 r#"
+    //             """
+    //             hello"""
+    //             "#
+    //             ),
+    //             Err(Error::Message(_))
+    //         ));
+    //
+    //         // err: the ending marker does not occupy the whole line
+    //         assert!(matches!(
+    //             lex_from_str(
+    //                 r#"
+    //                 """
+    //                 hello
+    //                 """world
+    //                 "#
+    //             ),
+    //             Err(Error::Message(_))
+    //         ));
+    //
+    //         // err: missing the ending marker
+    //         assert!(matches!(
+    //             lex_from_str(
+    //                 r#"
+    //                 """
+    //                 hello
+    //                 "#
+    //             ),
+    //             Err(Error::Message(_))
+    //         ));
+    //     }
+
     #[test]
     fn test_lex_document_comment() {
         assert_eq!(
             lex_from_str(
                 r#"
-                """
-                one
-                  two
-                    three
-                end
-                """
+                /** one two **/
                 "#
             )
             .unwrap(),
             vec![
                 Token::NewLine,
-                Token::Comment(Comment::Document("one\n  two\n    three\nend".to_owned())),
-                // note that the ending marker includes the new line chars (\n or \r\n),
-                // i.e., the ("""\n) or ("""\r\n), so there is NO `Token::NewLine` follows
-                // the ending marker.
+                Token::Comment(Comment::Document(" one two ".to_owned())),
+                Token::NewLine,
             ]
         );
 
         assert_eq!(
             lex_from_str(
                 r#"
-                """
-                one
-              two
-            three
-                end
-                """
+/** one ** */ /** /* two
+**/
                 "#
             )
             .unwrap(),
             vec![
                 Token::NewLine,
-                Token::Comment(Comment::Document("one\ntwo\nthree\nend".to_owned())),
+                Token::Comment(Comment::Document(" one ** */ /** /* two\n".to_owned())),
+                Token::NewLine
             ]
         );
 
         assert_eq!(
             lex_from_str(
                 r#"
-                """
-                    one\\\"\t\r\n\u{1234}
-
-                    end
-                """
+/* one **/
                 "#
             )
             .unwrap(),
             vec![
                 Token::NewLine,
-                Token::Comment(Comment::Document(
-                    "one\\\\\\\"\\t\\r\\n\\u{1234}\n\nend".to_owned()
-                )),
+                Token::Comment(Comment::Block(" one *".to_owned())),
+                Token::NewLine
             ]
         );
 
-        assert_eq!(
-            lex_from_str(
-                r#"
-                """
-                    one"""
-                    """two
-                    """"
-                    end
-                """
-                "#
-            )
-            .unwrap(),
-            vec![
-                Token::NewLine,
-                Token::Comment(Comment::Document(
-                    "one\"\"\"\n\"\"\"two\n\"\"\"\"\nend".to_owned()
-                )),
-            ]
-        );
-
-        // err: the content does not start on a new line
+        // err: incorrect ending marker
         assert!(matches!(
             lex_from_str(
                 r#"
-                """hello"""
-                "#
-            ),
-            Err(Error::Message(_))
-        ));
-
-        // err: the ending marker does not start on a new line
-        assert!(matches!(
-            lex_from_str(
-                r#"
-            """
-            hello"""
-            "#
-            ),
-            Err(Error::Message(_))
-        ));
-
-        // err: the ending marker does not occupy the whole line
-        assert!(matches!(
-            lex_from_str(
-                r#"
-                """
+                /**
                 hello
-                """world
+                */
                 "#
             ),
             Err(Error::Message(_))
@@ -3812,7 +3942,7 @@ mod tests {
         assert!(matches!(
             lex_from_str(
                 r#"
-                """
+                /**
                 hello
                 "#
             ),

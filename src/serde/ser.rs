@@ -98,11 +98,11 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_i8(self, v: i8) -> Result<()> {
-        self.append(format!("{}@byte", v))
+        self.append(format!("{}_i8", v))
     }
 
     fn serialize_i16(self, v: i16) -> Result<()> {
-        self.append(format!("{}@short", v))
+        self.append(format!("{}_i16", v))
     }
 
     fn serialize_i32(self, v: i32) -> Result<()> {
@@ -112,71 +112,65 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_i64(self, v: i64) -> Result<()> {
-        self.append(format!("{}@long", v))
+        self.append(format!("{}_i64", v))
     }
 
     fn serialize_u8(self, v: u8) -> Result<()> {
-        self.append(format!("{}@ubyte", v))
+        self.append(format!("{}_u8", v))
     }
 
     fn serialize_u16(self, v: u16) -> Result<()> {
-        self.append(format!("{}@ushort", v))
+        self.append(format!("{}_u16", v))
     }
 
     fn serialize_u32(self, v: u32) -> Result<()> {
-        self.append(format!("{}@uint", v))
+        self.append(format!("{}_u32", v))
     }
 
     fn serialize_u64(self, v: u64) -> Result<()> {
-        self.append(format!("{}@ulong", v))
+        self.append(format!("{}_u64", v))
     }
 
     fn serialize_f32(self, v: f32) -> Result<()> {
-        if v.is_infinite() {
-            return Err(Error::Message("ASON does not support \"Inf\".".to_owned()));
-        }
-
-        if v.is_nan() {
-            return Err(Error::Message("ASON does not support \"NaN\".".to_owned()));
-        }
-
-        if v == -0.0f32 {
-            return Err(Error::Message("ASON does not support \"-0\".".to_owned()));
-        }
-
-        // 'f32' is the default type for floating-point numbers.
-        // so there is no need for an explicit type name, although a
-        // decimal point needs to be appended if there is no decimal point
-        // in the literal.
-        let mut s = v.to_string();
-        if !s.contains('.') {
-            s.push_str(".0");
-        }
+        let s = if v.is_nan() {
+            "NaN_f32".to_owned()
+        } else if v == f32::INFINITY {
+            "Inf_f32".to_owned()
+        } else if v == f32::NEG_INFINITY {
+            "-Inf_f32".to_owned()
+        } else {
+            format!("{}_f32", v)
+        };
 
         self.append(s)
     }
 
     fn serialize_f64(self, v: f64) -> Result<()> {
-        if v.is_infinite() {
-            return Err(Error::Message("ASON does not support \"Inf\".".to_owned()));
-        }
+        // 'f64' is the default type for floating-point numbers.
+        // so there is no need for an explicit type name
 
-        if v.is_nan() {
-            return Err(Error::Message("ASON does not support \"NaN\".".to_owned()));
-        }
-
-        if v == -0.0f64 {
-            return Err(Error::Message("ASON does not support \"-0\".".to_owned()));
-        }
-
-        self.append(format!("{}@double", v))
+        let s = if v.is_nan() {
+            "NaN".to_owned()
+        } else if v == f64::INFINITY {
+            "Inf".to_owned()
+        } else if v == f64::NEG_INFINITY {
+            "-Inf".to_owned()
+        } else {
+            // a decimal point needs to be appended if there is no decimal point
+            // in the literal.
+            let mut s = v.to_string();
+            if !s.contains('.') {
+                s.push_str(".0");
+            }
+            s
+        };
+        self.append(s)
     }
 
     fn serialize_char(self, v: char) -> Result<()> {
         let s = match v {
             '\\' => "\\\\".to_owned(),
             '\'' => "\\'".to_owned(),
-            // '"' => "\\\"".to_owned(),
             '\t' => {
                 // horizontal tabulation
                 "\\t".to_owned()
@@ -305,7 +299,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
-        // Note that fixed length vectors (arrays, lists)
+        // Note that the Rust fixed length arrays
         // will be treated as tuples, e.g.
         // [i32; 4]
         //
@@ -329,15 +323,17 @@ impl<'a> ser::Serializer for &'a mut Serializer {
 
     fn serialize_tuple_variant(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
         // For example the `E::T` in `enum E { T(u8, u8) }`.
-        Err(Error::Message(
-            "ASON does not support \"Tuple Variant\".".to_owned(),
-        ))
+
+        self.append(format!("{}::{}", name, variant))?;
+        self.append("(".to_owned())?;
+        self.set_first_element_flag();
+        Ok(self)
     }
 
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
@@ -358,15 +354,18 @@ impl<'a> ser::Serializer for &'a mut Serializer {
 
     fn serialize_struct_variant(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant> {
         // For example the `E::S` in `enum E { S { r: u8, g: u8, b: u8 } }`.
-        Err(Error::Message(
-            "ASON does not support \"Struct Variant\".".to_owned(),
-        ))
+
+        self.append(format!("{}::{}", name, variant))?;
+        self.append("{".to_owned())?;
+        self.set_first_element_flag();
+        self.increase_level();
+        Ok(self)
     }
 }
 
@@ -436,15 +435,22 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_field<T>(&mut self, _value: &T) -> Result<()>
+    fn serialize_field<T>(&mut self, value: &T) -> Result<()>
     where
         T: ?Sized + Serialize,
     {
-        unreachable!()
+        let is_first_element = self.is_first_element();
+        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
+
+        if !is_first_element {
+            self.append(", ".to_owned())?;
+        }
+
+        value.serialize(&mut **self)
     }
 
     fn end(self) -> Result<()> {
-        unreachable!()
+        self.append(")".to_owned())
     }
 }
 
@@ -499,15 +505,23 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_field<T>(&mut self, _key: &'static str, _value: &T) -> Result<()>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
     where
         T: ?Sized + Serialize,
     {
-        unreachable!()
+        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
+
+        self.append("\n".to_owned())?;
+        self.insert_indent();
+        self.append(format!("{}: ", key))?;
+        value.serialize(&mut **self)
     }
 
     fn end(self) -> Result<()> {
-        unreachable!()
+        self.decrease_level();
+        self.append("\n".to_owned())?;
+        self.insert_indent();
+        self.append("}".to_owned())
     }
 }
 
@@ -533,46 +547,75 @@ mod tests {
         // signed integers
         {
             let v0: i8 = 11;
-            assert_eq!(to_string(&v0).unwrap(), r#"11@byte"#);
+            assert_eq!(to_string(&v0).unwrap(), r#"11_i8"#);
 
             let v1: i16 = 13;
-            assert_eq!(to_string(&v1).unwrap(), r#"13@short"#);
+            assert_eq!(to_string(&v1).unwrap(), r#"13_i16"#);
 
             let v2: i32 = 17;
             assert_eq!(to_string(&v2).unwrap(), r#"17"#);
 
             let v3: i64 = 19;
-            assert_eq!(to_string(&v3).unwrap(), r#"19@long"#);
+            assert_eq!(to_string(&v3).unwrap(), r#"19_i64"#);
         }
 
         // unsigned integers
         {
             let v0: u8 = 11;
-            assert_eq!(to_string(&v0).unwrap(), r#"11@ubyte"#);
+            assert_eq!(to_string(&v0).unwrap(), r#"11_u8"#);
 
             let v1: u16 = 13;
-            assert_eq!(to_string(&v1).unwrap(), r#"13@ushort"#);
+            assert_eq!(to_string(&v1).unwrap(), r#"13_u16"#);
 
             let v2: u32 = 17;
-            assert_eq!(to_string(&v2).unwrap(), r#"17@uint"#);
+            assert_eq!(to_string(&v2).unwrap(), r#"17_u32"#);
 
             let v3: u64 = 19;
-            assert_eq!(to_string(&v3).unwrap(), r#"19@ulong"#);
+            assert_eq!(to_string(&v3).unwrap(), r#"19_u64"#);
         }
 
         // floating-point f32
         {
             let v0: f32 = 123_f32;
-            assert_eq!(to_string(&v0).unwrap(), r#"123.0"#);
+            assert_eq!(to_string(&v0).unwrap(), r#"123_f32"#);
 
-            let v1: f32 = std::f32::consts::PI;
-            assert_eq!(to_string(&v1).unwrap(), r#"3.1415927"#);
+            let v1: f32 = -4.56_f32;
+            assert_eq!(to_string(&v1).unwrap(), r#"-4.56_f32"#);
+
+            let v2: f32 = std::f32::consts::PI;
+            assert_eq!(to_string(&v2).unwrap(), r#"3.1415927_f32"#);
+
+            let v3: f32 = 0f32;
+            assert_eq!(to_string(&v3).unwrap(), r#"0_f32"#);
+
+            let v4: f32 = -0f32;
+            assert_eq!(to_string(&v4).unwrap(), r#"-0_f32"#);
+
+            assert_eq!(to_string(&f32::NAN).unwrap(), r#"NaN_f32"#);
+            assert_eq!(to_string(&f32::INFINITY).unwrap(), r#"Inf_f32"#);
+            assert_eq!(to_string(&f32::NEG_INFINITY).unwrap(), r#"-Inf_f32"#);
         }
 
         // floating-point f64
         {
-            let v0: f64 = std::f64::consts::E;
-            assert_eq!(to_string(&v0).unwrap(), r#"2.718281828459045@double"#);
+            let v0: f64 = 123_f64;
+            assert_eq!(to_string(&v0).unwrap(), r#"123.0"#);
+
+            let v1: f64 = -4.56_f64;
+            assert_eq!(to_string(&v1).unwrap(), r#"-4.56"#);
+
+            let v2: f64 = std::f64::consts::E;
+            assert_eq!(to_string(&v2).unwrap(), r#"2.718281828459045"#);
+
+            let v3: f64 = 0f64;
+            assert_eq!(to_string(&v3).unwrap(), r#"0.0"#);
+
+            let v4: f64 = -0f64;
+            assert_eq!(to_string(&v4).unwrap(), r#"-0.0"#);
+
+            assert_eq!(to_string(&f64::NAN).unwrap(), r#"NaN"#);
+            assert_eq!(to_string(&f64::INFINITY).unwrap(), r#"Inf"#);
+            assert_eq!(to_string(&f64::NEG_INFINITY).unwrap(), r#"-Inf"#);
         }
 
         // char
@@ -603,7 +646,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bytes() {
+    fn test_byte_data() {
         let v0 = vec![11u8, 13, 17, 19];
         let v0b = ByteBuf::from(v0);
         assert_eq!(to_string(&v0b).unwrap(), r#"h"0b:0d:11:13""#);
@@ -628,64 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn test_variant() {
-        #[derive(Serialize)]
-        enum Color {
-            Red,
-            Green,
-            Blue,
-            Grey(u8),
-        }
-
-        {
-            let v0 = Color::Red;
-            assert_eq!(to_string(&v0).unwrap(), r#"Color::Red"#);
-
-            let v1 = Color::Green;
-            assert_eq!(to_string(&v1).unwrap(), r#"Color::Green"#);
-
-            let v2 = Color::Grey(11);
-            assert_eq!(to_string(&v2).unwrap(), r#"Color::Grey(11@ubyte)"#);
-        }
-
-        #[derive(Serialize)]
-        enum Member {
-            Code(i32),
-            Name(String),
-        }
-
-        {
-            assert_eq!(to_string(&Member::Code(11)).unwrap(), r#"Member::Code(11)"#);
-            assert_eq!(
-                to_string(&Member::Name("foo".to_owned())).unwrap(),
-                r#"Member::Name("foo")"#
-            );
-        }
-
-        // nested
-        #[derive(Serialize)]
-        enum Apperance {
-            Transparent,
-            Color(Color),
-        }
-
-        {
-            let v0 = Apperance::Transparent;
-            assert_eq!(to_string(&v0).unwrap(), r#"Apperance::Transparent"#);
-
-            let v1 = Apperance::Color(Color::Blue);
-            assert_eq!(to_string(&v1).unwrap(), r#"Apperance::Color(Color::Blue)"#);
-
-            let v2 = Apperance::Color(Color::Grey(13));
-            assert_eq!(
-                to_string(&v2).unwrap(),
-                r#"Apperance::Color(Color::Grey(13@ubyte))"#
-            );
-        }
-    }
-
-    #[test]
-    fn test_array() {
+    fn test_list() {
         assert_eq!(
             to_string(&vec![11, 13, 17, 19]).unwrap(),
             r#"[
@@ -699,9 +685,9 @@ mod tests {
         assert_eq!(
             to_string(&"abc".as_bytes()).unwrap(),
             r#"[
-    97@ubyte
-    98@ubyte
-    99@ubyte
+    97_u8
+    98_u8
+    99_u8
 ]"#
         );
 
@@ -749,10 +735,7 @@ mod tests {
         assert_eq!(to_string(&(11, 13, 17, 19)).unwrap(), r#"(11, 13, 17, 19)"#);
 
         // a fixed-length array is treated as tuple
-        assert_eq!(
-            to_string(b"abc").unwrap(),
-            r#"(97@ubyte, 98@ubyte, 99@ubyte)"#
-        );
+        assert_eq!(to_string(b"abc").unwrap(), r#"(97_u8, 98_u8, 99_u8)"#);
 
         assert_eq!(
             to_string(&("foo", "bar", "2024")).unwrap(),
@@ -829,7 +812,95 @@ mod tests {
     }
 
     #[test]
-    fn test_mix_array_and_tuple() {
+    fn test_variant_with_single_value() {
+        #[derive(Serialize)]
+        enum Color {
+            Red,
+            Green,
+            Blue,
+            Grey(u8),
+        }
+
+        {
+            let v0 = Color::Red;
+            assert_eq!(to_string(&v0).unwrap(), r#"Color::Red"#);
+
+            let v1 = Color::Green;
+            assert_eq!(to_string(&v1).unwrap(), r#"Color::Green"#);
+
+            let v2 = Color::Grey(11);
+            assert_eq!(to_string(&v2).unwrap(), r#"Color::Grey(11_u8)"#);
+        }
+
+        // nested
+        #[derive(Serialize)]
+        enum Apperance {
+            Transparent,
+            Color(Color),
+        }
+
+        {
+            let v0 = Apperance::Transparent;
+            assert_eq!(to_string(&v0).unwrap(), r#"Apperance::Transparent"#);
+
+            let v1 = Apperance::Color(Color::Blue);
+            assert_eq!(to_string(&v1).unwrap(), r#"Apperance::Color(Color::Blue)"#);
+
+            let v2 = Apperance::Color(Color::Grey(13));
+            assert_eq!(
+                to_string(&v2).unwrap(),
+                r#"Apperance::Color(Color::Grey(13_u8))"#
+            );
+        }
+    }
+
+    #[test]
+    fn test_variant_with_multiple_values() {
+        #[derive(Serialize)]
+        enum Color {
+            RGB(u8, u8, u8),
+            Grey(u8),
+        }
+
+        assert_eq!(
+            to_string(&Color::RGB(255, 127, 63)).unwrap(),
+            r#"Color::RGB(255_u8, 127_u8, 63_u8)"#
+        );
+
+        assert_eq!(
+            to_string(&Color::Grey(127)).unwrap(),
+            r#"Color::Grey(127_u8)"#
+        );
+    }
+
+    #[test]
+    fn test_variant_with_object_value() {
+        #[derive(Serialize)]
+        enum Shape {
+            Circle(i32),
+            Rect { width: i32, height: i32 },
+        }
+
+        assert_eq!(
+            to_string(&Shape::Rect {
+                width: 200,
+                height: 100
+            })
+            .unwrap(),
+            r#"Shape::Rect{
+    width: 200
+    height: 100
+}"#
+        );
+
+        assert_eq!(
+            to_string(&Shape::Circle(127)).unwrap(),
+            r#"Shape::Circle(127)"#
+        );
+    }
+
+    #[test]
+    fn test_mix_list_and_tuple() {
         assert_eq!(
             to_string(&vec![(1, "foo"), (2, "bar")]).unwrap(),
             r#"[
@@ -851,7 +922,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mix_array_and_object() {
+    fn test_mix_list_and_object() {
         #[derive(Serialize)]
         struct Object {
             id: i32,

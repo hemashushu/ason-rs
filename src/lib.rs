@@ -10,7 +10,7 @@ pub mod process;
 pub use process::parser::parse;
 pub use process::writer::write;
 
-// pub mod serde;
+pub mod serde;
 
 // pub use serde::de::from_str;
 // pub use serde::ser::to_string;

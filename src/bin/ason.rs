@@ -10,12 +10,17 @@ use ason::{parse, write};
 
 fn main() {
     let mut args = std::env::args();
-
-    // args 0 = program itself
+    // args 0 = program executable file itself
     // args 1 = source file
     //
     // run with Cargo:
+    // `$ cargo run -- [path-to-ason-file]`
+    //
+    // e.g.
     // `$ cargo run -- examples/01-object.ason`
+    //
+    // standalone:
+    // `$ ason [path-to-ason-file]`
 
     if args.len() != 2 {
         // https://doc.rust-lang.org/cargo/reference/environment-variables.html

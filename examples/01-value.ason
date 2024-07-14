@@ -87,11 +87,11 @@
     string_with_escaped_unicode: "\u{6CB3}\u{9A6C}"
     raw_string: r"hello"
     raw_string_with_hash: r#"hello "programming" world"#
-    auto_trimmed_string: r|"
+    auto_trimmed_string: """
         heading 1
           heading 2
             heading 3
-        "|
+        """
 
     // value starts on a new line
     new_line:
@@ -116,13 +116,16 @@
      */
     multiline_block_comment: 109
 
-    """
-    document comment
-    # heading 1
-    ## heading 2
-    ### heading 3
-    """
+    /**
+        document comment
 
+        # heading 1
+        paragraph
+
+        ```
+        code
+        ```
+    **/
     document_comment: 113
 
     inline_comma_1: 211, inline_comma_2: 223, inline_comma_3: 227
