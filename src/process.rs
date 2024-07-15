@@ -11,20 +11,19 @@ pub mod writer;
 
 use chrono::{DateTime, FixedOffset};
 
-// Number literal
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Number {
     // it is possible for literal to overflow for signed numbers,
     // such as `-128`, which consists of a negative/minus sign
-    // and the number `128`, which is out of range for `i8`, so
-    // define the literal using `u8`.
-    I8(u8),
+    // and the number `128`, the number 128 is out of range for `i8`, so
+    // define the `i8` literal using `u8`.
+    I8(i8),
     U8(u8),
-    I16(u16),
+    I16(i16),
     U16(u16),
-    I32(u32),
+    I32(i32),
     U32(u32),
-    I64(u64),
+    I64(i64),
     U64(u64),
     F32(f32),
     F64(f64),
@@ -34,15 +33,6 @@ pub enum Number {
 pub struct KeyValuePair {
     pub key: String,
     pub value: Box<AsonNode>,
-}
-
-impl KeyValuePair {
-    pub fn new(key: &str, value: AsonNode) -> Self {
-        Self {
-            key: key.to_owned(),
-            value: Box::new(value),
-        }
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -62,6 +52,29 @@ pub enum VariantValue {
     Single(Box<AsonNode>),     // new type variant
     Multiple(Vec<AsonNode>),   // tuple variant
     Object(Vec<KeyValuePair>), // struct variant
+}
+
+#[derive(Debug, PartialEq)]
+pub enum AsonNode {
+    Number(Number),
+    Boolean(bool),
+    Char(char),
+    String_(String),
+    Date(DateTime<FixedOffset>),
+    Variant(Variant),
+    ByteData(Vec<u8>),
+    List(Vec<AsonNode>),
+    Tuple(Vec<AsonNode>),
+    Object(Vec<KeyValuePair>),
+}
+
+impl KeyValuePair {
+    pub fn new(key: &str, value: AsonNode) -> Self {
+        Self {
+            key: key.to_owned(),
+            value: Box::new(value),
+        }
+    }
 }
 
 impl Variant {
@@ -100,20 +113,6 @@ impl Variant {
             value: VariantValue::Object(key_value_pairs),
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum AsonNode {
-    Number(Number),
-    Boolean(bool),
-    Char(char),
-    String_(String),
-    Date(DateTime<FixedOffset>),
-    Variant(Variant),
-    ByteData(Vec<u8>),
-    List(Vec<AsonNode>),
-    Tuple(Vec<AsonNode>),
-    Object(Vec<KeyValuePair>),
 }
 
 impl AsonNode {

@@ -13,26 +13,26 @@ pub const INDENT_SPACES: &str = "    ";
 fn write_number(v: &Number) -> String {
     match v {
         Number::I8(v) => {
-            format!("{}_i8", *v as i8)
+            format!("{}_i8", v)
         }
         Number::U8(v) => {
             format!("{}_u8", v)
         }
         Number::I16(v) => {
-            format!("{}_i16", *v as i16)
+            format!("{}_i16", v)
         }
         Number::U16(v) => {
             format!("{}_u16", v)
         }
         Number::I32(v) => {
             // default integer number type
-            format!("{}", *v as i32)
+            format!("{}", v)
         }
         Number::U32(v) => {
             format!("{}_u32", v)
         }
         Number::I64(v) => {
-            format!("{}_i64", *v as i64)
+            format!("{}_i64", v)
         }
         Number::U64(v) => {
             format!("{}_u64", v)

@@ -13,6 +13,8 @@ where
     lookahead_length: usize,
 }
 
+pub const MAX_LOOKAHEAD_LENGTH: usize = 6;
+
 struct RoundQueue<T>
 where
     T: PartialEq,
@@ -20,7 +22,7 @@ where
     size: usize,
     position_read: usize,
     position_write: usize,
-    data: Vec<Option<T>>,
+    data: [Option<T>; MAX_LOOKAHEAD_LENGTH],
 }
 
 impl<T> RoundQueue<T>
@@ -28,16 +30,13 @@ where
     T: PartialEq,
 {
     pub fn new(size: usize) -> Self {
-        let mut data: Vec<Option<T>> = Vec::with_capacity(size);
-        for _ in 0..size {
-            data.push(None)
-        }
+        assert!(size < MAX_LOOKAHEAD_LENGTH);
 
         Self {
             size,
             position_read: 0,
             position_write: 0,
-            data,
+            data: [None, None, None, None, None, None],
         }
     }
 
@@ -79,6 +78,8 @@ where
 {
     pub fn new(source: &'a mut dyn Iterator<Item = T>, lookahead_length: usize) -> Self {
         let mut buffer = RoundQueue::new(lookahead_length);
+
+        // pre-fill
         for _ in 0..lookahead_length {
             let value = source.next();
             buffer.enqueue(value);
@@ -93,7 +94,7 @@ where
 
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<T> {
-        // take the data from buffer first and then add it,
+        // take the data from buffer first, and then insert the new data,
         // because the buffer is pre-filled when it is created.
         let value = self.buffer.dequeue();
 

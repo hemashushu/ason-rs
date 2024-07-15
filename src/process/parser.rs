@@ -7,9 +7,9 @@
 use crate::error::Error;
 
 use super::{
-    lexer::{lex, normalize, Token},
+    lexer::{lex, normalize, NumberToken, Token},
     lookaheaditer::LookaheadIter,
-    AsonNode, KeyValuePair, Variant,
+    AsonNode, KeyValuePair, Number, Variant,
 };
 
 pub fn parse(s: &str) -> Result<AsonNode, Error> {
@@ -40,7 +40,7 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
                 continue;
             }
             Token::Number(n) => {
-                let v = AsonNode::Number(*n);
+                let v = convert_number_token(*n);
                 iter.next();
                 v
             }
@@ -102,6 +102,23 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     }
 
     Err(Error::Message("Incomplete ASON document.".to_owned()))
+}
+
+fn convert_number_token(token: NumberToken) -> AsonNode {
+    let number = match token {
+        NumberToken::I8(v) => Number::I8(v as i8),
+        NumberToken::U8(v) => Number::U8(v),
+        NumberToken::I16(v) => Number::I16(v as i16),
+        NumberToken::U16(v) => Number::U16(v),
+        NumberToken::I32(v) => Number::I32(v as i32),
+        NumberToken::U32(v) => Number::U32(v),
+        NumberToken::I64(v) => Number::I64(v as i64),
+        NumberToken::U64(v) => Number::U64(v),
+        NumberToken::F32(v) => Number::F32(v),
+        NumberToken::F64(v) => Number::F64(v),
+    };
+
+    AsonNode::Number(number)
 }
 
 fn parse_tuple_variant(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
