@@ -4,8 +4,6 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-pub mod lexer;
-pub mod lookaheaditer;
 pub mod parser;
 pub mod writer;
 
@@ -60,7 +58,7 @@ pub enum AsonNode {
     Boolean(bool),
     Char(char),
     String_(String),
-    Date(DateTime<FixedOffset>),
+    DateTime(DateTime<FixedOffset>),
     Variant(Variant),
     ByteData(Vec<u8>),
     List(Vec<AsonNode>),
@@ -125,11 +123,8 @@ impl AsonNode {
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use crate::{
-        parse,
-        process::{AsonNode, KeyValuePair, Number, Variant},
-        write,
-    };
+    use crate::ast::{AsonNode, KeyValuePair, Number, Variant};
+    use crate::{parse_from, write_to};
 
     #[test]
     fn test_parse() {
@@ -139,7 +134,7 @@ mod tests {
             orders: [11, 13]
         }"#;
 
-        let node = parse(text).unwrap();
+        let node = parse_from(text).unwrap();
 
         assert_eq!(
             node,
@@ -191,7 +186,7 @@ mod tests {
             ),
         ]);
 
-        let text = write(&node);
+        let text = write_to(&node);
 
         assert_eq!(
             text,
@@ -233,8 +228,8 @@ mod tests {
     #[test]
     fn test_example_file_01() {
         let s = read_example_file_to_string("01-value.ason");
-        let n = parse(&s).unwrap();
-        let t = write(&n);
+        let n = parse_from(&s).unwrap();
+        let t = write_to(&n);
 
         // note that the suffix 'a' should be '0.000000000000000001', but
         // in the debug mode, it may be '0.0000000000000000009999999' and
@@ -332,8 +327,8 @@ mod tests {
     #[test]
     fn test_example_file_02() {
         let s = read_example_file_to_string("02-list.ason");
-        let n = parse(&s).unwrap();
-        let t = write(&n);
+        let n = parse_from(&s).unwrap();
+        let t = write_to(&n);
 
         assert_eq!(
             t,
@@ -376,8 +371,8 @@ mod tests {
     #[test]
     fn test_example_file_03() {
         let s = read_example_file_to_string("03-tuple.ason");
-        let n = parse(&s).unwrap();
-        let t = write(&n);
+        let n = parse_from(&s).unwrap();
+        let t = write_to(&n);
 
         assert_eq!(
             t,
@@ -394,8 +389,8 @@ mod tests {
     #[test]
     fn test_example_file_04() {
         let s = read_example_file_to_string("04-object.ason");
-        let n = parse(&s).unwrap();
-        let t = write(&n);
+        let n = parse_from(&s).unwrap();
+        let t = write_to(&n);
 
         assert_eq!(
             t,
@@ -426,8 +421,8 @@ mod tests {
     #[test]
     fn test_example_file_05() {
         let s = read_example_file_to_string("05-variant.ason");
-        let n = parse(&s).unwrap();
-        let t = write(&n);
+        let n = parse_from(&s).unwrap();
+        let t = write_to(&n);
 
         assert_eq!(
             t,

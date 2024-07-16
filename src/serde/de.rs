@@ -6,14 +6,13 @@
 
 use serde::de::{self, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess};
 
-use super::Result;
 use crate::{
     error::Error,
-    process::{
-        lexer::{lex, normalize, NumberToken, Token},
-        lookaheaditer::LookaheadIter,
-    },
+    lexer::{lex, normalize, NumberToken, Token},
+    lookaheaditer::LookaheadIter,
 };
+
+use super::Result;
 
 pub fn from_str<T>(input: &str) -> Result<T>
 where
@@ -786,12 +785,12 @@ mod tests {
     #[test]
     fn test_byte_data() {
         assert_eq!(
-            from_str::<ByteBuf>(r#"h"0b:0d:11:13""#).unwrap(),
+            from_str::<ByteBuf>(r#"h"0b 0d 11 13""#).unwrap(),
             ByteBuf::from(vec![11u8, 13, 17, 19])
         );
 
         assert_eq!(
-            from_str::<ByteBuf>(r#"h"61:62:63""#).unwrap(),
+            from_str::<ByteBuf>(r#"h"61 62 63""#).unwrap(),
             ByteBuf::from(b"abc")
         );
     }

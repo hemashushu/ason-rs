@@ -237,8 +237,12 @@ pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
             }
             'h' if iter.equals(1, &'"') => {
                 // hex byte data
-                tokens.push(lex_hex_byte_data(iter)?);
+                tokens.push(lex_byte_data_hexadecimal(iter)?);
             }
+            // 'b' if iter.equals(1, &'"') => {
+            //     // string byte data
+            //     tokens.push(lex_byte_data_string(iter)?);
+            // }
             'd' if iter.equals(1, &'"') => {
                 // date
                 tokens.push(lex_date(iter)?);
@@ -1535,58 +1539,104 @@ fn lex_date(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::Date(rfc3339))
 }
 
-fn lex_hex_byte_data(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
-    // h"0011aabb"?  //
-    // ^          ^__// to here
-    // |_____________// current char
+fn lex_byte_data_hexadecimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+    // h"00 11 aa bb"?  //
+    // ^             ^__// to here
+    // |________________// current char
 
     let mut bytes: Vec<u8> = Vec::new();
-    let mut byte_buf = String::with_capacity(2);
+    // let mut byte_buf = String::with_capacity(2);
+    let mut chars: [char; 2] = ['0', '0'];
 
     iter.next(); // consume char 'h'
     iter.next(); // consume quote '"'
 
-    loop {
-        match iter.next() {
-            Some(previous_char) => {
-                match previous_char {
-                    ' ' | '\t' | '\r' | '\n' | '-' | ':' => {
-                        // ignore the separator and whitespace chars
-                    }
-                    '"' => {
-                        if !byte_buf.is_empty() {
-                            return Err(Error::Message("Incomplete byte string.".to_owned()));
-                        } else {
-                            break;
-                        }
-                    }
-                    'a'..='f' | 'A'..='F' | '0'..='9' => {
-                        byte_buf.push(previous_char);
+    let consume_whitespace_if_exits = |t: &mut LookaheadIter<char>| loop {
+        match t.peek(0) {
+            Some(' ') | Some('\t') | Some('\r') | Some('\n') => {
+                t.next();
+            }
+            _ => {
+                break;
+            }
+        }
+    };
 
-                        if byte_buf.len() == 2 {
-                            let byte = u8::from_str_radix(&byte_buf, 16).unwrap();
-                            bytes.push(byte);
-                            byte_buf.clear();
-                        }
-                    }
-                    _ => {
-                        return Err(Error::Message(format!(
-                            "Invalid char for byte string: {}",
-                            previous_char
-                        )));
+    let consume_withspaces = |t: &mut LookaheadIter<char>| -> Result<(), Error> {
+        let mut found: bool = false;
+        loop {
+            match t.peek(0) {
+                Some(' ') | Some('\t') | Some('\r') | Some('\n') => {
+                    t.next();
+                    found = true;
+                }
+                _ => {
+                    if found {
+                        break;
+                    } else {
+                        return Err(Error::Message(
+                            "Expect whitespace between hexadecimal byte data digits.".to_owned(),
+                        ));
                     }
                 }
             }
-            None => {
-                return Err(Error::Message(
-                    "Missing end quote for byte string.".to_owned(),
-                ))
+        }
+        Ok(())
+    };
+
+    loop {
+        consume_whitespace_if_exits(iter);
+
+        if iter.equals(0, &'"') {
+            break;
+        }
+
+        for idx in 0..2usize {
+            match iter.next() {
+                Some(previous_char) => match previous_char {
+                    'a'..='f' | 'A'..='F' | '0'..='9' => {
+                        chars[idx] = previous_char;
+                    }
+                    _ => {
+                        return Err(Error::Message(format!(
+                            "Invalid digit for hexadecimal byte data: {}",
+                            previous_char
+                        )));
+                    }
+                },
+                None => {
+                    return Err(Error::Message(
+                        "Incomplete hexadecimal byte data.".to_owned(),
+                    ))
+                }
             }
         }
+
+        let byte_string = String::from_iter(chars);
+        let byte_number = u8::from_str_radix(&byte_string, 16).unwrap();
+        bytes.push(byte_number);
+
+        if iter.equals(0, &'"') {
+            break;
+        }
+
+        consume_withspaces(iter)?; // consume at lease one whitespace
     }
+
+    iter.next(); // consume '"'
 
     Ok(Token::ByteData(bytes))
 }
+
+// fn lex_byte_data_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+//     // b"..."?  //
+//     // ^     ^__// to here
+//     // |________// current char
+//
+//     let s = consume_string(iter)?;
+//     let v = s.as_bytes().to_vec();
+//     Ok(Token::ByteData(v))
+// }
 
 fn lex_line_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // xx...[\r]\n?  //
@@ -1918,13 +1968,11 @@ mod tests {
 
     use crate::{
         error::Error,
-        process::{
-            lexer::{normalize, Comment, NumberToken},
-            lookaheaditer::LookaheadIter,
-        },
+        lexer::{Comment, NumberToken},
+        lookaheaditer::LookaheadIter,
     };
 
-    use super::{lex, Token};
+    use super::{lex, normalize, Token};
 
     fn lex_from_str(s: &str) -> Result<Vec<Token>, Error> {
         let mut chars = s.chars();
@@ -2989,7 +3037,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lex_hex_byte_data() {
+    fn test_lex_byte_data_hexadecimal() {
         assert_eq!(
             lex_from_str(
                 r#"
@@ -3003,7 +3051,17 @@ mod tests {
         assert_eq!(
             lex_from_str(
                 r#"
-                h"11131719"
+                h"11"
+                "#
+            )
+            .unwrap(),
+            vec![Token::NewLine, Token::ByteData(vec![0x11]), Token::NewLine,]
+        );
+
+        assert_eq!(
+            lex_from_str(
+                r#"
+                h"11 13 17 19"
                 "#
             )
             .unwrap(),
@@ -3014,67 +3072,63 @@ mod tests {
             ]
         );
 
+        // assert_eq!(
+        //     lex_from_str(
+        //         r#"
+        //         h"11-13-1719"
+        //         "#
+        //     )
+        //     .unwrap(),
+        //     vec![
+        //         Token::NewLine,
+        //         Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
+        //         Token::NewLine,
+        //     ]
+        // );
+
+        // assert_eq!(
+        //     lex_from_str(
+        //         r#"
+        //         h"11:13:1719"
+        //         "#
+        //     )
+        //     .unwrap(),
+        //     vec![
+        //         Token::NewLine,
+        //         Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
+        //         Token::NewLine,
+        //     ]
+        // );
+
         assert_eq!(
+            lex_from_str(
+                "
+                h\"  11\t  13\r17\n  19  \"
+                "
+            )
+            .unwrap(),
+            vec![
+                Token::NewLine,
+                Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
+                Token::NewLine,
+            ]
+        );
+
+        // err: no whitespace
+        assert!(matches!(
             lex_from_str(
                 r#"
                 h"11 13 1719"
                 "#
-            )
-            .unwrap(),
-            vec![
-                Token::NewLine,
-                Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
-                Token::NewLine,
-            ]
-        );
-
-        assert_eq!(
-            lex_from_str(
-                r#"
-                h"11-13-1719"
-                "#
-            )
-            .unwrap(),
-            vec![
-                Token::NewLine,
-                Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
-                Token::NewLine,
-            ]
-        );
-
-        assert_eq!(
-            lex_from_str(
-                r#"
-                h"11:13:1719"
-                "#
-            )
-            .unwrap(),
-            vec![
-                Token::NewLine,
-                Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
-                Token::NewLine,
-            ]
-        );
-
-        assert_eq!(
-            lex_from_str(
-                "
-                h\"1113\n17\t19\"
-                "
-            )
-            .unwrap(),
-            vec![
-                Token::NewLine,
-                Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
-                Token::NewLine,
-            ]
-        );
+            ),
+            Err(Error::Message(_))
+        ));
 
         // err: incomplete byte string, the amount of digits should be even
         assert!(matches!(
             lex_from_str(
                 r#"
-                h"1113171"
+                h"11 13 17 1"
                 "#
             ),
             Err(Error::Message(_))
@@ -3084,7 +3138,7 @@ mod tests {
         assert!(matches!(
             lex_from_str(
                 r#"
-                h"1113171z"
+                h"11 13 17 1z"
                 "#
             ),
             Err(Error::Message(_))
@@ -3094,7 +3148,7 @@ mod tests {
         assert!(matches!(
             lex_from_str(
                 r#"
-                h"11131719
+                h"11 13 17 19
                 "#
             ),
             Err(Error::Message(_))

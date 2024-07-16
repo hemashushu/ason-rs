@@ -118,7 +118,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::process::lookaheaditer::LookaheadIter;
+    use crate::lookaheaditer::LookaheadIter;
 
     #[test]
     fn test_lookahead_iter() {

@@ -6,7 +6,7 @@
 
 use std::process;
 
-use ason::{parse, write};
+use ason::{parse_from, write_to};
 
 fn main() {
     let mut args = std::env::args();
@@ -21,6 +21,9 @@ fn main() {
     //
     // standalone:
     // `$ ason [path-to-ason-file]`
+
+    let s = "abc你好😁xyz".as_bytes();
+    println!("{:?}", s);
 
     if args.len() != 2 {
         // https://doc.rust-lang.org/cargo/reference/environment-variables.html
@@ -47,7 +50,7 @@ fn main() {
         }
     };
 
-    let node = match parse(&source) {
+    let node = match parse_from(&source) {
         Ok(n) => n,
         Err(e) => {
             eprintln!(
@@ -58,6 +61,6 @@ fn main() {
         }
     };
 
-    let text = write(&node);
+    let text = write_to(&node);
     println!("{}", text);
 }

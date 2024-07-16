@@ -145,7 +145,7 @@ fn write_byte_data(v: &[u8]) -> String {
         v.iter()
             .map(|item| format!("{:02x}", item))
             .collect::<Vec<String>>()
-            .join(":")
+            .join(" ")
     )
 }
 
@@ -205,7 +205,7 @@ fn write_ason_node(node: &AsonNode, level: usize) -> String {
         AsonNode::Boolean(v) => write_boolean(v),
         AsonNode::Char(v) => write_char(v),
         AsonNode::String_(v) => write_string(v),
-        AsonNode::Date(v) => write_date(v),
+        AsonNode::DateTime(v) => write_date(v),
         AsonNode::Variant(v) => write_variant(v, level),
         AsonNode::ByteData(v) => write_byte_data(v),
         AsonNode::List(v) => write_list(v, level),
@@ -214,22 +214,19 @@ fn write_ason_node(node: &AsonNode, level: usize) -> String {
     }
 }
 
-pub fn write(node: &AsonNode) -> String {
+pub fn write_to(node: &AsonNode) -> String {
     write_ason_node(node, 0)
 }
 
 #[cfg(test)]
 mod tests {
-
     use pretty_assertions::assert_eq;
 
-    use crate::process::parser::parse;
-
-    use super::write;
+    use crate::{parse_from, write_to};
 
     fn format(s: &str) -> String {
-        let node = parse(s).unwrap();
-        write(&node)
+        let node = parse_from(s).unwrap();
+        write_to(&node)
     }
 
     #[test]
@@ -321,10 +318,10 @@ mod tests {
         assert_eq!(
             format(
                 r#"
-            h"11:13:17:19"
+            h"11 13 17 19"
             "#
             ),
-            "h\"11:13:17:19\""
+            "h\"11 13 17 19\""
         );
     }
 

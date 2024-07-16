@@ -223,7 +223,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
             v.iter()
                 .map(|item| format!("{:02x}", item))
                 .collect::<Vec<String>>()
-                .join(":")
+                .join(" ")
         );
         self.append(s)
     }
@@ -649,16 +649,11 @@ mod tests {
     fn test_byte_data() {
         let v0 = vec![11u8, 13, 17, 19];
         let v0b = ByteBuf::from(v0);
-        assert_eq!(to_string(&v0b).unwrap(), r#"h"0b:0d:11:13""#);
+        assert_eq!(to_string(&v0b).unwrap(), r#"h"0b 0d 11 13""#);
 
         let v1 = b"abc";
         let v1b = ByteBuf::from(v1);
-        assert_eq!(to_string(&v1b).unwrap(), r#"h"61:62:63""#);
-
-        // DEPRECATED
-        // let v2 = vec![23u8, 29, 31, 37];
-        // let v2b = Binary::Hex(v2);
-        // assert_eq!(to_string(&v2b).unwrap(), r#"Binary::Hex("17:1d:1f:25")"#);
+        assert_eq!(to_string(&v1b).unwrap(), r#"h"61 62 63""#);
     }
 
     #[test]

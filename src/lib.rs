@@ -4,13 +4,16 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-pub mod error;
-pub mod process;
+mod ast;
+mod error;
+mod lexer;
+mod lookaheaditer;
+mod serde;
 
-pub use process::parser::parse;
-pub use process::writer::write;
+pub use ast::parser::parse_from;
+pub use ast::writer::write_to;
 
-pub mod serde;
+pub use error::Error;
 
 pub use serde::de::from_str;
 pub use serde::ser::to_string;

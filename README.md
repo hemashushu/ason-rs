@@ -47,19 +47,26 @@ The following is an example of ASON document:
 {
     string: "hello world"
     raw_string: r"[a-z]+\d+"
-    number: 123
-    number_with_explicit_type: 123_456_789@long
-    float: 3.14
-    double: 6.62607015e-34@double
-    bool: true
-    date: d"2023-03-24 12:30:00+08:00"
-    variant: Option::None
-    variant_with_value: Option::Some(123)
+    integer_number: 123
+    floating_point_number: 3.14
+    number_with_explicit_type: 123_456_789_i64
+    boolean: true
+    datetime: d"2023-03-24 12:30:00+08:00"
+    bytedata_hexadecimal: h"68 65 6c 6c 6f"
+
     list: [1, 2, 3]
     tuple: (1, "foo", true)
     object: {
         id: 456
-        name: "leaf"
+        name: "leaf🍀"
+    }
+
+    variant: Option::None
+    variant_with_single_value: Option::Some(123)
+    variant_with_multiple_values: Color::RGB(255, 127, 63)
+    variant_with_object_style_values: Shape::Rect{
+        width: 200
+        height: 100
     }
 }
 ```
@@ -76,20 +83,20 @@ ASON is an improvement over JSON. Overall, ASON's syntax is simpler, more  consi
 - Hexadecimal and binary representations of integers are added.
 - Hexadecimal representation of floating-point numbers are added.
 - Support for long strings, "raw strings", and "auto-trimmed strings" is added.
-- Support for line comments, block comments, and documentation comment is added.
+- Support for line comments, block comments is added.
 - The `Variant` data type is added, and the `null` value is removed.
-- New data types such as `Date`, `Tuple`, `Byte Data`, and `Char` are added.
+- New data types such as `DateTime`, `Tuple`, `ByteData`, and `Char` are added.
 - Improvement: Strings are consistently represented using double quotes.
 - Improvement: `List` requires all elements to be of the same data type.
 - Improvement: A trailing comma is allowed at the end of the last element of `List`, `Tuple` and `Object`.
 
 ### Compared to YAML and TOML
 
-When the data document contains a small amount of contect, all three formats are simple (ASON may have one more pair of braces) and can express the content well. Therefor, any of them can be used as the configuration file for an application or project.
+When the data document contains a small amount of content, all three formats are simple (ASON may have one more pair of braces) and can express the content well. Therefor, any of them can be used as the configuration file for an application or project.
 
-However, when the data document is large, YAML uses indentation to represent hierarchical relationships, so the number of space characters in the prefix needs to be carefully controlled, and it is easy to make mistakes when retreating multiple layers. TOML is not good at expressing hierarchical relationships and lists.
+However, when the data is large, YAML uses indentation to represent hierarchical relationships, so the number of space characters in the prefix needs to be carefully controlled, and it is easy to make mistakes when retreating multiple layers. In addition, its [specification](https://yaml.org/spec/) is quite complex. TOML is not good at expressing hierarchical relationships, there are often redundant key names in the document, and the [object list](https://toml.io/en/v1.0.0#array-of-tables) is not as clear as other formats..
 
-ASON, on the other hand, has good consistency regardless of the size of the data document.
+ASON, on the other hand, has good consistency regardless of the size of the data.
 
 ## File Extension
 

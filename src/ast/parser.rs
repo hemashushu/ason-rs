@@ -4,15 +4,15 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::error::Error;
-
-use super::{
+use crate::{
+    error::Error,
     lexer::{lex, normalize, NumberToken, Token},
     lookaheaditer::LookaheadIter,
-    AsonNode, KeyValuePair, Number, Variant,
 };
 
-pub fn parse(s: &str) -> Result<AsonNode, Error> {
+use super::{AsonNode, KeyValuePair, Number, Variant};
+
+pub fn parse_from(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
     let mut char_iter = LookaheadIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
@@ -60,7 +60,7 @@ fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
                 v
             }
             Token::Date(d) => {
-                let v = AsonNode::Date(*d);
+                let v = AsonNode::DateTime(*d);
                 iter.next();
                 v
             }
@@ -323,8 +323,9 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
+        ast::{KeyValuePair, Number, Variant},
         error::Error,
-        process::{parser::parse, KeyValuePair, Number, Variant},
+        parse_from,
     };
 
     use super::AsonNode;
@@ -332,7 +333,7 @@ mod tests {
     #[test]
     fn test_parse_simple_value() {
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             123
             "#
@@ -342,7 +343,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             true
             "#
@@ -352,7 +353,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             '🍒'
             "#
@@ -362,7 +363,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             "hello"
             "#
@@ -372,22 +373,22 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             d"2024-03-17 10:01:11+08:00"
             "#
             )
             .unwrap(),
-            AsonNode::Date(DateTime::parse_from_rfc3339("2024-03-17 10:01:11+08:00").unwrap())
+            AsonNode::DateTime(DateTime::parse_from_rfc3339("2024-03-17 10:01:11+08:00").unwrap())
         );
     }
 
     #[test]
     fn test_parse_byte_data() {
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
-            h"11:13:17:19"
+            h"11 13 17 19"
             "#
             )
             .unwrap(),
@@ -399,7 +400,7 @@ mod tests {
     fn test_parse_variant() {
         // empty value
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             Option::None
             "#
@@ -410,7 +411,7 @@ mod tests {
 
         // single value
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             Option::Some(123)
             "#
@@ -425,7 +426,7 @@ mod tests {
 
         // multiple values
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             Color::RGB(100,75,0)
             "#
@@ -444,7 +445,7 @@ mod tests {
 
         // object value
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             Shape::Rect{width:123, height:456}
             "#
@@ -475,7 +476,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             {id:123,name:"foo"}
             "#
@@ -485,7 +486,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             {
                 id:123
@@ -498,7 +499,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             {
                 id:123,
@@ -511,7 +512,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             {
                 id: 123,
@@ -524,7 +525,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             {
                 id: 123
@@ -563,7 +564,7 @@ mod tests {
 
         // err: key name with quote
         assert!(matches!(
-            parse(
+            parse_from(
                 r#"
             {
                 "id": 123,
@@ -584,7 +585,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             [123,456,789]
             "#
@@ -594,7 +595,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             [
                 123
@@ -608,7 +609,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             [
                 123,
@@ -622,7 +623,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             [
                 123,
@@ -645,7 +646,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             (123,"foo",true)
             "#
@@ -655,7 +656,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             (
                 123
@@ -669,7 +670,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             (
                 123,
@@ -683,7 +684,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             (
                 123,
@@ -700,7 +701,7 @@ mod tests {
     #[test]
     fn test_parse_compound() {
         assert_eq!(
-            parse(
+            parse_from(
                 r#"
             {
                 id:123
@@ -783,7 +784,7 @@ mod tests {
 
         // err: document does not end properly
         assert!(matches!(
-            parse(
+            parse_from(
                 r#"
                 {id: 123, name: "foo"} true
                 "#
