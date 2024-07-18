@@ -14,26 +14,26 @@ fn main() {
     // args 1 = source file
     //
     // run with Cargo:
-    // `$ cargo run -- [path-to-ason-file]`
+    // `$ cargo run -- <filename>`
     //
     // e.g.
-    // `$ cargo run -- examples/01-object.ason`
+    // `$ cargo run -- examples/01-primitive.ason`
     //
-    // standalone:
-    // `$ ason [path-to-ason-file]`
-
-    let s = "abc你好😁xyz".as_bytes();
-    println!("{:?}", s);
+    // run stand-alone:
+    // `$ ason filename`
 
     if args.len() != 2 {
         // https://doc.rust-lang.org/cargo/reference/environment-variables.html
-        eprintln!("ASON Parser {}", env!("CARGO_PKG_VERSION"));
+        eprintln!("ASON Utility {}", env!("CARGO_PKG_VERSION"));
         eprintln!();
         eprintln!("Usage:");
-        eprintln!("    ason <source_file>");
+        eprintln!("    ason <filename>");
         eprintln!();
-        eprintln!("Repository: https://github.com/hemashushu/ason-rs");
-        eprintln!("Reference: https://hemashushu.github.io/works/ason");
+        eprintln!("Example:");
+        eprintln!("    ason examples/01-primitive.ason");
+        eprintln!();
+        eprintln!("Source Code: https://github.com/hemashushu/ason-rs");
+        eprintln!("Document: https://hemashushu.github.io/works/ason");
         process::exit(1);
     }
 

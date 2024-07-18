@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_example_file_01() {
-        let s = read_example_file_to_string("01-value.ason");
+        let s = read_example_file_to_string("01-primitive.ason");
         let n = parse_from(&s).unwrap();
         let t = write_to(&n);
 
