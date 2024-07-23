@@ -24,7 +24,7 @@ _ASON_ is a data format that evolved from JSON, introducing strong data typing a
 - [Comparison](#comparison)
   - [Compared to JSON](#compared-to-json)
   - [Compared to YAML and TOML](#compared-to-yaml-and-toml)
-- [File Extension](#file-extension)
+- [Filename Extension](#filename-extension)
 - [Library and APIs](#library-and-apis)
   - [Installation](#installation)
   - [Serialization and Deserialization](#serialization-and-deserialization)
@@ -37,6 +37,16 @@ _ASON_ is a data format that evolved from JSON, introducing strong data typing a
   - [AST Parser and Writer](#ast-parser-and-writer)
   - [Utilities](#utilities)
 - [Syntax Quick Reference](#syntax-quick-reference)
+  - [Primitive Values](#primitive-values)
+  - [Multi-Line Strings](#multi-line-strings)
+  - [Auto-Trimming Leading Whitespace Strings](#auto-trimming-leading-whitespace-strings)
+  - [Long Strings](#long-strings)
+  - [Objects](#objects)
+  - [Lists](#lists)
+  - [Tuples](#tuples)
+  - [Variants](#variants)
+  - [Comments](#comments)
+  - [Documents](#documents)
 - [Specification](#specification)
 - [Source code](#source-code)
 - [License](#license)
@@ -98,7 +108,7 @@ ASON is an improvement over JSON. Overall, ASON's syntax is simpler, more  consi
 
 All three formats are simple (ASON may have one more pair of braces) and can express the content well when the data is small. However, when the data is large, YAML uses indentation to represent hierarchy, so the number of space characters in the prefix needs to be carefully controlled, and it is easy to make mistakes when retreating multiple layers. In addition, its [specification](https://yaml.org/spec/) is quite complex. TOML is not good at expressing hierarchy, there are often redundant key names in the text, and the [object list](https://toml.io/en/v1.0.0#array-of-tables) is not as clear as other formats. ASON, on the other hand, has good consistency regardless of the size of the data.
 
-## File Extension
+## Filename Extension
 
 The extension name for ASON file is `*.ason`, for example:
 
@@ -580,7 +590,384 @@ If the file "test.ason" has no errors, the program prints the formatted text to 
 
 ## Syntax Quick Reference
 
-...
+ASON is composed of values and optional comments. There are two types of values: primitive and composite.
+
+Primitive values are basic data types like integers, strings, booleans and datetimes. Composite values are more complex structures made up of multiple values, such as lists and objects.
+
+### Primitive Values
+
+Here are examples of different types of primitive values:
+
+- Integers: `123`, `+456`, `-789`
+- Floating-point numbers: `3.142`, `+1.414`, `-1.732`
+- Floating-point with exponent: `2.998e10`, `6.674e-11`
+
+  Underscores can be inserted between any digits of a number to group them, e.g. `123_456_789`, `6.626_070_e-34`
+
+  The data type of a number can be explicitly specified by appending the type name after the number, e.g. `65u8`, `3.14f32`
+
+  Underscores can also be inserted between the number and the type name, e.g. `933_199_u32`, `6.626e-34_f32`
+
+> Each number in ASON has a specific data type. If not explicitly specified, the default data type for integers is `i32` and for floating-point numbers is `f64`. ASON supports the following numeric data types: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`
+
+- Hexadecimal integers: `0x41`, `0x61_u8`
+- Binary integers: `0b1100`, `0b0110_0001_u8`
+- Floating-point numbers in [C/C++ language hexadecimal floating-point literal format](https://en.wikipedia.org/wiki/Hexadecimal#Hexadecimal_exponential_notation): `0x1.4p3`, `0x1.921f_b6p1_f32`
+
+  Note that you cannot represent a floating-point number by simply appending the "f32" or "f64" suffix to a normal hexadecimal integer, for example `0x21_f32`. This is because the character "f" is one of the hexadecimal digit characters (i.e., `[0-9a-f]`), so `0x21_f32` will only be parsed as a normal hexadecimal integer `0x21f32`.
+
+- Booleans: `true`, `false`
+- Characters: `'a'`, `'文'`, `'😊'`
+- Escape characters: `'\r'`, `'\n'`, `'\t'`, `'\\'`
+- Unicode escape characters: `'\u{2d}'`, `'\u{6587}'`
+- Strings: `"abc文字😊"`, `"foo\nbar"`
+- Raw strings: `r"[a-z]+\d+"`, `r#"<\w+\s(\w+="[^"]+")*>"#`
+- Date and time: `d"2024-03-16"`, `d"2024-03-16 16:30:50"`, `d"2024-03-16T16:30:50+08:00"`
+- Byte data:  `h"11 13 17 19"`, `h"4d 6f 6f 6e"`
+
+### Multi-Line Strings
+
+ASON strings allows multiple lines, as shown in the following example:
+
+```json5
+{
+    multiline_string: "1. Mercury Venus Earth
+                     2. Mars Jupiter Saturn
+                     3. Uranus Neptune"
+}
+```
+
+This represents a string with three paragraphs (lines).
+
+### Auto-Trimming Leading Whitespace Strings
+
+ASON supports "auto-trimming leading whitespace string" to improve readability. For instance, in the above example, the second and third lines introduce unnecessary leading whitespaces. While we may not always need these leading spaces, writing each line at the beginning of the line would disrupt the document's indentation. Using the "auto-trimming leading whitespace string" can solve this problem, the modified text would be:
+
+```json5
+{
+    auto_trimming_string: """
+        1. Mercury Venus Earth
+        2. Mars Jupiter Saturn
+        3. Uranus Neptune
+        """
+}
+```
+
+### Long Strings
+
+Sometimes a string may not need to span multiple lines, but its content is relatively long. To improve readability, ASON supports writing strings across multiple lines. Simply add a `\` symbol at the end of the line and start the new line. The subsequent text will be automatically appended to the current string. For example:
+
+```json5
+{
+    long_string: "My very educated \
+                mother just served \
+                us nine pizzas"
+}
+```
+
+The string in the example is equivalent to `"My very educated mother just served us nine pizzas"`. Note that all leading whitespaces in the lines of the text body will be automatically removed.
+
+### Objects
+
+An object can contain multiple values, each with a name called a _key_. A combination of a key and a value is called a _key-value pair_. An object is a collection of key-value pairs. For example:
+
+```json5
+{
+    name: "ason",
+    version: "1.0.1",
+    edition: "2021",
+}
+```
+
+The comma at the end of each key-value pair is optional. For instance, the ASON text above could be written as:
+
+```json5
+{
+    name: "ason"
+    version: "1.0.1"
+    edition: "2021"
+}
+```
+
+Note that ASON objects allow a comma at the end of the last key-value pair, which is disallowed in JSON. This feature is primarily intended to facilitate the rearrangement of "key-value pairs" (when editing ASON documents).
+
+Of course, multiple key-value pairs can also be written on the same line. In this case, commas are required between key-value pairs. For example:
+
+```json5
+{name: "ason", version: "1.0.1", edition: "2021",}
+```
+
+The values within an object can be any type, including primitive values (such as numbers, strings, dates) and composite values (such as lists, objects, tuples). In the real world, an object typically contains other objects. For example:
+
+```json5
+{
+    name: "ason"
+    version: "1.0.1"
+    edition: "2021"
+    dependencies: {
+        serde: "1.0"
+        chrono: "0.4"
+    }
+    dev_dependencies: {
+        pretty_assertions: "1.4"
+    }
+}
+```
+
+### Lists
+
+A list is a collection of values of the same type, such as:
+
+```json5
+[11, 13, 17, 19]
+```
+
+Similar to objects, the elements in a list can also be written on separate lines, with optional commas at the end of each line, and a comma is allowed at the end of the last element. For example:
+
+```json5
+[
+    "Alice",
+    "Bob",
+    "Carol",
+    "Dan",
+]
+```
+
+and
+
+```json5
+[
+    "Alice"
+    "Bob"
+    "Carol"
+    "Dan"
+]
+```
+
+The elements in a list can be of any data type, but all elements in the same list must be of the same type. For instance, the following list is invalid:
+
+```json5
+// invalid list due to inconsistent data types of elements
+[11, 13, "Alice", "Bob"]
+```
+
+If the elements in a list are objects, then the name and number of keys in each object, as well as the data type of the corresponding values, must be consistent. In other words, the type of object is determined by the type of all key-value pairs, and the type of key-value pair is determined by the key name and type of the value. For example, the following list is valid:
+
+```json5
+[
+    {
+        id: 123
+        name: "Alice"
+    }
+    {
+        id: 456
+        name: "Bob"
+    }
+]
+```
+
+While the following list is invalid:
+
+```json5
+// invalid list due to inconsistent types of the two objects.
+[
+    {
+        id: 123
+        name: "Alice"
+    }
+    {
+        id: 456
+        score: 'A'
+    }
+]
+```
+
+If the elements in a list are lists, then the data type of the elements in each sublist must be the same. In other words, the type of list is determined by the data type of its elements, and the number of elements is irrelevant. For instance, the following list is valid:
+
+```json5
+[
+    [11, 13, 17]
+    [101, 103, 107, 109]
+    [211, 223]
+]
+```
+
+In the above example, the top-level list contains 3 sublists, and although the number of elements in each sublist is different (3, 4 and 2), the data type of the elements is `i32` for all three sublists, making them of the same type.
+
+### Tuples
+
+A tuple can be considered as an object that omits the keys, for example:
+
+```json5
+(11, "Alice", true)
+```
+
+Tuples are similar in appearance to lists, but tuples do not require the data types of each element to be consistent. Secondly, both the data type and number of the elements are part of the type of tuple, for example `("Alice", "Bob")` and `("Alice", "Bob", "Carol")` are different types of tuples because they don't have the same number of elements.
+
+Similar to objects and lists, the elements of a tuple can also be written on separate lines, with optional commas at the end of each line, and there can be a comma at the end of the last element. For example:
+
+```json5
+(
+    "Alice",
+    11,
+    true,
+)
+```
+
+and
+
+```json5
+(
+    "Alice"
+    11
+    true
+)
+```
+
+### Variants
+
+A variant consists of three parts: the variant type name, the variant member name, and the optional value. For example:
+
+```json5
+// Variant without value
+Option::None
+```
+
+and
+
+```json5
+// Variant with a value
+Option::Some(11)
+```
+
+In the two variants in the above example, "Option" is the variant type name, "None" and "Some" are the variant member names, and "11" is the variant value.
+
+The types are the same as long as the variant type names are the same. For example, `Color::Red` and `Color::Green` are of the same type, while `Option::None` and `Color::Red` are of different types.
+
+If a variant member carries a value, then the type of the value is also part of the type of the variant member. For example, `Option::Some(11)` and `Option::Some(13)` are of the same types, but `Option::Some(11)` and `Option::Some("John")` are of different types.
+
+Therefor, the following list is valid because all elements have the same variant type name and the member `Some` has the same type:
+
+```json5
+[
+    Option::None
+    Option::Some(11)
+    Option::None
+    Option::Some(13)
+]
+```
+
+However, the following list is ont valid, although the variant type names of all the elements are consistent, the type of the member `Some` is inconsistent:
+
+```json5
+[
+    // Invalid list because of inconsistent element types
+    Option::None
+    Option::Some(11)
+    Option::Some("John")
+]
+```
+
+A variant can carry a value of any type, such as an object:
+
+```json5
+Option::Some({
+    id: 123
+    name: "Alice"
+})
+```
+
+Or a tuple:
+
+```json5
+Option::Some((211, 223))
+```
+
+In fact, a variant can also carry multiple values, which can be either object-style or tuple-style, for example:
+
+```json5
+// Object-style variant
+Shape:Rectangle{
+    width: 307
+    height: 311
+}
+```
+
+and
+
+```json5
+// Tuple-style variant
+Color::RGB(255, 127, 63)
+```
+
+### Comments
+
+Like JavaScript and C/C++, ASON also supports two types of comments: line comments and block comments. Comments are for human reading and are completely ignored by the machine.
+
+Line comments start with the `//` symbol and continue until the end of the line. For example:
+
+```json5
+// This is a line comment
+{
+    id: 123 // This is also a line comment
+    name: "Bob"
+}
+```
+
+Block comments start with the `/*` symbol and end with the `*/` symbol. For example:
+
+```json5
+/* This is a block comment */
+{
+    /*
+     This is also a block comment
+    */
+    id: 123 
+    name: /* definitely a block comment */ "Bob"
+}
+```
+
+Unlike JavaScript and C/C++, ASON block comments support nesting. For example:
+
+```json5
+/* 
+    This is the first level
+    /*
+        This is the second level
+    */
+    This is the first level again
+*/  
+```
+
+The nesting feature of block comments makes it more convenient for us to comment on a piece of code that **already has a block comment**. If block comments do not support nesting, we need to remove the inner block comment first before adding a comment to the outer layer, because the inner block comment symbol `*/` will end all outer block comments prematurely.
+
+### Documents
+
+An ASON document can only contain one value (includes primitive value and composite value), like JSON, a typical ASON document is usually an object or a list. In fact, all types of values are allowed, not limited to objects or lists. For example, a tuple, a variant, even a number or a string is allowed. Just make sure that a document has exactly one value. For example, the following are both valid ASON documents:
+
+```json5
+(11, "Alice", true)
+```
+
+and
+
+```json5
+"Hello World!"
+```
+
+While the following two are invalid:
+
+```json5
+(11, "Alice", true)
+'A' // Invalid ASON document because there is more than one value
+```
+
+and
+
+```json5
+"Hello World!"
+true // Invalid ASON document because there is more than one value
+```
 
 ## Specification
 

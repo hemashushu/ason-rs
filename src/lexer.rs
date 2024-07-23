@@ -245,7 +245,7 @@ pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
             // }
             'd' if iter.equals(1, &'"') => {
                 // date
-                tokens.push(lex_date(iter)?);
+                tokens.push(lex_datetime(iter)?);
             }
             'r' if iter.equals(1, &'"') => {
                 // raw string
@@ -1490,7 +1490,7 @@ fn lex_auto_trimmed_string(iter: &mut LookaheadIter<char>) -> Result<Token, Erro
     Ok(Token::String_(total_string.trim_end().to_owned()))
 }
 
-fn lex_date(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_datetime(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     // d"2024-03-16T16:30:50+08:00"?  //
     // ^                           ^__// to here
     // |______________________________// current char
@@ -1518,15 +1518,23 @@ fn lex_date(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
         }
     }
 
-    if date_string.len() < 19 {
+    let len = date_string.len();
+
+    if len == 10 {
+        // YYYY-MM-DD
+        date_string.push_str("T00:00:00Z");
+    } else if len == 19 {
+        // YYYY-MM-DD HH:mm:ss
+        date_string.push('Z');
+    } else if len == 20 || len == 25 {
+        // ref3339
+        // YYYY-MM-DDTHH:mm:ssZ
+        // YYYY-MM-DDTHH:mm:ss+08:00
+    } else {
         return Err(Error::Message(format!(
             "Incorrect date time (format: YYYY-MM-DD HH:mm:ss) string: {}",
             date_string
         )));
-    }
-
-    if date_string.len() == 19 {
-        date_string.push('z');
     }
 
     let rfc3339 = DateTime::parse_from_rfc3339(&date_string).map_err(|_| {
@@ -1551,14 +1559,9 @@ fn lex_byte_data_hexadecimal(iter: &mut LookaheadIter<char>) -> Result<Token, Er
     iter.next(); // consume char 'h'
     iter.next(); // consume quote '"'
 
-    let consume_whitespace_if_exits = |t: &mut LookaheadIter<char>| loop {
-        match t.peek(0) {
-            Some(' ') | Some('\t') | Some('\r') | Some('\n') => {
-                t.next();
-            }
-            _ => {
-                break;
-            }
+    let consume_whitespace_if_exits = |t: &mut LookaheadIter<char>| {
+        while let Some(' ') | Some('\t') | Some('\r') | Some('\n') = t.peek(0) {
+            t.next();
         }
     };
 
@@ -1591,11 +1594,11 @@ fn lex_byte_data_hexadecimal(iter: &mut LookaheadIter<char>) -> Result<Token, Er
             break;
         }
 
-        for idx in 0..2usize {
+        for c in &mut chars {
             match iter.next() {
                 Some(previous_char) => match previous_char {
                     'a'..='f' | 'A'..='F' | '0'..='9' => {
-                        chars[idx] = previous_char;
+                        *c = previous_char;
                     }
                     _ => {
                         return Err(Error::Message(format!(
@@ -3072,34 +3075,6 @@ mod tests {
             ]
         );
 
-        // assert_eq!(
-        //     lex_from_str(
-        //         r#"
-        //         h"11-13-1719"
-        //         "#
-        //     )
-        //     .unwrap(),
-        //     vec![
-        //         Token::NewLine,
-        //         Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
-        //         Token::NewLine,
-        //     ]
-        // );
-
-        // assert_eq!(
-        //     lex_from_str(
-        //         r#"
-        //         h"11:13:1719"
-        //         "#
-        //     )
-        //     .unwrap(),
-        //     vec![
-        //         Token::NewLine,
-        //         Token::ByteData(vec![0x11, 0x13, 0x17, 0x19]),
-        //         Token::NewLine,
-        //     ]
-        // );
-
         assert_eq!(
             lex_from_str(
                 "
@@ -3118,7 +3093,27 @@ mod tests {
         assert!(matches!(
             lex_from_str(
                 r#"
-                h"11 13 1719"
+                h"1113"
+                "#
+            ),
+            Err(Error::Message(_))
+        ));
+
+        // err: invalid separator
+        assert!(matches!(
+            lex_from_str(
+                r#"
+                h"11:13"
+                "#
+            ),
+            Err(Error::Message(_))
+        ));
+
+        // err: invalid separator
+        assert!(matches!(
+            lex_from_str(
+                r#"
+                h"11-13"
                 "#
             ),
             Err(Error::Message(_))
@@ -3355,11 +3350,12 @@ mod tests {
 
     #[test]
     fn test_lex_datetime() {
-        let expect_date1 = DateTime::parse_from_rfc3339("2024-03-16T16:30:50+08:00").unwrap();
+        let expect_date1 = DateTime::parse_from_rfc3339("2024-03-16T00:00:00Z").unwrap();
         let expect_date2 = DateTime::parse_from_rfc3339("2024-03-16T16:30:50Z").unwrap();
+        let expect_date3 = DateTime::parse_from_rfc3339("2024-03-16T16:30:50+08:00").unwrap();
 
         assert_eq!(
-            lex_from_str("d\"2024-03-16T16:30:50+08:00\"").unwrap(),
+            lex_from_str("d\"2024-03-16\"").unwrap(),
             vec![Token::Date(expect_date1)]
         );
 
@@ -3388,15 +3384,14 @@ mod tests {
             vec![Token::Date(expect_date2)]
         );
 
-        // err: missing time
+        assert_eq!(
+            lex_from_str("d\"2024-03-16T16:30:50+08:00\"").unwrap(),
+            vec![Token::Date(expect_date3)]
+        );
+
+        // err: missing date part
         assert!(matches!(
             lex_from_str("d\"16:30:50\""),
-            Err(Error::Message(_))
-        ));
-
-        // err: missing date
-        assert!(matches!(
-            lex_from_str("d\"2024-03-16\""),
             Err(Error::Message(_))
         ));
 
