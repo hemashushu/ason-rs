@@ -9,7 +9,7 @@ use serde::de::{self, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, Varian
 use crate::{
     error::Error,
     lexer::{lex, normalize, NumberToken, Token},
-    lookaheaditer::LookaheadIter,
+    forwarditer::ForwardIter,
 };
 
 use super::Result;
@@ -26,11 +26,11 @@ where
     // https://serde.rs/lifetimes.html
 
     let mut chars = input.chars();
-    let mut char_iter = LookaheadIter::new(&mut chars, 3);
+    let mut char_iter = ForwardIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
     let normalized_tokens = normalize(tokens)?;
     let mut token_iter = normalized_tokens.into_iter();
-    let mut lookahead_tokens = LookaheadIter::new(&mut token_iter, 2);
+    let mut lookahead_tokens = ForwardIter::new(&mut token_iter, 2);
     let mut deserializer = Deserializer::from_tokens(&mut lookahead_tokens);
     let t = T::deserialize(&mut deserializer)?;
 
@@ -44,11 +44,11 @@ where
 }
 
 pub struct Deserializer<'de> {
-    vec: &'de mut LookaheadIter<'de, Token>,
+    vec: &'de mut ForwardIter<'de, Token>,
 }
 
 impl<'de> Deserializer<'de> {
-    pub fn from_tokens(vec: &'de mut LookaheadIter<'de, Token>) -> Self {
+    pub fn from_tokens(vec: &'de mut ForwardIter<'de, Token>) -> Self {
         Self { vec }
     }
 }

@@ -7,7 +7,7 @@
 mod ast;
 mod error;
 mod lexer;
-mod lookaheaditer;
+mod forwarditer;
 mod serde;
 
 pub use ast::parser::parse_from;

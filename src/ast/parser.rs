@@ -7,18 +7,18 @@
 use crate::{
     error::Error,
     lexer::{lex, normalize, NumberToken, Token},
-    lookaheaditer::LookaheadIter,
+    forwarditer::ForwardIter,
 };
 
 use super::{AsonNode, KeyValuePair, Number, Variant};
 
 pub fn parse_from(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
-    let mut char_iter = LookaheadIter::new(&mut chars, 3);
+    let mut char_iter = ForwardIter::new(&mut chars, 3);
     let tokens = lex(&mut char_iter)?;
     let normalized_tokens = normalize(tokens)?;
     let mut token_iter = normalized_tokens.into_iter();
-    let mut lookahead_iter = LookaheadIter::new(&mut token_iter, 2);
+    let mut lookahead_iter = ForwardIter::new(&mut token_iter, 2);
 
     let root = parse_node(&mut lookahead_iter)?;
 
@@ -31,7 +31,7 @@ pub fn parse_from(s: &str) -> Result<AsonNode, Error> {
     Ok(root)
 }
 
-fn parse_node(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+fn parse_node(iter: &mut ForwardIter<Token>) -> Result<AsonNode, Error> {
     while let Some(current_token) = iter.peek(0) {
         let node = match current_token {
             Token::NewLine => {
@@ -121,7 +121,7 @@ fn convert_number_token(token: NumberToken) -> AsonNode {
     AsonNode::Number(number)
 }
 
-fn parse_tuple_variant(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+fn parse_tuple_variant(iter: &mut ForwardIter<Token>) -> Result<AsonNode, Error> {
     // type::member(...)?  //
     // ^                ^__// to here
     // |-------------------// current token
@@ -162,7 +162,7 @@ fn parse_tuple_variant(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Erro
     Ok(AsonNode::Variant(variant_item))
 }
 
-fn parse_struct_variant(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+fn parse_struct_variant(iter: &mut ForwardIter<Token>) -> Result<AsonNode, Error> {
     // type::member{...}?  //
     // ^                ^__// to here
     // |-------------------// current token
@@ -185,7 +185,7 @@ fn parse_struct_variant(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Err
     )))
 }
 
-fn parse_key_value_pairs(iter: &mut LookaheadIter<Token>) -> Result<Vec<KeyValuePair>, Error> {
+fn parse_key_value_pairs(iter: &mut ForwardIter<Token>) -> Result<Vec<KeyValuePair>, Error> {
     // {...}?  //
     // ^    ^__// to here
     // |-------// current char
@@ -228,12 +228,12 @@ fn parse_key_value_pairs(iter: &mut LookaheadIter<Token>) -> Result<Vec<KeyValue
     Ok(kvps)
 }
 
-fn parse_object(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+fn parse_object(iter: &mut ForwardIter<Token>) -> Result<AsonNode, Error> {
     let kvps = parse_key_value_pairs(iter)?;
     Ok(AsonNode::Object(kvps))
 }
 
-fn parse_array(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+fn parse_array(iter: &mut ForwardIter<Token>) -> Result<AsonNode, Error> {
     // [...]?  //
     // ^    ^__// to here
     // |-------// current char
@@ -257,7 +257,7 @@ fn parse_array(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     Ok(AsonNode::List(items))
 }
 
-fn parse_tuple(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
+fn parse_tuple(iter: &mut ForwardIter<Token>) -> Result<AsonNode, Error> {
     // (...)?  //
     // ^    ^__// to here
     // |-------// current char
@@ -281,7 +281,7 @@ fn parse_tuple(iter: &mut LookaheadIter<Token>) -> Result<AsonNode, Error> {
     Ok(AsonNode::Tuple(items))
 }
 
-fn consume_token(iter: &mut LookaheadIter<Token>, expect_token: Token) -> Result<(), Error> {
+fn consume_token(iter: &mut ForwardIter<Token>, expect_token: Token) -> Result<(), Error> {
     let opt_token = iter.next();
     if let Some(token) = opt_token {
         if token == expect_token {
@@ -298,20 +298,20 @@ fn consume_token(iter: &mut LookaheadIter<Token>, expect_token: Token) -> Result
 }
 
 // consume ':'
-fn consume_colon(iter: &mut LookaheadIter<Token>) -> Result<(), Error> {
+fn consume_colon(iter: &mut ForwardIter<Token>) -> Result<(), Error> {
     consume_token(iter, Token::Colon)
 }
 
-fn consume_left_paren(iter: &mut LookaheadIter<Token>) -> Result<(), Error> {
+fn consume_left_paren(iter: &mut ForwardIter<Token>) -> Result<(), Error> {
     consume_token(iter, Token::LeftParen)
 }
 
-fn consume_right_paren(iter: &mut LookaheadIter<Token>) -> Result<(), Error> {
+fn consume_right_paren(iter: &mut ForwardIter<Token>) -> Result<(), Error> {
     consume_token(iter, Token::RightParen)
 }
 
 // consume '\n'
-fn consume_new_line_when_exist(iter: &mut LookaheadIter<Token>) {
+fn consume_new_line_when_exist(iter: &mut ForwardIter<Token>) {
     if let Some(Token::NewLine) = iter.peek(0) {
         iter.next();
     }

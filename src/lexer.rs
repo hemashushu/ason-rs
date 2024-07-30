@@ -10,7 +10,7 @@ use chrono::{DateTime, FixedOffset};
 
 use crate::error::Error;
 
-use super::lookaheaditer::LookaheadIter;
+use super::forwarditer::ForwardIter;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
@@ -164,7 +164,7 @@ impl Display for NumberType {
     }
 }
 
-pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
+pub fn lex(iter: &mut ForwardIter<char>) -> Result<Vec<Token>, Error> {
     let mut tokens: Vec<Token> = vec![];
 
     while let Some(current_char) = iter.peek(0) {
@@ -303,7 +303,7 @@ pub fn lex(iter: &mut LookaheadIter<char>) -> Result<Vec<Token>, Error> {
     Ok(tokens)
 }
 
-fn lex_identifier_or_keyword(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_identifier_or_keyword(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // key_nameT  //
     // ^       ^__// to here
     // |__________// current char, i.e. the value of 'iter.peek(0)'
@@ -437,7 +437,7 @@ fn lex_identifier_or_keyword(iter: &mut LookaheadIter<char>) -> Result<Token, Er
 // the default integer number type is i32
 // the default floating-point number type is f64
 
-fn lex_number(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_number(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // 123456T  //
     // ^     ^__// to here
     // |________// current char
@@ -455,7 +455,7 @@ fn lex_number(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     }
 }
 
-fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_number_decimal(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // 123456T  //
     // ^     ^__// to here
     // |________// current char
@@ -699,7 +699,7 @@ fn lex_number_decimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::Number(num_token))
 }
 
-fn lex_number_type(iter: &mut LookaheadIter<char>) -> Result<NumberType, Error> {
+fn lex_number_type(iter: &mut ForwardIter<char>) -> Result<NumberType, Error> {
     // ixxT  //
     // ^  ^__// to here
     // |_____// current char
@@ -729,7 +729,7 @@ fn lex_number_type(iter: &mut LookaheadIter<char>) -> Result<NumberType, Error> 
     NumberType::from_str(&num_type)
 }
 
-fn lex_number_hex(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_number_hex(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // 0xaabbT  //
     // ^     ^__// to here
     // |________// current char
@@ -961,7 +961,7 @@ fn lex_number_hex(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::Number(num_token))
 }
 
-fn lex_number_binary(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_number_binary(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // 0b1010T  //
     // ^     ^__// to here
     // |________// current char
@@ -1114,7 +1114,7 @@ fn lex_number_binary(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::Number(num_token))
 }
 
-fn lex_char(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_char(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // 'a'?  //
     // ^  ^__// to here
     // |_____// current char
@@ -1194,7 +1194,7 @@ fn lex_char(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::Char(c))
 }
 
-fn lex_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_string(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // "abc"?  //
     // ^    ^__// to here
     // |_______// current char
@@ -1277,7 +1277,7 @@ fn lex_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 }
 
 /// return the amount of leading whitespaces
-fn consume_leading_whitespaces(iter: &mut LookaheadIter<char>) -> Result<usize, Error> {
+fn consume_leading_whitespaces(iter: &mut ForwardIter<char>) -> Result<usize, Error> {
     // \nssssS  //
     //   ^   ^__// to here ('s' = whitespace, i.e. [ \t], 'S' = not whitespace)
     //   |______// current char
@@ -1297,7 +1297,7 @@ fn consume_leading_whitespaces(iter: &mut LookaheadIter<char>) -> Result<usize, 
     Ok(count)
 }
 
-fn skip_leading_whitespaces(iter: &mut LookaheadIter<char>, max_whitespaces: usize) {
+fn skip_leading_whitespaces(iter: &mut ForwardIter<char>, max_whitespaces: usize) {
     for _ in 0..max_whitespaces {
         match iter.peek(0) {
             Some(next_char) if next_char == &' ' || next_char == &'\t' => {
@@ -1308,7 +1308,7 @@ fn skip_leading_whitespaces(iter: &mut LookaheadIter<char>, max_whitespaces: usi
     }
 }
 
-fn unescape_unicode(iter: &mut LookaheadIter<char>) -> Result<char, Error> {
+fn unescape_unicode(iter: &mut ForwardIter<char>) -> Result<char, Error> {
     // \u{6587}?  //
     //   ^     ^__// to here
     //   |________// current char
@@ -1362,7 +1362,7 @@ fn unescape_unicode(iter: &mut LookaheadIter<char>) -> Result<char, Error> {
     }
 }
 
-fn lex_raw_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_raw_string(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // r"abc"?  //
     // ^     ^__// to here
     // |________// current char
@@ -1391,7 +1391,7 @@ fn lex_raw_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::String_(raw_string))
 }
 
-fn lex_raw_string_with_hash_symbol(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_raw_string_with_hash_symbol(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // r#"abc"#?  //
     // ^       ^__// to here
     // |__________// current char
@@ -1422,7 +1422,7 @@ fn lex_raw_string_with_hash_symbol(iter: &mut LookaheadIter<char>) -> Result<Tok
     Ok(Token::String_(raw_string))
 }
 
-fn lex_auto_trimmed_string(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_auto_trimmed_string(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // """                    //
     // ^  auto-trimmed string //
     // |  ...                 //
@@ -1490,7 +1490,7 @@ fn lex_auto_trimmed_string(iter: &mut LookaheadIter<char>) -> Result<Token, Erro
     Ok(Token::String_(total_string.trim_end().to_owned()))
 }
 
-fn lex_datetime(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_datetime(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // d"2024-03-16T16:30:50+08:00"?  //
     // ^                           ^__// to here
     // |______________________________// current char
@@ -1547,7 +1547,7 @@ fn lex_datetime(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::Date(rfc3339))
 }
 
-fn lex_byte_data_hexadecimal(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_byte_data_hexadecimal(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // h"00 11 aa bb"?  //
     // ^             ^__// to here
     // |________________// current char
@@ -1559,13 +1559,13 @@ fn lex_byte_data_hexadecimal(iter: &mut LookaheadIter<char>) -> Result<Token, Er
     iter.next(); // consume char 'h'
     iter.next(); // consume quote '"'
 
-    let consume_whitespace_if_exits = |t: &mut LookaheadIter<char>| {
+    let consume_whitespace_if_exits = |t: &mut ForwardIter<char>| {
         while let Some(' ') | Some('\t') | Some('\r') | Some('\n') = t.peek(0) {
             t.next();
         }
     };
 
-    let consume_withspaces = |t: &mut LookaheadIter<char>| -> Result<(), Error> {
+    let consume_withspaces = |t: &mut ForwardIter<char>| -> Result<(), Error> {
         let mut found: bool = false;
         loop {
             match t.peek(0) {
@@ -1641,7 +1641,7 @@ fn lex_byte_data_hexadecimal(iter: &mut LookaheadIter<char>) -> Result<Token, Er
 //     Ok(Token::ByteData(v))
 // }
 
-fn lex_line_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_line_comment(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // xx...[\r]\n?  //
     // ^          ^__// to here ('?' = any char or EOF)
     // |_____________// current char
@@ -1671,7 +1671,7 @@ fn lex_line_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
     Ok(Token::Comment(Comment::Line(comment_string)))
 }
 
-fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_block_comment(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // /*...*/?  //
     // ^      ^__// to here
     // |_________// current char
@@ -1716,7 +1716,7 @@ fn lex_block_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
 }
 
 #[cfg(feature = "doc_comment")]
-fn lex_document_comment(iter: &mut LookaheadIter<char>) -> Result<Token, Error> {
+fn lex_document_comment(iter: &mut ForwardIter<char>) -> Result<Token, Error> {
     // /**...**/?  //
     // ^        ^__// to here
     // |___________// current char
@@ -1761,7 +1761,7 @@ pub fn normalize(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
     let mut normalized_tokens = vec![];
 
     let mut into = tokens.into_iter();
-    let mut iter = LookaheadIter::new(&mut into, 2);
+    let mut iter = ForwardIter::new(&mut into, 2);
 
     // remove the leading new-lines and comments of document
     while let Some(Token::NewLine) | Some(Token::Comment(_)) = iter.peek(0) {
@@ -1972,14 +1972,14 @@ mod tests {
     use crate::{
         error::Error,
         lexer::{Comment, NumberToken},
-        lookaheaditer::LookaheadIter,
+        forwarditer::ForwardIter,
     };
 
     use super::{lex, normalize, Token};
 
     fn lex_from_str(s: &str) -> Result<Vec<Token>, Error> {
         let mut chars = s.chars();
-        let mut iter = LookaheadIter::new(&mut chars, 3);
+        let mut iter = ForwardIter::new(&mut chars, 3);
         lex(&mut iter)
     }
 
