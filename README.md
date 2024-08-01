@@ -561,7 +561,7 @@ assert_eq!(
     ])
 );
 
-let s = ason::write_to(&node);
+let s = ason::print_to(&node);
 assert_eq!(text, s);
 
 ```

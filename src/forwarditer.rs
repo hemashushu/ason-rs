@@ -76,17 +76,17 @@ impl<'a, T> ForwardIter<'a, T>
 where
     T: PartialEq,
 {
-    pub fn new(source: &'a mut dyn Iterator<Item = T>, lookahead_length: usize) -> Self {
+    pub fn new(upstream: &'a mut dyn Iterator<Item = T>, lookahead_length: usize) -> Self {
         let mut buffer = RoundQueue::new(lookahead_length);
 
         // pre-fill
         for _ in 0..lookahead_length {
-            let value = source.next();
+            let value = upstream.next();
             buffer.enqueue(value);
         }
 
         Self {
-            upstream: source,
+            upstream,
             buffer,
             lookahead_length,
         }
@@ -97,11 +97,11 @@ where
         self.buffer.peek(offset)
     }
 
-    pub fn equals(&self, offset: usize, expect: &T) -> bool {
-        assert!(offset < self.lookahead_length);
-        let value = self.peek(offset);
-        matches!(value, Some(actual) if actual == expect)
-    }
+    // pub fn equals(&self, offset: usize, expect: &T) -> bool {
+    //     assert!(offset < self.lookahead_length);
+    //     let value = self.peek(offset);
+    //     matches!(value, Some(actual) if actual == expect)
+    // }
 }
 
 impl<'a, T> Iterator for ForwardIter<'a, T>
@@ -136,33 +136,33 @@ mod tests {
         assert_eq!(Some(&'0'), forward_iter.peek(0));
         assert_eq!(Some(&'1'), forward_iter.peek(1));
         assert_eq!(Some(&'2'), forward_iter.peek(2));
-        assert!(forward_iter.equals(0, &'0'));
-        assert!(forward_iter.equals(1, &'1'));
-        assert!(forward_iter.equals(2, &'2'));
+        // assert!(forward_iter.equals(0, &'0'));
+        // assert!(forward_iter.equals(1, &'1'));
+        // assert!(forward_iter.equals(2, &'2'));
 
         // consume '0'
         assert_eq!(Some('0'), forward_iter.next());
         assert_eq!(Some(&'1'), forward_iter.peek(0));
         assert_eq!(Some(&'2'), forward_iter.peek(1));
         assert_eq!(Some(&'3'), forward_iter.peek(2));
-        assert!(forward_iter.equals(0, &'1'));
-        assert!(forward_iter.equals(1, &'2'));
-        assert!(forward_iter.equals(2, &'3'));
+        // assert!(forward_iter.equals(0, &'1'));
+        // assert!(forward_iter.equals(1, &'2'));
+        // assert!(forward_iter.equals(2, &'3'));
 
         // consume '1'
         assert_eq!(Some('1'), forward_iter.next());
         assert_eq!(Some(&'2'), forward_iter.peek(0));
         assert_eq!(Some(&'3'), forward_iter.peek(1));
         assert_eq!(None, forward_iter.peek(2));
-        assert!(forward_iter.equals(0, &'2'));
-        assert!(forward_iter.equals(1, &'3'));
+        // assert!(forward_iter.equals(0, &'2'));
+        // assert!(forward_iter.equals(1, &'3'));
 
         // consume '2'
         assert_eq!(Some('2'), forward_iter.next());
         assert_eq!(Some(&'3'), forward_iter.peek(0));
         assert_eq!(None, forward_iter.peek(1));
         assert_eq!(None, forward_iter.peek(2));
-        assert!(forward_iter.equals(0, &'3'));
+        // assert!(forward_iter.equals(0, &'3'));
 
         // consume '3'
         assert_eq!(Some('3'), forward_iter.next());
@@ -188,22 +188,22 @@ mod tests {
         assert_eq!(Some(&'0'), iter2.peek(0));
         assert_eq!(Some(&'1'), iter2.peek(1));
         assert_eq!(Some(&'2'), iter2.peek(2));
-        assert!(iter2.equals(0, &'0'));
+        // assert!(iter2.equals(0, &'0'));
 
         // consume '0'
         assert_eq!(Some('0'), iter2.next());
         assert_eq!(Some(&'1'), iter2.peek(0));
-        assert!(iter2.equals(0, &'1'));
+        // assert!(iter2.equals(0, &'1'));
 
         // consume '1'
         assert_eq!(Some('1'), iter2.next());
         assert_eq!(Some(&'2'), iter2.peek(0));
-        assert!(iter2.equals(0, &'2'));
+        // assert!(iter2.equals(0, &'2'));
 
         // consume '2'
         assert_eq!(Some('2'), iter2.next());
         assert_eq!(Some(&'3'), iter2.peek(0));
-        assert!(iter2.equals(0, &'3'));
+        // assert!(iter2.equals(0, &'3'));
 
         // consume '3'
         assert_eq!(Some('3'), iter2.next());

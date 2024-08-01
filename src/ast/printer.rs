@@ -10,7 +10,7 @@ use super::{AsonNode, KeyValuePair, Number, Variant};
 
 pub const INDENT_SPACES: &str = "    ";
 
-fn write_number(v: &Number) -> String {
+fn print_number(v: &Number) -> String {
     match v {
         Number::I8(v) => {
             format!("{}_i8", v)
@@ -51,14 +51,14 @@ fn write_number(v: &Number) -> String {
     }
 }
 
-fn write_boolean(v: &bool) -> String {
+fn print_boolean(v: &bool) -> String {
     match v {
         true => "true".to_owned(),
         false => "false".to_owned(),
     }
 }
 
-fn write_char(v: &char) -> String {
+fn print_char(v: &char) -> String {
     // escape single char
     let s = match v {
         '\\' => "\\\\".to_owned(),
@@ -85,7 +85,7 @@ fn write_char(v: &char) -> String {
     format!("'{}'", s)
 }
 
-fn write_string(v: &str) -> String {
+fn print_string(v: &str) -> String {
     format!(
         "\"{}\"",
         v.chars()
@@ -105,11 +105,11 @@ fn write_string(v: &str) -> String {
     )
 }
 
-fn write_date(v: &DateTime<FixedOffset>) -> String {
+fn print_date(v: &DateTime<FixedOffset>) -> String {
     format!("d\"{}\"", v.to_rfc3339())
 }
 
-fn write_variant(v: &Variant, level: usize) -> String {
+fn print_variant(v: &Variant, level: usize) -> String {
     let (type_name, member_name, value) = (&v.type_name, &v.member_name, &v.value);
 
     match value {
@@ -133,13 +133,13 @@ fn write_variant(v: &Variant, level: usize) -> String {
                 "{}::{}{}",
                 type_name,
                 member_name,
-                write_object(kvps, level)
+                print_object(kvps, level)
             )
         }
     }
 }
 
-fn write_byte_data(v: &[u8]) -> String {
+fn print_byte_data(v: &[u8]) -> String {
     format!(
         "h\"{}\"",
         v.iter()
@@ -149,7 +149,7 @@ fn write_byte_data(v: &[u8]) -> String {
     )
 }
 
-fn write_list(v: &[AsonNode], level: usize) -> String {
+fn print_list(v: &[AsonNode], level: usize) -> String {
     let leading_space = INDENT_SPACES.repeat(level);
     let sub_level = level + 1;
     let element_leading_space = INDENT_SPACES.repeat(sub_level);
@@ -167,7 +167,7 @@ fn write_list(v: &[AsonNode], level: usize) -> String {
     )
 }
 
-fn write_tuple(v: &[AsonNode], level: usize) -> String {
+fn print_tuple(v: &[AsonNode], level: usize) -> String {
     format!(
         "({})",
         v.iter()
@@ -177,7 +177,7 @@ fn write_tuple(v: &[AsonNode], level: usize) -> String {
     )
 }
 
-fn write_object(v: &[KeyValuePair], level: usize) -> String {
+fn print_object(v: &[KeyValuePair], level: usize) -> String {
     let write_name_value_pair = |name_value_pair: &KeyValuePair, current_level: usize| -> String {
         let leading_space = INDENT_SPACES.repeat(current_level);
         format!(
@@ -201,20 +201,20 @@ fn write_object(v: &[KeyValuePair], level: usize) -> String {
 
 fn write_ason_node(node: &AsonNode, level: usize) -> String {
     match node {
-        AsonNode::Number(v) => write_number(v),
-        AsonNode::Boolean(v) => write_boolean(v),
-        AsonNode::Char(v) => write_char(v),
-        AsonNode::String_(v) => write_string(v),
-        AsonNode::DateTime(v) => write_date(v),
-        AsonNode::Variant(v) => write_variant(v, level),
-        AsonNode::ByteData(v) => write_byte_data(v),
-        AsonNode::List(v) => write_list(v, level),
-        AsonNode::Tuple(v) => write_tuple(v, level),
-        AsonNode::Object(v) => write_object(v, level),
+        AsonNode::Number(v) => print_number(v),
+        AsonNode::Boolean(v) => print_boolean(v),
+        AsonNode::Char(v) => print_char(v),
+        AsonNode::String_(v) => print_string(v),
+        AsonNode::DateTime(v) => print_date(v),
+        AsonNode::Variant(v) => print_variant(v, level),
+        AsonNode::ByteData(v) => print_byte_data(v),
+        AsonNode::List(v) => print_list(v, level),
+        AsonNode::Tuple(v) => print_tuple(v, level),
+        AsonNode::Object(v) => print_object(v, level),
     }
 }
 
-pub fn write_to(node: &AsonNode) -> String {
+pub fn print_to(node: &AsonNode) -> String {
     write_ason_node(node, 0)
 }
 
@@ -222,11 +222,11 @@ pub fn write_to(node: &AsonNode) -> String {
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use crate::{parse_from, write_to};
+    use crate::{parse_from, print_to};
 
     fn format(s: &str) -> String {
         let node = parse_from(s).unwrap();
-        write_to(&node)
+        print_to(&node)
     }
 
     #[test]

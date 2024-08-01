@@ -3,10 +3,10 @@
 // This Source Code Form is subject to the terms of
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
-
+/*
 use std::process;
 
-use ason::{parse_from, write_to};
+use ason::{parse_from, print_to};
 
 fn main() {
     let mut args = std::env::args();
@@ -61,6 +61,11 @@ fn main() {
         }
     };
 
-    let text = write_to(&node);
+    let text = print_to(&node);
     println!("{}", text);
+}
+*/
+
+fn main() {
+    //
 }

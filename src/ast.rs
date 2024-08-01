@@ -124,7 +124,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::ast::{AsonNode, KeyValuePair, Number, Variant};
-    use crate::{parse_from, write_to};
+    use crate::{parse_from, print_to};
 
     #[test]
     fn test_parse() {
@@ -186,7 +186,7 @@ mod tests {
             ),
         ]);
 
-        let text = write_to(&node);
+        let text = print_to(&node);
 
         assert_eq!(
             text,
@@ -229,7 +229,7 @@ mod tests {
     fn test_example_file_01() {
         let s = read_example_file_to_string("01-primitive.ason");
         let n = parse_from(&s).unwrap();
-        let t = write_to(&n);
+        let t = print_to(&n);
 
         // note that the suffix 'a' should be '0.000000000000000001', but
         // in the debug mode, it may be '0.0000000000000000009999999' and
@@ -328,7 +328,7 @@ mod tests {
     fn test_example_file_02() {
         let s = read_example_file_to_string("02-list.ason");
         let n = parse_from(&s).unwrap();
-        let t = write_to(&n);
+        let t = print_to(&n);
 
         assert_eq!(
             t,
@@ -372,7 +372,7 @@ mod tests {
     fn test_example_file_03() {
         let s = read_example_file_to_string("03-tuple.ason");
         let n = parse_from(&s).unwrap();
-        let t = write_to(&n);
+        let t = print_to(&n);
 
         assert_eq!(
             t,
@@ -390,7 +390,7 @@ mod tests {
     fn test_example_file_04() {
         let s = read_example_file_to_string("04-object.ason");
         let n = parse_from(&s).unwrap();
-        let t = write_to(&n);
+        let t = print_to(&n);
 
         assert_eq!(
             t,
@@ -422,7 +422,7 @@ mod tests {
     fn test_example_file_05() {
         let s = read_example_file_to_string("05-variant.ason");
         let n = parse_from(&s).unwrap();
-        let t = write_to(&n);
+        let t = print_to(&n);
 
         assert_eq!(
             t,
