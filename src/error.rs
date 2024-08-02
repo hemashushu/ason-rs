@@ -46,3 +46,8 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+pub fn print_error(err: &Error, source: &str) -> String {
+    // pretty error with source text
+    String::from("todo")
+}

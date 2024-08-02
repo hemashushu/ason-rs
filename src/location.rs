@@ -60,7 +60,17 @@ impl LocationWithRange {
             start_loc.index,
             start_loc.line,
             start_loc.column,
-            end_loc.index - start_loc.index + 1,
+            end_loc.index - start_loc.index,
+        )
+    }
+
+    pub fn from_location_pair_include(start_loc: &Location, end_loc_include: &Location) -> Self {
+        Self::new(
+            start_loc.unit,
+            start_loc.index,
+            start_loc.line,
+            start_loc.column,
+            end_loc_include.index - start_loc.index + 1,
         )
     }
 }

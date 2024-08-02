@@ -13,10 +13,18 @@ use crate::{
     location::{CharWithLocation, CharsWithLocationIter, Location, LocationWithRange},
 };
 
-use super::forwarditer::ForwardIter;
+use super::peekableiter::PeekableIter;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
+    // includes `\n` and `\r\n`
+    NewLine,
+
+    // `,`
+    Comma,
+    // `:`
+    Colon,
+
     // {
     LeftBrace,
     // }
@@ -29,13 +37,6 @@ pub enum Token {
     LeftParen,
     // )
     RightParen,
-
-    // includes `\n`, `\r\n`, `\r`
-    NewLine,
-    // `,`
-    Comma,
-    // `:`
-    Colon,
 
     // `+`
     Plus,
@@ -108,10 +109,6 @@ pub enum Comment {
 
     // `/*...*/`
     Block(String),
-
-    // `/**...**/`
-    #[cfg(feature = "doc_comment")]
-    Document(String),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -129,7 +126,7 @@ enum NumberType {
 }
 
 impl NumberType {
-    fn from_str(s: &str) -> Result<Self, Error> {
+    fn from_str(s: &str) -> Result<Self, String> {
         let t = match s {
             "i8" => NumberType::I8,
             "i16" => NumberType::I16,
@@ -142,7 +139,7 @@ impl NumberType {
             "f32" => NumberType::F32,
             "f64" => NumberType::F64,
             _ => {
-                return Err(Error::Message(format!("Invalid number type \"{}\".", s)));
+                return Err(format!("Invalid number type \"{}\".", s));
             }
         };
 
@@ -189,7 +186,7 @@ impl TokenWithLocationRange {
     }
 }
 
-fn iter_upstream_char_equals(iter: &TokenIter, offset: usize, c: char) -> bool {
+fn iter_upstream_equals_char(iter: &TokenIter, offset: usize, c: char) -> bool {
     if let Some(posc) = iter.upstream.peek(offset) {
         posc.character == c
     } else {
@@ -197,12 +194,28 @@ fn iter_upstream_char_equals(iter: &TokenIter, offset: usize, c: char) -> bool {
     }
 }
 
+fn inc_location(opt_loc: Option<Location>) -> Option<Location> {
+    opt_loc.map(|loc| Location {
+        index: loc.index + 1,
+        column: loc.column + 1,
+        ..loc
+    })
+}
+
+fn dec_location(opt_loc: Option<Location>) -> Option<Location> {
+    opt_loc.map(|loc| Location {
+        index: loc.index - 1,
+        column: loc.column - 1,
+        ..loc
+    })
+}
+
 pub struct TokenIter<'a> {
-    upstream: &'a mut ForwardIter<'a, CharWithLocation>,
+    upstream: &'a mut PeekableIter<'a, CharWithLocation>,
 }
 
 impl<'a> TokenIter<'a> {
-    pub fn new(upstream: &'a mut ForwardIter<'a, CharWithLocation>) -> Self {
+    pub fn new(upstream: &'a mut PeekableIter<'a, CharWithLocation>) -> Self {
         Self { upstream }
     }
 }
@@ -233,36 +246,26 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
         }
     }
 
-    if let Some(pc) = iter.upstream.peek(0) {
-        let current_char = pc.character;
-        let current_pos = pc.location;
+    if let Some(cl) = iter.upstream.peek(0) {
+        let current_char = cl.character;
+        let current_loc = cl.location;
 
         match current_char {
-            '\r' if iter_upstream_char_equals(iter, 1, '\n') => {
-                //  {
+            '\r' if iter_upstream_equals_char(iter, 1, '\n') => {
                 // `\r\n`
                 iter.upstream.next();
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::NewLine,
-                    &current_pos,
+                    &current_loc,
                     2,
                 )))
-                // } else {
-                //     // `\r`
-                //     iter.upstream.next();
-                //     Some(Ok(TokenWithLocationRange::from_char_location(
-                //         Token::NewLine,
-                //         &current_pos,
-                //         1,
-                //     )))
-                // }
             }
             '\n' => {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::NewLine,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -270,7 +273,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::Comma,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -281,7 +284,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::Colon,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -289,7 +292,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::LeftBrace,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -297,7 +300,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::RightBrace,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -305,7 +308,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::LeftBracket,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -313,7 +316,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::RightBracket,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -321,7 +324,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::LeftParen,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -329,7 +332,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::RightParen,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -337,7 +340,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::Plus,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
@@ -345,15 +348,15 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 iter.upstream.next();
                 Some(Ok(TokenWithLocationRange::from_char_location(
                     Token::Minus,
-                    &current_pos,
+                    &current_loc,
                     1,
                 )))
             }
             '0'..='9' => {
                 // number
-                lex_number(iter)
+                Some(lex_number(iter))
             }
-            'h' if iter_upstream_char_equals(iter, 1, '"') => {
+            'h' if iter_upstream_equals_char(iter, 1, '"') => {
                 // hex byte data
                 todo!() // lex_byte_data_hexadecimal(iter)
             }
@@ -361,23 +364,23 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
             //     // string byte data
             //     lex_byte_data_string(iter)
             // }
-            'd' if iter_upstream_char_equals(iter, 1, '"') => {
+            'd' if iter_upstream_equals_char(iter, 1, '"') => {
                 // date
                 todo!() // lex_datetime(iter)
             }
-            'r' if iter_upstream_char_equals(iter, 1, '"') => {
+            'r' if iter_upstream_equals_char(iter, 1, '"') => {
                 // raw string
                 todo!() // lex_raw_string(iter)
             }
-            'r' if iter_upstream_char_equals(iter, 1, '#')
-                && iter_upstream_char_equals(iter, 2, '"') =>
+            'r' if iter_upstream_equals_char(iter, 1, '#')
+                && iter_upstream_equals_char(iter, 2, '"') =>
             {
                 // raw string with hash symbol
                 todo!() // lex_raw_string_with_hash_symbol(iter)
             }
             '"' => {
-                if iter_upstream_char_equals(iter, 1, '"')
-                    && iter_upstream_char_equals(iter, 2, '"')
+                if iter_upstream_equals_char(iter, 1, '"')
+                    && iter_upstream_equals_char(iter, 2, '"')
                 {
                     // auto-trimmed string
                     todo!() // lex_auto_trimmed_string(iter)
@@ -390,131 +393,137 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
                 // char
                 todo!() // lex_char(iter)
             }
-            '/' if iter_upstream_char_equals(iter, 1, '/') => {
+            '/' if iter_upstream_equals_char(iter, 1, '/') => {
                 // line comment
                 todo!() // lex_line_comment(iter)
             }
-            '/' if iter_upstream_char_equals(iter, 1, '*') => {
-                #[cfg(feature = "doc_comment")]
-                {
-                    if iter_upstream_char_equals(iter, 2, &'*') {
-                        // document comment
-                        lex_document_comment(iter)
-                    } else {
-                        // block comment
-                        lex_block_comment(iter)
-                    }
-                }
-
-                #[cfg(not(feature = "doc_comment"))]
-                {
-                    // block comment
-                    todo!() // lex_block_comment(iter)
-                }
+            '/' if iter_upstream_equals_char(iter, 1, '*') => {
+                // block comment
+                todo!() // lex_block_comment(iter)
             }
             'a'..='z' | 'A'..='Z' | '_' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
                 // identifier (the key name of struct/object) or keyword
-                todo!() // lex_identifier_or_keyword(iter)
+                Some(lex_identifier_or_keyword(iter))
             }
             _ => Some(Err(Error::MessageWithLocation(
                 format!("Unexpected char: {}", current_char),
-                current_pos,
+                current_loc,
             ))),
         }
     } else {
         None
     }
 }
-//
-// fn lex_identifier_or_keyword(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
-//     // key_nameT  //
-//     // ^       ^__// to here
-//     // |__________// current char, i.e. the value of 'iter.peek(0)'
-//     //
-//     // T = terminator chars
-//
-//     let mut name_string = String::new();
-//     let mut found_double_colon = false; // found the variant name separator "::"
-//
-//     while let Some(current_char) = iter.peek(0) {
-//         match current_char {
-//             '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => {
-//                 name_string.push(*current_char);
-//                 iter.next();
-//             }
-//             ':' if iter.equals(1, &':') => {
-//                 found_double_colon = true;
-//                 name_string.push_str("::");
-//                 iter.next();
-//                 iter.next();
-//             }
-//             '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
-//                 // A char is a ‘Unicode scalar value’, which is any ‘Unicode code point’ other than a surrogate code point.
-//                 // This has a fixed numerical definition: code points are in the range 0 to 0x10FFFF,
-//                 // inclusive. Surrogate code points, used by UTF-16, are in the range 0xD800 to 0xDFFF.
-//                 //
-//                 // check out:
-//                 // https://doc.rust-lang.org/std/primitive.char.html
-//                 //
-//                 // CJK chars: '\u{4e00}'..='\u{9fff}'
-//                 // for complete CJK chars, check out Unicode standard
-//                 // Ch. 18.1 Han CJK Unified Ideographs
-//                 //
-//                 // summary:
-//                 // Block Range Comment
-//                 // CJK Unified Ideographs 4E00–9FFF Common
-//                 // CJK Unified Ideographs Extension A 3400–4DBF Rare
-//                 // CJK Unified Ideographs Extension B 20000–2A6DF Rare, historic
-//                 // CJK Unified Ideographs Extension C 2A700–2B73F Rare, historic
-//                 // CJK Unified Ideographs Extension D 2B740–2B81F Uncommon, some in current use
-//                 // CJK Unified Ideographs Extension E 2B820–2CEAF Rare, historic
-//                 // CJK Unified Ideographs Extension F 2CEB0–2EBEF Rare, historic
-//                 // CJK Unified Ideographs Extension G 30000–3134F Rare, historic
-//                 // CJK Unified Ideographs Extension H 31350–323AF Rare, historic
-//                 // CJK Compatibility Ideographs F900–FAFF Duplicates, unifiable variants, corporate characters
-//                 // CJK Compatibility Ideographs Supplement 2F800–2FA1F Unifiable variants
-//                 //
-//                 // https://www.unicode.org/versions/Unicode15.0.0/ch18.pdf
-//                 // https://en.wikipedia.org/wiki/CJK_Unified_Ideographs
-//                 // https://www.unicode.org/versions/Unicode15.0.0/
-//                 //
-//                 // see also
-//                 // https://www.unicode.org/reports/tr31/tr31-37.html
-//
-//                 name_string.push(*current_char);
-//                 iter.next();
-//             }
-//             ' ' | '\t' | '\r' | '\n' | '(' | ')' | '{' | '}' | '[' | ']' | ',' | ':' | '/'
-//             | '\'' | '"' => {
-//                 // terminator chars
-//                 break;
-//             }
-//             _ => {
-//                 return Err(Error::Message(format!(
-//                     "Invalid char for identifier: {}",
-//                     *current_char
-//                 )));
-//             }
-//         }
-//     }
-//
-//     let token = if found_double_colon {
-//         let (type_name, member_name) = name_string.split_once("::").unwrap();
-//         Token::new_variant(type_name, member_name)
-//     } else {
-//         match name_string.as_str() {
-//             "true" => Token::Boolean(true),
-//             "false" => Token::Boolean(false),
-//             "NaN" | "NaN_f64" => Token::Number(NumberToken::F64(f64::NAN)), // the default floating-point type is f64
-//             "NaN_f32" => Token::Number(NumberToken::F32(f32::NAN)),
-//             "Inf" | "Inf_f64" => Token::Number(NumberToken::F64(f64::INFINITY)), // the default floating-point type is f64
-//             "Inf_f32" => Token::Number(NumberToken::F32(f32::INFINITY)),
-//             _ => Token::Identifier(name_string),
-//         }
-//     };
-//
-//     Ok(token)
-// }
+
+fn lex_identifier_or_keyword(iter: &mut TokenIter) -> Result<TokenWithLocationRange, Error> {
+    // key_nameT  //
+    // ^       ^__// to here
+    // |__________// current char, i.e. the value of 'iter.peek(0)'
+    //
+    // T = terminator chars || EOF
+
+    let mut name_string = String::new();
+    let mut found_double_colon = false; // found the variant separator "::"
+
+    let mut start_loc = None;
+    let mut end_loc = None;
+
+    loop {
+        if let Some(cl) = iter.upstream.peek(0) {
+            let current_char = cl.character;
+            let current_loc = cl.location;
+
+            end_loc = Some(current_loc);
+            if start_loc.is_none() {
+                start_loc.replace(current_loc);
+            }
+
+            match current_char {
+                '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => {
+                    name_string.push(current_char);
+                    iter.upstream.next();
+                }
+                ':' if iter_upstream_equals_char(iter, 1, ':') => {
+                    found_double_colon = true;
+                    name_string.push_str("::");
+                    iter.upstream.next();
+                    iter.upstream.next();
+                }
+                '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
+                    // A char is a ‘Unicode scalar value’, which is any ‘Unicode code point’ other than a surrogate code point.
+                    // This has a fixed numerical definition: code points are in the range 0 to 0x10FFFF,
+                    // inclusive. Surrogate code points, used by UTF-16, are in the range 0xD800 to 0xDFFF.
+                    //
+                    // check out:
+                    // https://doc.rust-lang.org/std/primitive.char.html
+                    //
+                    // CJK chars: '\u{4e00}'..='\u{9fff}'
+                    // for complete CJK chars, check out Unicode standard
+                    // Ch. 18.1 Han CJK Unified Ideographs
+                    //
+                    // summary:
+                    // Block Range Comment
+                    // CJK Unified Ideographs 4E00–9FFF Common
+                    // CJK Unified Ideographs Extension A 3400–4DBF Rare
+                    // CJK Unified Ideographs Extension B 20000–2A6DF Rare, historic
+                    // CJK Unified Ideographs Extension C 2A700–2B73F Rare, historic
+                    // CJK Unified Ideographs Extension D 2B740–2B81F Uncommon, some in current use
+                    // CJK Unified Ideographs Extension E 2B820–2CEAF Rare, historic
+                    // CJK Unified Ideographs Extension F 2CEB0–2EBEF Rare, historic
+                    // CJK Unified Ideographs Extension G 30000–3134F Rare, historic
+                    // CJK Unified Ideographs Extension H 31350–323AF Rare, historic
+                    // CJK Compatibility Ideographs F900–FAFF Duplicates, unifiable variants, corporate characters
+                    // CJK Compatibility Ideographs Supplement 2F800–2FA1F Unifiable variants
+                    //
+                    // https://www.unicode.org/versions/Unicode15.0.0/ch18.pdf
+                    // https://en.wikipedia.org/wiki/CJK_Unified_Ideographs
+                    // https://www.unicode.org/versions/Unicode15.0.0/
+                    //
+                    // see also
+                    // https://www.unicode.org/reports/tr31/tr31-37.html
+
+                    name_string.push(current_char);
+                    iter.upstream.next();
+                }
+                ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
+                | '\'' | '"' => {
+                    // terminator chars
+                    break;
+                }
+                _ => {
+                    return Err(Error::MessageWithLocation(
+                        format!("Invalid char for identifier: {}", current_char),
+                        current_loc,
+                    ));
+                }
+            }
+        } else {
+            // EOF
+            end_loc = inc_location(end_loc);
+            break;
+        }
+    }
+
+    let token = if found_double_colon {
+        let (type_name, member_name) = name_string.split_once("::").unwrap();
+        Token::new_variant(type_name, member_name)
+    } else {
+        match name_string.as_str() {
+            "true" => Token::Boolean(true),
+            "false" => Token::Boolean(false),
+            "NaN" | "NaN_f64" => Token::Number(NumberToken::F64(f64::NAN)), // the default floating-point type is f64
+            "NaN_f32" => Token::Number(NumberToken::F32(f32::NAN)),
+            "Inf" | "Inf_f64" => Token::Number(NumberToken::F64(f64::INFINITY)), // the default floating-point type is f64
+            "Inf_f32" => Token::Number(NumberToken::F32(f32::INFINITY)),
+            _ => Token::Identifier(name_string),
+        }
+    };
+
+    Ok(TokenWithLocationRange::new(
+        token,
+        LocationWithRange::from_location_pair(&start_loc.unwrap(), &end_loc.unwrap()),
+    ))
+}
 
 // Number formats
 //
@@ -549,7 +558,7 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 // -0b1100
 // 0b0011_u16
 //
-// ## number data types:
+// Number data types:
 //
 // - i32, u32
 // - i64, u64
@@ -557,312 +566,434 @@ fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 // - i16, u16
 // - f32, f64
 //
-// the default integer number type is i32
-// the default floating-point number type is f64
+// the default type of integer numbers is i32
+// the default type of floating-point numbers is f64
 
-fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
+fn lex_number(iter: &mut TokenIter) -> Result<TokenWithLocationRange, Error> {
     // 123456T  //
     // ^     ^__// to here
     // |________// current char
 
-    todo!()
-    // if iter.equals(0, &'0') && iter.equals(1, &'b') {
-    //     // '0b...'
-    //     todo!() // lex_number_binary(iter)
-    // } else if iter.equals(0, &'0') && iter.equals(1, &'x') {
-    //     // '0x...'
-    //     todo!() // lex_number_hex(iter)
-    // } else {
-    //     // '1234'
-    //     // '1.23'
-    //     todo!() // lex_number_decimal(iter)
-    // }
+    if iter_upstream_equals_char(iter, 0, '0') && iter_upstream_equals_char(iter, 1, 'b') {
+        // '0b...'
+        // lex_number_binary(iter)
+        todo!()
+    } else if iter_upstream_equals_char(iter, 0, '0') && iter_upstream_equals_char(iter, 1, 'x') {
+        // '0x...'
+        // lex_number_hex(iter)
+        todo!()
+    } else {
+        // '1234'
+        // '1.23'
+        lex_number_decimal(iter)
+    }
 }
 
-// fn lex_number_decimal(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
-//     // 123456T  //
-//     // ^     ^__// to here
-//     // |________// current char
-//     //
-//     // T = terminator chars
-//
-//     let mut num_string = String::new();
-//     let mut num_type: Option<NumberType> = None; // "_ixx", "_uxx", "_fxx"
-//     let mut found_point = false;
-//     let mut found_e = false;
-//
-//     // samples:
-//     //
-//     // 123
-//     // 3.14
-//     // 2.99e8
-//     // 2.99e+8
-//     // 6.672e-34
-//
-//     while let Some(current_char) = iter.peek(0) {
-//         match current_char {
-//             '0'..='9' => {
-//                 // valid digits for decimal number
-//                 num_string.push(*current_char);
-//                 iter.next();
-//             }
-//             '_' => {
-//                 iter.next();
-//             }
-//             '.' if !found_point => {
-//                 found_point = true;
-//                 num_string.push(*current_char);
-//                 iter.next();
-//             }
-//             'e' if !found_e => {
-//                 found_e = true;
-//
-//                 // 123e45
-//                 // 123e+45
-//                 // 123e-45
-//                 if iter.equals(1, &'-') {
-//                     num_string.push_str("e-");
-//                     iter.next();
-//                     iter.next();
-//                 } else if iter.equals(1, &'+') {
-//                     num_string.push_str("e+");
-//                     iter.next();
-//                     iter.next();
-//                 } else {
-//                     num_string.push(*current_char);
-//                     iter.next();
-//                 }
-//             }
-//             'i' | 'u' | 'f' if num_type.is_none() && matches!(iter.peek(1), Some('0'..='9')) => {
-//                 num_type.replace(lex_number_type(iter)?);
-//             }
-//             ' ' | '\t' | '\r' | '\n' | '(' | ')' | '{' | '}' | '[' | ']' | ',' | ':' | '/'
-//             | '\'' | '"' => {
-//                 // terminator chars
-//                 break;
-//             }
-//             _ => {
-//                 return Err(Error::Message(format!(
-//                     "Invalid char for decimal number: {}",
-//                     *current_char
-//                 )));
-//             }
-//         }
-//     }
-//
-//     // check syntax
-//     if num_string.ends_with('.') {
-//         return Err(Error::Message(format!(
-//             "A number can not ends with \".\": {}",
-//             num_string
-//         )));
-//     }
-//
-//     if num_string.ends_with('e') {
-//         return Err(Error::Message(format!(
-//             "A number can not ends with \"e\": {}",
-//             num_string
-//         )));
-//     }
-//
-//     let num_token: NumberToken;
-//
-//     if let Some(nt) = num_type {
-//         // numbers with explicit type
-//
-//         match nt {
-//             NumberType::I8 => {
-//                 let v = num_string.parse::<u8>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i8 integer number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 num_token = NumberToken::I8(v);
-//             }
-//             NumberType::U8 => {
-//                 let v = num_string.parse::<u8>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u8 integer number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 num_token = NumberToken::U8(v);
-//             }
-//             NumberType::I16 => {
-//                 let v = num_string.parse::<u16>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i16 integer number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 num_token = NumberToken::I16(v);
-//             }
-//             NumberType::U16 => {
-//                 let v = num_string.parse::<u16>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u16 integer number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 num_token = NumberToken::U16(v);
-//             }
-//             NumberType::I32 => {
-//                 let v = num_string.parse::<u32>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i32 integer number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 num_token = NumberToken::I32(v);
-//             }
-//             NumberType::U32 => {
-//                 let v = num_string.parse::<u32>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u32 integer number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 num_token = NumberToken::U32(v);
-//             }
-//             NumberType::I64 => {
-//                 let v = num_string.parse::<u64>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i64 integer number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 num_token = NumberToken::I64(v);
-//             }
-//             NumberType::U64 => {
-//                 let v = num_string.parse::<u64>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u64 integer number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 num_token = NumberToken::U64(v);
-//             }
-//             NumberType::F32 => {
-//                 let v = num_string.parse::<f32>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to f32 floating-point number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 // overflow when parsing from string
-//                 if v.is_infinite() {
-//                     return Err(Error::Message(format!(
-//                         "F32 floating point number overflow: {}.",
-//                         num_string
-//                     )));
-//                 }
-//
-//                 num_token = NumberToken::F32(v);
-//             }
-//             NumberType::F64 => {
-//                 let v = num_string.parse::<f64>().map_err(|e| {
-//                     Error::Message(format!(
-//                         "Can not convert \"{}\" to f64 floating-point number, error: {}",
-//                         num_string, e
-//                     ))
-//                 })?;
-//
-//                 // overflow when parsing from string
-//                 if v.is_infinite() {
-//                     return Err(Error::Message(format!(
-//                         "F64 floating point number overflow: {}.",
-//                         num_string
-//                     )));
-//                 }
-//
-//                 num_token = NumberToken::F64(v);
-//             }
-//         }
-//     } else if found_point || found_e {
-//         // the default floating-point number type is f64
-//
-//         let v = num_string.parse::<f64>().map_err(|e| {
-//             Error::Message(format!(
-//                 "Can not convert \"{}\" to f64 floating-point number, error: {}",
-//                 num_string, e
-//             ))
-//         })?;
-//
-//         // overflow when parsing from string
-//         if v.is_infinite() {
-//             return Err(Error::Message(format!(
-//                 "F64 floating point number overflow: {}.",
-//                 num_string
-//             )));
-//         }
-//
-//         num_token = NumberToken::F64(v);
-//     } else {
-//         // the default integer number type is i32
-//
-//         let v = num_string.parse::<u32>().map_err(|e| {
-//             Error::Message(format!(
-//                 "Can not convert \"{}\" to i32 integer number, error: {}",
-//                 num_string, e
-//             ))
-//         })?;
-//
-//         num_token = NumberToken::I32(v);
-//     }
-//
-//     Ok(Token::Number(num_token))
-// }
-//
-// fn lex_number_type(iter: &mut TokenIter) -> Result<NumberType, Error> {
-//     // ixxT  //
-//     // ^  ^__// to here
-//     // |_____// current char
-//     //
-//     // i = i/u/f
-//     // x = 0..=9
-//     // T = terminator chars
-//
-//     let mut num_type = String::new();
-//
-//     let c = iter.next().unwrap(); // consume the char 'i/u/f'
-//     num_type.push(c);
-//
-//     while let Some(current_char) = iter.peek(0) {
-//         match current_char {
-//             '0'..='9' => {
-//                 // valid char for type name
-//                 num_type.push(*current_char);
-//                 iter.next();
-//             }
-//             _ => {
-//                 break;
-//             }
-//         }
-//     }
-//
-//     NumberType::from_str(&num_type)
-// }
-//
-// fn lex_number_hex(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+fn lex_number_decimal(iter: &mut TokenIter) -> Result<TokenWithLocationRange, Error> {
+    // 123456T  //
+    // ^     ^__// to here
+    // |________// current char
+    //
+    // T = terminator chars || EOF
+
+    let mut num_string = String::new();
+    let mut num_type: Option<NumberType> = None; // "_ixx", "_uxx", "_fxx"
+    let mut found_point = false;
+    let mut found_e = false;
+
+    // samples:
+    //
+    // 123
+    // 3.14
+    // 2.99e8
+    // 2.99e+8
+    // 6.672e-34
+
+    let mut start_loc = None;
+    let mut end_loc = None;
+
+    loop {
+        if let Some(cl) = iter.upstream.peek(0) {
+            let current_char = cl.character;
+            let current_loc = cl.location;
+
+            end_loc = Some(current_loc);
+            if start_loc.is_none() {
+                start_loc = Some(current_loc);
+            }
+
+            match current_char {
+                '0'..='9' => {
+                    // valid digits for decimal number
+                    num_string.push(current_char);
+                    iter.upstream.next();
+                }
+                '_' => {
+                    iter.upstream.next();
+                }
+                '.' if !found_point => {
+                    found_point = true;
+                    num_string.push(current_char);
+                    iter.upstream.next();
+                }
+                'e' if !found_e => {
+                    found_e = true;
+
+                    // 123e45
+                    // 123e+45
+                    // 123e-45
+                    if iter_upstream_equals_char(iter, 1, '-') {
+                        num_string.push_str("e-");
+                        iter.upstream.next();
+                        iter.upstream.next();
+                    } else if iter_upstream_equals_char(iter, 1, '+') {
+                        num_string.push_str("e+");
+                        iter.upstream.next();
+                        iter.upstream.next();
+                    } else {
+                        num_string.push(current_char);
+                        iter.upstream.next();
+                    }
+                }
+                'i' | 'u' | 'f'
+                    if num_type.is_none()
+                        && matches!(
+                            iter.upstream.peek(1),
+                            Some(CharWithLocation {
+                                character: '0'..='9',
+                                location: _
+                            })
+                        ) =>
+                {
+                    num_type.replace(lex_number_type(iter)?);
+                    break;
+                }
+                ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
+                | '\'' | '"' => {
+                    // terminator chars
+                    break;
+                }
+                _ => {
+                    return Err(Error::MessageWithLocation(
+                        format!("Invalid char for decimal number: {}", current_char),
+                        current_loc,
+                    ));
+                }
+            }
+        } else {
+            // EOF
+            end_loc = inc_location(end_loc);
+            break;
+        }
+    }
+
+    // check syntax
+    if num_string.ends_with('.') {
+        let dot_loc = dec_location(end_loc);
+        return Err(Error::MessageWithLocation(
+            format!("A decimal number can not ends with \".\": {}", num_string),
+            dot_loc.unwrap(),
+        ));
+    }
+
+    if num_string.ends_with('e') {
+        let exp_loc = dec_location(end_loc);
+        return Err(Error::MessageWithLocation(
+            format!("A decimal number can not ends with \"e\": {}", num_string),
+            exp_loc.unwrap(),
+        ));
+    }
+
+    let num_token: NumberToken;
+
+    if let Some(nt) = num_type {
+        // numbers with explicit type
+        match nt {
+            NumberType::I8 => {
+                let v = num_string.parse::<u8>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to i8 integer number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                num_token = NumberToken::I8(v);
+            }
+            NumberType::U8 => {
+                let v = num_string.parse::<u8>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to u8 integer number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                num_token = NumberToken::U8(v);
+            }
+            NumberType::I16 => {
+                let v = num_string.parse::<u16>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to i16 integer number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                num_token = NumberToken::I16(v);
+            }
+            NumberType::U16 => {
+                let v = num_string.parse::<u16>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to u16 integer number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                num_token = NumberToken::U16(v);
+            }
+            NumberType::I32 => {
+                let v = num_string.parse::<u32>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to i32 integer number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                num_token = NumberToken::I32(v);
+            }
+            NumberType::U32 => {
+                let v = num_string.parse::<u32>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to u32 integer number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                num_token = NumberToken::U32(v);
+            }
+            NumberType::I64 => {
+                let v = num_string.parse::<u64>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to i64 integer number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                num_token = NumberToken::I64(v);
+            }
+            NumberType::U64 => {
+                let v = num_string.parse::<u64>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to u64 integer number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                num_token = NumberToken::U64(v);
+            }
+            NumberType::F32 => {
+                let v = num_string.parse::<f32>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to f32 floating-point number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                // overflow when parsing from string
+                if v.is_infinite() {
+                    return Err(Error::MessageWithLocationRange(
+                        format!("F32 floating point number overflow: {}.", num_string),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    ));
+                }
+
+                num_token = NumberToken::F32(v);
+            }
+            NumberType::F64 => {
+                let v = num_string.parse::<f64>().map_err(|e| {
+                    Error::MessageWithLocationRange(
+                        format!(
+                            "Can not convert \"{}\" to f64 floating-point number: {}",
+                            num_string, e
+                        ),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    )
+                })?;
+
+                // overflow when parsing from string
+                if v.is_infinite() {
+                    return Err(Error::MessageWithLocationRange(
+                        format!("F64 floating point number overflow: {}.", num_string),
+                        LocationWithRange::from_location_pair(
+                            &start_loc.unwrap(),
+                            &end_loc.unwrap(),
+                        ),
+                    ));
+                }
+
+                num_token = NumberToken::F64(v);
+            }
+        }
+    } else if found_point || found_e {
+        // the default floating-point number type is f64
+
+        let v = num_string.parse::<f64>().map_err(|e| {
+            Error::MessageWithLocationRange(
+                format!(
+                    "Can not convert \"{}\" to f64 floating-point number: {}",
+                    num_string, e
+                ),
+                LocationWithRange::from_location_pair(&start_loc.unwrap(), &end_loc.unwrap()),
+            )
+        })?;
+
+        // overflow when parsing from string
+        if v.is_infinite() {
+            return Err(Error::MessageWithLocationRange(
+                format!("F64 floating point number overflow: {}.", num_string),
+                LocationWithRange::from_location_pair(&start_loc.unwrap(), &end_loc.unwrap()),
+            ));
+        }
+
+        num_token = NumberToken::F64(v);
+    } else {
+        // the default integer number type is i32
+
+        let v = num_string.parse::<u32>().map_err(|e| {
+            Error::MessageWithLocationRange(
+                format!(
+                    "Can not convert \"{}\" to i32 integer number: {}",
+                    num_string, e
+                ),
+                LocationWithRange::from_location_pair(&start_loc.unwrap(), &end_loc.unwrap()),
+            )
+        })?;
+
+        num_token = NumberToken::I32(v);
+    }
+
+    Ok(TokenWithLocationRange::new(
+        Token::Number(num_token),
+        LocationWithRange::from_location_pair(&start_loc.unwrap(), &end_loc.unwrap()),
+    ))
+}
+
+fn lex_number_type(iter: &mut TokenIter) -> Result<NumberType, Error> {
+    // ixxT  //
+    // ^  ^__// to here
+    // |_____// current char
+    //
+    // i = i/u/f
+    // x = 0..=9
+    // T = terminator chars || EOF
+
+    let mut type_name = String::new();
+
+    let start_cl = iter.upstream.next().unwrap(); // consume the char 'i/u/f'
+
+    type_name.push(start_cl.character);
+    let start_loc = start_cl.location;
+
+    let mut end_loc = None;
+
+    loop {
+        if let Some(cl) = iter.upstream.peek(0) {
+            let current_char = cl.character;
+            end_loc = Some(cl.location);
+
+            match current_char {
+                '0'..='9' => {
+                    // valid char for type name
+                    type_name.push(current_char);
+                    iter.upstream.next();
+                }
+                _ => {
+                    break;
+                }
+            }
+        } else {
+            // EOF
+            end_loc = inc_location(end_loc);
+            break;
+        }
+    }
+
+    NumberType::from_str(&type_name).map_err(|msg| {
+        Error::MessageWithLocationRange(
+            msg,
+            LocationWithRange::from_location_pair(&start_loc, &end_loc.unwrap()),
+        )
+    })
+}
+
+// fn lex_number_hex(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // 0xaabbT  //
 //     // ^     ^__// to here
 //     // |________// current char
 //     //
-//     // T = terminator chars
+//     // T = terminator chars || EOF
 //
 //     // consume '0x'
-//     iter.next();
-//     iter.next();
+//     iter.upstream.next();
+//     iter.upstream.next();
 //
 //     let mut num_string = String::new();
 //     let mut num_type: Option<NumberType> = None;
@@ -888,16 +1019,16 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             '0'..='9' | 'a'..='f' | 'A'..='F' => {
 //                 // valid digits for hex number
 //                 num_string.push(*current_char);
-//                 iter.next();
+//                 iter.upstream.next();
 //             }
 //             '_' => {
-//                 iter.next();
+//                 iter.upstream.next();
 //             }
 //             '.' if !found_point => {
 //                 // it is hex floating point literal
 //                 found_point = true;
 //                 num_string.push(*current_char);
-//                 iter.next();
+//                 iter.upstream.next();
 //             }
 //             'p' if !found_p => {
 //                 // it is hex floating point literal
@@ -908,19 +1039,19 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //                 // 0x0.123p-45
 //                 if iter.equals(1, &'-') {
 //                     num_string.push_str("p-");
-//                     iter.next();
-//                     iter.next();
+//                     iter.upstream.next();
+//                     iter.upstream.next();
 //                 } else if iter.equals(1, &'+') {
 //                     num_string.push_str("p+");
-//                     iter.next();
-//                     iter.next();
+//                     iter.upstream.next();
+//                     iter.upstream.next();
 //                 } else {
 //                     num_string.push(*current_char);
-//                     iter.next();
+//                     iter.upstream.next();
 //                 }
 //             }
-//             ' ' | '\t' | '\r' | '\n' | '(' | ')' | '{' | '}' | '[' | ']' | ',' | ':' | '/'
-//             | '\'' | '"' => {
+//             ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
+// | '\'' | '"' => {
 //                 // terminator chars
 //                 break;
 //             }
@@ -986,7 +1117,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::I8 => {
 //                 let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i8 integer number, error: {}",
+//                         "Can not convert \"{}\" to i8 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -996,7 +1127,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::U8 => {
 //                 let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u8 integer number, error: {}",
+//                         "Can not convert \"{}\" to u8 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1006,7 +1137,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::I16 => {
 //                 let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i16 integer number, error: {}",
+//                         "Can not convert \"{}\" to i16 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1016,7 +1147,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::U16 => {
 //                 let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u16 integer number, error: {}",
+//                         "Can not convert \"{}\" to u16 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1026,7 +1157,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::I32 => {
 //                 let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i32 integer number, error: {}",
+//                         "Can not convert \"{}\" to i32 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1036,7 +1167,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::U32 => {
 //                 let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u32 integer number, error: {}",
+//                         "Can not convert \"{}\" to u32 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1046,7 +1177,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::I64 => {
 //                 let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i64 integer number, error: {}",
+//                         "Can not convert \"{}\" to i64 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1056,7 +1187,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::U64 => {
 //                 let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u64 integer number, error: {}",
+//                         "Can not convert \"{}\" to u64 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1074,7 +1205,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //         // convert to i32
 //         let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
 //             Error::Message(format!(
-//                 "Can not convert \"{}\" to i32 integer number, error: {}",
+//                 "Can not convert \"{}\" to i32 integer number: {}",
 //                 num_string, e
 //             ))
 //         })?;
@@ -1085,16 +1216,16 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     Ok(Token::Number(num_token))
 // }
 //
-// fn lex_number_binary(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_number_binary(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // 0b1010T  //
 //     // ^     ^__// to here
 //     // |________// current char
 //     //
-//     // T = terminator chars
+//     // T = terminator chars || EOF
 //
 //     // consume '0b'
-//     iter.next();
-//     iter.next();
+//     iter.upstream.next();
+//     iter.upstream.next();
 //
 //     let mut num_string = String::new();
 //     let mut num_type: Option<NumberType> = None;
@@ -1104,16 +1235,16 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             '0' | '1' => {
 //                 // valid digits for binary number
 //                 num_string.push(*current_char);
-//                 iter.next();
+//                 iter.upstream.next();
 //             }
 //             '_' => {
-//                 iter.next();
+//                 iter.upstream.next();
 //             }
 //             'i' | 'u' if num_type.is_none() && matches!(iter.peek(1), Some('0'..='9')) => {
 //                 num_type.replace(lex_number_type(iter)?);
 //             }
-//             ' ' | '\t' | '\r' | '\n' | '(' | ')' | '{' | '}' | '[' | ']' | ',' | ':' | '/'
-//             | '\'' | '"' => {
+//             ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
+// | '\'' | '"' => {
 //                 // terminator chars
 //                 break;
 //             }
@@ -1143,7 +1274,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::I8 => {
 //                 let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i8 integer number, error: {}",
+//                         "Can not convert \"{}\" to i8 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1153,7 +1284,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::U8 => {
 //                 let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u8 integer number, error: {}",
+//                         "Can not convert \"{}\" to u8 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1163,7 +1294,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::I16 => {
 //                 let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i16 integer number, error: {}",
+//                         "Can not convert \"{}\" to i16 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1173,7 +1304,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::U16 => {
 //                 let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u16 integer number, error: {}",
+//                         "Can not convert \"{}\" to u16 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1183,7 +1314,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::I32 => {
 //                 let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i32 integer number, error: {}",
+//                         "Can not convert \"{}\" to i32 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1193,7 +1324,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::U32 => {
 //                 let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u32 integer number, error: {}",
+//                         "Can not convert \"{}\" to u32 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1203,7 +1334,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::I64 => {
 //                 let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to i64 integer number, error: {}",
+//                         "Can not convert \"{}\" to i64 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1213,7 +1344,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             NumberType::U64 => {
 //                 let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
 //                     Error::Message(format!(
-//                         "Can not convert \"{}\" to u64 integer number, error: {}",
+//                         "Can not convert \"{}\" to u64 integer number: {}",
 //                         num_string, e
 //                     ))
 //                 })?;
@@ -1227,7 +1358,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //
 //         let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
 //             Error::Message(format!(
-//                 "Can not convert \"{}\" to i32 integer number, error: {}",
+//                 "Can not convert \"{}\" to i32 integer number: {}",
 //                 num_string, e
 //             ))
 //         })?;
@@ -1238,12 +1369,12 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     Ok(Token::Number(num_token))
 // }
 //
-// fn lex_char(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_char(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // 'a'?  //
 //     // ^  ^__// to here
 //     // |_____// current char
 //
-//     iter.next(); // consume the left single quote
+//     iter.upstream.next(); // consume the left single quote
 //
 //     let c: char;
 //
@@ -1318,12 +1449,12 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     Ok(Token::Char(c))
 // }
 //
-// fn lex_string(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_string(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // "abc"?  //
 //     // ^    ^__// to here
 //     // |_______// current char
 //
-//     iter.next(); // consume the left quote
+//     iter.upstream.next(); // consume the left quote
 //
 //     let mut ss = String::new();
 //
@@ -1370,7 +1501,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //                                 }
 //                                 '\r' if iter.equals(0, &'\n') => {
 //                                     // multiple-line string
-//                                     iter.next();
+//                                     iter.upstream.next();
 //                                     let _ = consume_leading_whitespaces(iter)?;
 //                                 }
 //                                 _ => {
@@ -1411,7 +1542,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //         match iter.peek(0) {
 //             Some(next_char) if next_char == &' ' || next_char == &'\t' => {
 //                 count += 1;
-//                 iter.next();
+//                 iter.upstream.next();
 //             }
 //             None => return Err(Error::Message("Expect the non-whitespace text.".to_owned())),
 //             _ => break,
@@ -1425,7 +1556,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     for _ in 0..max_whitespaces {
 //         match iter.peek(0) {
 //             Some(next_char) if next_char == &' ' || next_char == &'\t' => {
-//                 iter.next();
+//                 iter.upstream.next();
 //             }
 //             _ => break,
 //         }
@@ -1486,13 +1617,13 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     }
 // }
 //
-// fn lex_raw_string(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_raw_string(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // r"abc"?  //
 //     // ^     ^__// to here
 //     // |________// current char
 //
-//     iter.next(); // consume char 'r'
-//     iter.next(); // consume the quote
+//     iter.upstream.next(); // consume char 'r'
+//     iter.upstream.next(); // consume the quote
 //
 //     let mut raw_string = String::new();
 //
@@ -1515,14 +1646,14 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     Ok(Token::String_(raw_string))
 // }
 //
-// fn lex_raw_string_with_hash_symbol(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_raw_string_with_hash_symbol(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // r#"abc"#?  //
 //     // ^       ^__// to here
 //     // |__________// current char
 //
-//     iter.next(); // consume char 'r'
-//     iter.next(); // consume the hash
-//     iter.next(); // consume the quote
+//     iter.upstream.next(); // consume char 'r'
+//     iter.upstream.next(); // consume the hash
+//     iter.upstream.next(); // consume the quote
 //
 //     let mut raw_string = String::new();
 //
@@ -1531,7 +1662,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //             Some(previous_char) => match previous_char {
 //                 '"' if iter.equals(0, &'#') => {
 //                     // end of the string
-//                     iter.next(); // consume the hash
+//                     iter.upstream.next(); // consume the hash
 //                     break;
 //                 }
 //                 _ => {
@@ -1546,7 +1677,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     Ok(Token::String_(raw_string))
 // }
 //
-// fn lex_auto_trimmed_string(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_auto_trimmed_string(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // """                    //
 //     // ^  auto-trimmed string //
 //     // |  ...                 //
@@ -1554,15 +1685,15 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     // |     ^________________// to here ('?' = any chars or EOF)
 //     // |______________________// current char
 //
-//     iter.next(); // consume char "
-//     iter.next(); // consume char "
-//     iter.next(); // consume char "
+//     iter.upstream.next(); // consume char "
+//     iter.upstream.next(); // consume char "
+//     iter.upstream.next(); // consume char "
 //
 //     if iter.equals(0, &'\n') {
-//         iter.next();
+//         iter.upstream.next();
 //     } else if iter.equals(0, &'\r') && iter.equals(1, &'\n') {
-//         iter.next();
-//         iter.next();
+//         iter.upstream.next();
+//         iter.upstream.next();
 //     } else {
 //         return Err(Error::Message(
 //             "The content of auto-trimmed string should start on a new line.".to_owned(),
@@ -1583,7 +1714,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //                         skip_leading_whitespaces(iter, leading_whitespace_count);
 //                     }
 //                     '\r' if iter.equals(0, &'\n') => {
-//                         iter.next(); // consume '\n'
+//                         iter.upstream.next(); // consume '\n'
 //
 //                         total_string.push_str("\r\n");
 //                         line_leading.clear();
@@ -1593,8 +1724,8 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //                         && iter.equals(0, &'"')
 //                         && iter.equals(1, &'"') =>
 //                     {
-//                         iter.next(); // consume '"'
-//                         iter.next(); // consume '"'
+//                         iter.upstream.next(); // consume '"'
+//                         iter.upstream.next(); // consume '"'
 //                         break;
 //                     }
 //                     _ => {
@@ -1614,13 +1745,13 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     Ok(Token::String_(total_string.trim_end().to_owned()))
 // }
 //
-// fn lex_datetime(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_datetime(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // d"2024-03-16T16:30:50+08:00"?  //
 //     // ^                           ^__// to here
 //     // |______________________________// current char
 //
-//     iter.next(); // consume the char 'd'
-//     iter.next(); // consume left quote
+//     iter.upstream.next(); // consume the char 'd'
+//     iter.upstream.next(); // consume left quote
 //
 //     let mut date_string = String::new();
 //
@@ -1671,7 +1802,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     Ok(Token::Date(rfc3339))
 // }
 //
-// fn lex_byte_data_hexadecimal(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_byte_data_hexadecimal(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // h"00 11 aa bb"?  //
 //     // ^             ^__// to here
 //     // |________________// current char
@@ -1680,8 +1811,8 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     // let mut byte_buf = String::with_capacity(2);
 //     let mut chars: [char; 2] = ['0', '0'];
 //
-//     iter.next(); // consume char 'h'
-//     iter.next(); // consume quote '"'
+//     iter.upstream.next(); // consume char 'h'
+//     iter.upstream.next(); // consume quote '"'
 //
 //     let consume_whitespace_if_exits = |t: &mut ForwardIter<char>| {
 //         while let Some(' ') | Some('\t') | Some('\r') | Some('\n') = t.peek(0) {
@@ -1750,12 +1881,12 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //         consume_withspaces(iter)?; // consume at lease one whitespace
 //     }
 //
-//     iter.next(); // consume '"'
+//     iter.upstream.next(); // consume '"'
 //
 //     Ok(Token::ByteData(bytes))
 // }
 //
-// // fn lex_byte_data_string(iter: &mut LookaheadIter<char>) -> Option<Result<PositionToken, Error>> {
+// // fn lex_byte_data_string(iter: &mut LookaheadIter<char>) -> Option<Result<TokenWithLocationRange, Error>> {
 // //     // b"..."?  //
 // //     // ^     ^__// to here
 // //     // |________// current char
@@ -1765,15 +1896,15 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 // //     Ok(Token::ByteData(v))
 // // }
 //
-// fn lex_line_comment(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_line_comment(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // xx...[\r]\n?  //
 //     // ^          ^__// to here ('?' = any char or EOF)
 //     // |_____________// current char
 //     //
 //     // x = '/'
 //
-//     iter.next(); // consume char '/'
-//     iter.next(); // consume char '/'
+//     iter.upstream.next(); // consume char '/'
+//     iter.upstream.next(); // consume char '/'
 //
 //     let mut comment_string = String::new();
 //
@@ -1785,7 +1916,7 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //         if previous_char == '\n' {
 //             break;
 //         } else if previous_char == '\r' && iter.equals(0, &'\n') {
-//             iter.next(); // consume char '\n'
+//             iter.upstream.next(); // consume char '\n'
 //             break;
 //         }
 //
@@ -1795,13 +1926,13 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //     Ok(Token::Comment(Comment::Line(comment_string)))
 // }
 //
-// fn lex_block_comment(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
+// fn lex_block_comment(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Error>> {
 //     // /*...*/?  //
 //     // ^      ^__// to here
 //     // |_________// current char
 //
-//     iter.next(); // consume char '/'
-//     iter.next(); // consume char '*'
+//     iter.upstream.next(); // consume char '/'
+//     iter.upstream.next(); // consume char '*'
 //
 //     let mut comment_string = String::new();
 //     let mut pairs = 1;
@@ -1812,11 +1943,11 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //                 '/' if iter.equals(0, &'*') => {
 //                     // nested block comment
 //                     comment_string.push_str("/*");
-//                     iter.next();
+//                     iter.upstream.next();
 //                     pairs += 1;
 //                 }
 //                 '*' if iter.equals(0, &'/') => {
-//                     iter.next();
+//                     iter.upstream.next();
 //                     pairs -= 1;
 //
 //                     // check pairs
@@ -1838,41 +1969,6 @@ fn lex_number(iter: &mut TokenIter) -> Option<Result<TokenWithLocationRange, Err
 //
 //     Ok(Token::Comment(Comment::Block(comment_string)))
 // }
-//
-// #[cfg(feature = "doc_comment")]
-// fn lex_document_comment(iter: &mut TokenIter) -> Option<Result<PositionToken, Error>> {
-//     // /**...**/?  //
-//     // ^        ^__// to here
-//     // |___________// current char
-//
-//     iter.next(); // consume char '/'
-//     iter.next(); // consume char '*'
-//     iter.next(); // consume char '*'
-//
-//     let mut comment_string = String::new();
-//
-//     loop {
-//         match iter.next() {
-//             Some(previous_char) => match previous_char {
-//                 '*' if iter.equals(0, &'*') && iter.equals(1, &'/') => {
-//                     iter.next();
-//                     iter.next();
-//
-//                     break;
-//                 }
-//                 _ => {
-//                     // ignore all chars except "**/"
-//                     // note that line comments and block comments within block comments are ignored.
-//                     // document comment does not support nested.
-//                     comment_string.push(previous_char);
-//                 }
-//             },
-//             None => return Err(Error::Message("Incomplete document comment.".to_owned())),
-//         }
-//     }
-//
-//     Ok(Token::Comment(Comment::Document(comment_string)))
-// }
 
 #[cfg(test)]
 mod tests {
@@ -1881,9 +1977,9 @@ mod tests {
 
     use crate::{
         error::Error,
-        forwarditer::ForwardIter,
         lexer::{Comment, NumberToken, TokenWithLocationRange},
         location::{CharsWithLocationIter, Location, LocationWithRange},
+        peekableiter::PeekableIter,
     };
 
     use super::{lex, Token, TokenIter};
@@ -1892,7 +1988,7 @@ mod tests {
         let mut chars = s.chars();
         let mut chars_with_location_iter = CharsWithLocationIter::new(0, &mut chars);
         let mut forward_chars_with_location_iter =
-            ForwardIter::new(&mut chars_with_location_iter, 3);
+            PeekableIter::new(&mut chars_with_location_iter, 3);
         let token_iter = TokenIter::new(&mut forward_chars_with_location_iter);
 
         let mut ts = vec![];
@@ -1911,7 +2007,7 @@ mod tests {
         let mut chars = s.chars();
         let mut chars_with_location_iter = CharsWithLocationIter::new(0, &mut chars);
         let mut forward_chars_with_location_iter =
-            ForwardIter::new(&mut chars_with_location_iter, 3);
+            PeekableIter::new(&mut chars_with_location_iter, 3);
         let token_iter = TokenIter::new(&mut forward_chars_with_location_iter);
 
         let mut ts = vec![];
@@ -1927,7 +2023,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lex_white_spaces() {
+    fn test_lex_whitespaces() {
         assert_eq!(lex_str_to_vec("  ").unwrap(), vec![]);
 
         assert_eq!(
@@ -1950,10 +2046,7 @@ mod tests {
                 Token::RightParen,
             ]
         );
-    }
 
-    #[test]
-    fn test_lex_white_spaces_with_location() {
         assert_eq!(lex_str_to_vec_with_location("  ").unwrap(), vec![]);
 
         assert_eq!(
@@ -1986,7 +2079,10 @@ mod tests {
 
         // "(\t\r\n\n\n)"
         //  _--____--__-
-        //  01 2   4 5 6
+        //  0  2   4 5 6    // index
+        //  0  0   1 2 3    // line
+        //  0  2   0 0 1    // column
+        //  1  2   1 1 1    // length
         assert_eq!(
             lex_str_to_vec_with_location("(\t\r\n\n\n)").unwrap(),
             vec![
@@ -2008,16 +2104,16 @@ mod tests {
     #[test]
     fn test_lex_punctuations() {
         assert_eq!(
-            lex_str_to_vec(":{[],()}+-").unwrap(),
+            lex_str_to_vec(",:{}[]()+-").unwrap(),
             vec![
+                Token::Comma,
                 Token::Colon,
                 Token::LeftBrace,
+                Token::RightBrace,
                 Token::LeftBracket,
                 Token::RightBracket,
-                Token::Comma,
                 Token::LeftParen,
                 Token::RightParen,
-                Token::RightBrace,
                 Token::Plus,
                 Token::Minus
             ]
@@ -2068,41 +2164,35 @@ mod tests {
             ]
         );
 
-        // err: starts with number
-        assert!(matches!(lex_str_to_vec("1abc"), Err(Error::Message(_))));
+        assert_eq!(
+            lex_str_to_vec_with_location("hello ASON").unwrap(),
+            vec![
+                TokenWithLocationRange::from_char_location(
+                    Token::new_identifier("hello"),
+                    &Location::new(0, 0, 0, 0),
+                    5
+                ),
+                TokenWithLocationRange::from_char_location(
+                    Token::new_identifier("ASON"),
+                    &Location::new(0, 6, 0, 6),
+                    4
+                )
+            ]
+        );
 
         // err: invalid char
-        assert!(matches!(lex_str_to_vec("abc&xyz"), Err(Error::Message(_))));
-    }
-
-    #[test]
-    fn test_lex_variant() {
-        assert_eq!(
-            lex_str_to_vec("Option::None").unwrap(),
-            vec![Token::new_variant("Option", "None")]
-        );
-
-        assert_eq!(
-            lex_str_to_vec("Option::Some(123)").unwrap(),
-            vec![
-                Token::new_variant("Option", "Some"),
-                Token::LeftParen,
-                Token::Number(NumberToken::I32(123)),
-                Token::RightParen,
-            ]
-        );
-
-        assert_eq!(
-            lex_str_to_vec("value: Result::Ok(456)").unwrap(),
-            vec![
-                Token::new_identifier("value"),
-                Token::Colon,
-                Token::new_variant("Result", "Ok"),
-                Token::LeftParen,
-                Token::Number(NumberToken::I32(456)),
-                Token::RightParen,
-            ]
-        );
+        assert!(matches!(
+            lex_str_to_vec("abc&xyz"),
+            Err(Error::MessageWithLocation(
+                _,
+                Location {
+                    unit: 0,
+                    index: 3,
+                    line: 0,
+                    column: 3
+                }
+            ))
+        ));
     }
 
     #[test]
@@ -2141,6 +2231,53 @@ mod tests {
         assert_eq!(
             lex_str_to_vec("NaN_i32").unwrap(),
             vec![Token::new_identifier("NaN_i32")]
+        );
+
+        // "[\n    true\n    false\n]"
+        //  01 234567890 1234567890 1   // index
+        //  00 111111111 2222222222 3   // line
+        //  01 012345678 0123456789 0   // column
+        //  11     4   1     5    1 1   // length
+
+        assert_eq!(
+            lex_str_to_vec_with_location("[\n    true\n    false\n]").unwrap(),
+            vec![
+                TokenWithLocationRange::from_char_location(
+                    Token::LeftBracket,
+                    &Location::new(0, 0, 0, 0),
+                    1
+                ),
+                TokenWithLocationRange::from_char_location(
+                    Token::NewLine,
+                    &Location::new(0, 1, 0, 1),
+                    1
+                ),
+                TokenWithLocationRange::from_char_location(
+                    Token::Boolean(true),
+                    &Location::new(0, 6, 1, 4),
+                    4
+                ),
+                TokenWithLocationRange::from_char_location(
+                    Token::NewLine,
+                    &Location::new(0, 10, 1, 8),
+                    1
+                ),
+                TokenWithLocationRange::from_char_location(
+                    Token::Boolean(false),
+                    &Location::new(0, 15, 2, 4),
+                    5
+                ),
+                TokenWithLocationRange::from_char_location(
+                    Token::NewLine,
+                    &Location::new(0, 20, 2, 9),
+                    1
+                ),
+                TokenWithLocationRange::from_char_location(
+                    Token::RightBracket,
+                    &Location::new(0, 21, 3, 0),
+                    1
+                ),
+            ]
         );
     }
 
@@ -2183,14 +2320,34 @@ mod tests {
             ]
         );
 
+        // err: invalid char for decimal number
+        assert!(matches!(
+            lex_str_to_vec("12x34"),
+            Err(Error::MessageWithLocation(
+                _,
+                Location {
+                    unit: 0,
+                    index: 2,
+                    line: 0,
+                    column: 2
+                }
+            ))
+        ));
+
         // err: integer number overflow
         assert!(matches!(
             lex_str_to_vec("4_294_967_296"),
-            Err(Error::Message(_))
+            Err(Error::MessageWithLocationRange(
+                _,
+                LocationWithRange {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 13
+                }
+            ))
         ));
-
-        // err: invalid char for decimal number
-        assert!(matches!(lex_str_to_vec("123XYZ"), Err(Error::Message(_))));
     }
 
     #[allow(clippy::approx_constant)]
@@ -2226,20 +2383,75 @@ mod tests {
             vec![Token::Number(NumberToken::F64(6.626e-34))]
         );
 
-        // err: unsupports start with dot
-        assert!(matches!(lex_str_to_vec(".123"), Err(Error::Message(_))));
+        // err: incomplete floating point number since ends with '.'
+        assert!(matches!(
+            lex_str_to_vec("123."),
+            Err(Error::MessageWithLocation(
+                _,
+                Location {
+                    unit: 0,
+                    index: 3,
+                    line: 0,
+                    column: 3
+                }
+            ))
+        ));
+
+        // err: incomplete floating point number since ends with 'e'
+        assert!(matches!(
+            lex_str_to_vec("123e"),
+            Err(Error::MessageWithLocation(
+                _,
+                Location {
+                    unit: 0,
+                    index: 3,
+                    line: 0,
+                    column: 3
+                }
+            ))
+        ));
 
         // err: multiple points
-        assert!(matches!(lex_str_to_vec("1.23.456"), Err(Error::Message(_))));
+        assert!(matches!(
+            lex_str_to_vec("1.23.456"),
+            Err(Error::MessageWithLocation(
+                _,
+                Location {
+                    unit: 0,
+                    index: 4,
+                    line: 0,
+                    column: 4
+                }
+            ))
+        ));
 
         // err: multiple 'e' (exps)
-        assert!(matches!(lex_str_to_vec("1e2e3"), Err(Error::Message(_))));
+        assert!(matches!(
+            lex_str_to_vec("1e23e456"),
+            Err(Error::MessageWithLocation(
+                _,
+                Location {
+                    unit: 0,
+                    index: 4,
+                    line: 0,
+                    column: 4
+                }
+            ))
+        ));
 
-        // err: incomplete floating point number
-        assert!(matches!(lex_str_to_vec("123."), Err(Error::Message(_))));
-
-        // err: incomplete 'e'
-        assert!(matches!(lex_str_to_vec("123e"), Err(Error::Message(_))));
+        // err: unsupports start with dot
+        assert!(matches!(
+            lex_str_to_vec(".123"),
+            Err(Error::MessageWithLocation(
+                _,
+                Location {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0
+                }
+            ))
+        ));
     }
 
     #[test]
@@ -3294,76 +3506,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "doc_comment")]
-    #[test]
-    fn test_lex_document_comment() {
-        assert_eq!(
-            lex_str_to_vec(
-                r#"
-                /** one two **/
-                "#
-            )
-            .unwrap(),
-            vec![
-                Token::NewLine,
-                Token::Comment(Comment::Document(" one two ".to_owned())),
-                Token::NewLine,
-            ]
-        );
-
-        assert_eq!(
-            lex_str_to_vec(
-                r#"
-/** one ** */ /** /* two
-**/
-                "#
-            )
-            .unwrap(),
-            vec![
-                Token::NewLine,
-                Token::Comment(Comment::Document(" one ** */ /** /* two\n".to_owned())),
-                Token::NewLine
-            ]
-        );
-
-        assert_eq!(
-            lex_str_to_vec(
-                r#"
-/* one **/
-                "#
-            )
-            .unwrap(),
-            vec![
-                Token::NewLine,
-                Token::Comment(Comment::Block(" one *".to_owned())),
-                Token::NewLine
-            ]
-        );
-
-        // err: incorrect ending marker
-        assert!(matches!(
-            lex_str_to_vec(
-                r#"
-                /**
-                hello
-                */
-                "#
-            ),
-            Err(Error::Message(_))
-        ));
-
-        // err: missing the ending marker
-        assert!(matches!(
-            lex_str_to_vec(
-                r#"
-                /**
-                hello
-                "#
-            ),
-            Err(Error::Message(_))
-        ));
-    }
-
     #[test]
     fn test_lex_datetime() {
         let expect_date1 = DateTime::parse_from_rfc3339("2024-03-16T00:00:00Z").unwrap();
@@ -3416,6 +3558,36 @@ mod tests {
             lex_str_to_vec("d\"2024-3-16 4:30:50\""),
             Err(Error::Message(_))
         ));
+    }
+
+    #[test]
+    fn test_lex_variant() {
+        assert_eq!(
+            lex_str_to_vec("Option::None").unwrap(),
+            vec![Token::new_variant("Option", "None")]
+        );
+
+        assert_eq!(
+            lex_str_to_vec("Option::Some(123)").unwrap(),
+            vec![
+                Token::new_variant("Option", "Some"),
+                Token::LeftParen,
+                Token::Number(NumberToken::I32(123)),
+                Token::RightParen,
+            ]
+        );
+
+        assert_eq!(
+            lex_str_to_vec("value: Result::Ok(456)").unwrap(),
+            vec![
+                Token::new_identifier("value"),
+                Token::Colon,
+                Token::new_variant("Result", "Ok"),
+                Token::LeftParen,
+                Token::Number(NumberToken::I32(456)),
+                Token::RightParen,
+            ]
+        );
     }
 
     #[test]
