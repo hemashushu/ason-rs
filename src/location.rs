@@ -54,23 +54,23 @@ impl LocationWithRange {
         )
     }
 
-    pub fn from_location_pair(start_loc: &Location, end_loc: &Location) -> Self {
+    pub fn from_location_pair(start_location: &Location, end_location: &Location) -> Self {
         Self::new(
-            start_loc.unit,
-            start_loc.index,
-            start_loc.line,
-            start_loc.column,
-            end_loc.index - start_loc.index,
+            start_location.unit,
+            start_location.index,
+            start_location.line,
+            start_location.column,
+            end_location.index - start_location.index,
         )
     }
 
-    pub fn from_location_pair_include(start_loc: &Location, end_loc_include: &Location) -> Self {
+    pub fn from_location_pair_include(start_location: &Location, end_location_include: &Location) -> Self {
         Self::new(
-            start_loc.unit,
-            start_loc.index,
-            start_loc.line,
-            start_loc.column,
-            end_loc_include.index - start_loc.index + 1,
+            start_location.unit,
+            start_location.index,
+            start_location.line,
+            start_location.column,
+            end_location_include.index - start_location.index + 1,
         )
     }
 }
