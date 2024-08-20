@@ -10,7 +10,7 @@ where
 {
     upstream: &'a mut dyn Iterator<Item = T>,
     buffer: RoundQueue<T>,
-    lookahead_length: usize,
+    buffer_size: usize,
 }
 
 pub const MAX_LOOKAHEAD_LENGTH: usize = 6;
@@ -76,11 +76,11 @@ impl<'a, T> PeekableIter<'a, T>
 where
     T: PartialEq,
 {
-    pub fn new(upstream: &'a mut dyn Iterator<Item = T>, lookahead_length: usize) -> Self {
-        let mut buffer = RoundQueue::new(lookahead_length);
+    pub fn new(upstream: &'a mut dyn Iterator<Item = T>, buffer_size: usize) -> Self {
+        let mut buffer = RoundQueue::new(buffer_size);
 
         // pre-fill
-        for _ in 0..lookahead_length {
+        for _ in 0..buffer_size {
             let value = upstream.next();
             buffer.enqueue(value);
         }
@@ -88,12 +88,12 @@ where
         Self {
             upstream,
             buffer,
-            lookahead_length,
+            buffer_size,
         }
     }
 
     pub fn peek(&self, offset: usize) -> Option<&T> {
-        assert!(offset < self.lookahead_length);
+        assert!(offset < self.buffer_size);
         self.buffer.peek(offset)
     }
 }

@@ -4,13 +4,14 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-mod location;
 // mod ast;
+// mod serde;
+
+mod location;
 mod error;
 mod lexer;
 mod peekableiter;
-// mod serde;
-// mod normalizer;
+mod normalizer;
 
 // pub use ast::parser::parse_from;
 // pub use ast::writer::print_to;

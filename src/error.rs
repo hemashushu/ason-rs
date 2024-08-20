@@ -6,7 +6,7 @@
 
 use std::fmt::{self, Display};
 
-use crate::location::{Location, LocationWithRange};
+use crate::location::{Location, Range};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
@@ -16,7 +16,7 @@ pub enum Error {
     // such as the "char incomplete" error raised by the string `'a`, which
     // index = 2.
     MessageWithLocation(String, Location),
-    MessageWithLocationRange(String, LocationWithRange),
+    MessageWithRange(String, Range),
 }
 
 impl Display for Error {
@@ -32,7 +32,7 @@ impl Display for Error {
                     loc.column + 1
                 )
             }
-            Error::MessageWithLocationRange(msg, loc) => {
+            Error::MessageWithRange(msg, loc) => {
                 write!(
                     f,
                     "{}\nLine: {}, column: {}, length: {}",
@@ -48,7 +48,9 @@ impl Display for Error {
 
 impl std::error::Error for Error {}
 
-pub fn print_error_with_source(err: &Error, source: &str) -> String {
-    // print pretty error with source text
-    todo!()
+impl Error {
+    pub fn print_error_with_source(&self, source: &str) -> String {
+        // print pretty error with source text
+        todo!()
+    }
 }
