@@ -6,16 +6,16 @@
 
 use std::fmt::{self, Display};
 
-use crate::location::{Location, Range};
+use crate::location::{Position, Range};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
     Message(String),
 
-    // note that the (index+length) of location may exceed the last index of string,
+    // note that the "index+length" of location may exceed the last index of string,
     // such as the "char incomplete" error raised by the string `'a`, which
     // index = 2.
-    MessageWithLocation(String, Location),
+    MessageWithPosition(String, Position),
     MessageWithRange(String, Range),
 }
 
@@ -23,7 +23,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Message(msg) => f.write_str(msg),
-            Error::MessageWithLocation(msg, loc) => {
+            Error::MessageWithPosition(msg, loc) => {
                 write!(
                     f,
                     "{}\nLine: {}, column: {}",

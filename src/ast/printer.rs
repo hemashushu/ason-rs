@@ -114,16 +114,13 @@ fn print_variant(v: &Variant, level: usize) -> String {
 
     match value {
         super::VariantValue::Empty => format!("{}::{}", type_name, member_name),
-        super::VariantValue::Single(v) => format!(
-            "{}::{}({})",
-            type_name,
-            member_name,
-            write_ason_node(v, level)
-        ),
-        super::VariantValue::Multiple(v) => {
+        super::VariantValue::Value(v) => {
+            format!("{}::{}({})", type_name, member_name, print_node(v, level))
+        }
+        super::VariantValue::Tuple(v) => {
             let s = v
                 .iter()
-                .map(|node| write_ason_node(node, level))
+                .map(|node| print_node(node, level))
                 .collect::<Vec<String>>()
                 .join(", ");
             format!("{}::{}({})", type_name, member_name, s)
@@ -156,11 +153,7 @@ fn print_list(v: &[AsonNode], level: usize) -> String {
     format!(
         "[\n{}\n{}]",
         v.iter()
-            .map(|item| format!(
-                "{}{}",
-                element_leading_space,
-                write_ason_node(item, sub_level)
-            ))
+            .map(|item| format!("{}{}", element_leading_space, print_node(item, sub_level)))
             .collect::<Vec<String>>()
             .join("\n"),
         leading_space
@@ -171,7 +164,7 @@ fn print_tuple(v: &[AsonNode], level: usize) -> String {
     format!(
         "({})",
         v.iter()
-            .map(|item| write_ason_node(item, level))
+            .map(|item| print_node(item, level))
             .collect::<Vec<String>>()
             .join(", ")
     )
@@ -184,7 +177,7 @@ fn print_object(v: &[KeyValuePair], level: usize) -> String {
             "{}{}: {}",
             leading_space,
             name_value_pair.key,
-            write_ason_node(&name_value_pair.value, current_level)
+            print_node(&name_value_pair.value, current_level)
         )
     };
 
@@ -199,7 +192,7 @@ fn print_object(v: &[KeyValuePair], level: usize) -> String {
     )
 }
 
-fn write_ason_node(node: &AsonNode, level: usize) -> String {
+fn print_node(node: &AsonNode, level: usize) -> String {
     match node {
         AsonNode::Number(v) => print_number(v),
         AsonNode::Boolean(v) => print_boolean(v),
@@ -215,14 +208,16 @@ fn write_ason_node(node: &AsonNode, level: usize) -> String {
 }
 
 pub fn print_to(node: &AsonNode) -> String {
-    write_ason_node(node, 0)
+    print_node(node, 0)
 }
 
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use crate::{parse_from, print_to};
+    use crate::ast::parser::parse_from;
+
+    use super::print_to;
 
     fn format(s: &str) -> String {
         let node = parse_from(s).unwrap();

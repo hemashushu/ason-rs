@@ -5,7 +5,7 @@
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
 pub mod parser;
-pub mod writer;
+pub mod printer;
 
 use chrono::{DateTime, FixedOffset};
 
@@ -47,8 +47,8 @@ pub struct Variant {
 #[derive(Debug, PartialEq)]
 pub enum VariantValue {
     Empty,                     // unit variant
-    Single(Box<AsonNode>),     // new type variant
-    Multiple(Vec<AsonNode>),   // tuple variant
+    Value(Box<AsonNode>),      // new type variant
+    Tuple(Vec<AsonNode>),      // tuple variant
     Object(Vec<KeyValuePair>), // struct variant
 }
 
@@ -88,7 +88,7 @@ impl Variant {
         Self {
             type_name: type_name.to_owned(),
             member_name: member_name.to_owned(),
-            value: VariantValue::Single(Box::new(value)),
+            value: VariantValue::Value(Box::new(value)),
         }
     }
 
@@ -96,7 +96,7 @@ impl Variant {
         Self {
             type_name: type_name.to_owned(),
             member_name: member_name.to_owned(),
-            value: VariantValue::Multiple(values),
+            value: VariantValue::Tuple(values),
         }
     }
 
@@ -123,8 +123,9 @@ impl AsonNode {
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use crate::ast::{AsonNode, KeyValuePair, Number, Variant};
-    use crate::{parse_from, print_to};
+    use crate::ast::{
+        parser::parse_from, printer::print_to, AsonNode, KeyValuePair, Number, Variant,
+    };
 
     #[test]
     fn test_parse() {

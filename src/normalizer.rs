@@ -11,7 +11,7 @@ use chrono::{DateTime, FixedOffset};
 use crate::{
     error::Error,
     lexer::{NumberToken, Token, TokenIter, TokenWithRange},
-    location::Range,
+    location::{Position, Range},
     peekableiter::PeekableIter,
 };
 
@@ -41,7 +41,7 @@ fn clear(iter: &mut ClearTokenIter) -> Option<Result<TokenWithRange, Error>> {
                 match &result {
                     Ok(TokenWithRange {
                         token: Token::Comment(_),
-                        range: _,
+                        ..
                     }) => {
                         // consume comments
                     }
@@ -94,358 +94,469 @@ impl<'a> Iterator for NormalizedTokenIter<'a> {
 //   so the validity rnange of an integer can only be checked in the normalization
 //   phase after combining the plus or minus sign and the number of tokens.
 fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Error>> {
-    loop {
-        match iter.upstream.next() {
-            Some(result) => {
-                match &result {
-                    Ok(token_with_range) => {
-                        let TokenWithRange {
-                            token,
+    match iter.upstream.next() {
+        Some(result) => match &result {
+            Ok(token_with_range) => {
+                let TokenWithRange {
+                    token,
+                    range: current_range,
+                } = token_with_range;
+
+                let mut start_range = Some(*current_range);
+                let mut end_range = start_range;
+
+                match token {
+                    Token::NewLine => {
+                        // consume continuous newlines
+                        while let Some(Ok(TokenWithRange {
+                            token: Token::NewLine,
                             range: current_range,
-                        } = token_with_range;
+                        })) = iter.upstream.peek(0)
+                        {
+                            end_range = Some(*current_range);
+                            iter.upstream.next();
+                        }
 
-                        let mut start_range = Some(*current_range);
-                        let mut end_range = start_range;
+                        // found ','
+                        if let Some(Ok(TokenWithRange {
+                            token: Token::Comma,
+                            range: current_range,
+                        })) = iter.upstream.peek(0)
+                        {
+                            // consume comma
+                            start_range = Some(*current_range);
+                            end_range = start_range;
+                            iter.upstream.next();
 
-                        match token {
-                            Token::NewLine => {
-                                // consume continuous newlines
-                                while let Some(Ok(TokenWithRange {
-                                    token: Token::NewLine,
-                                    range: current_range,
-                                })) = iter.upstream.peek(0)
-                                {
-                                    end_range = Some(*current_range);
-                                    iter.upstream.next();
-                                }
+                            // consume trailing continuous newlines
+                            while let Some(Ok(TokenWithRange {
+                                token: Token::NewLine,
+                                range: _,
+                            })) = iter.upstream.peek(0)
+                            {
+                                iter.upstream.next();
+                            }
 
-                                // found ','
-                                if let Some(Ok(TokenWithRange {
-                                    token: Token::Comma,
-                                    range: current_range,
-                                })) = iter.upstream.peek(0)
-                                {
-                                    // consume comma
-                                    start_range = Some(*current_range);
-                                    end_range = start_range;
-                                    iter.upstream.next();
+                            return Some(Ok(TokenWithRange::new(
+                                Token::Comma,
+                                Range::combine_range_pair(&start_range.unwrap(), &end_range.unwrap()),
+                            )));
+                        } else {
+                            return Some(Ok(TokenWithRange::new(
+                                Token::NewLine,
+                                Range::combine_range_pair(&start_range.unwrap(), &end_range.unwrap()),
+                            )));
+                        }
+                    }
+                    Token::Comma => {
+                        // consume continuous newlines
+                        while let Some(Ok(TokenWithRange {
+                            token: Token::NewLine,
+                            range: _,
+                        })) = iter.upstream.peek(0)
+                        {
+                            iter.upstream.next();
+                        }
 
-                                    // consume trailing continuous newlines
-                                    while let Some(Ok(TokenWithRange {
-                                        token: Token::NewLine,
-                                        range: _,
-                                    })) = iter.upstream.peek(0)
-                                    {
-                                        iter.upstream.next();
+                        return Some(Ok(TokenWithRange::new(
+                            Token::Comma,
+                            Range::combine_range_pair(&start_range.unwrap(), &end_range.unwrap()),
+                        )));
+                    }
+                    Token::Plus => {
+                        match iter.upstream.peek(0) {
+                            Some(Ok(TokenWithRange {
+                                token: token @ Token::Number(num),
+                                range: current_range,
+                            })) => {
+                                match num {
+                                    NumberToken::F32(f) if f.is_nan() => {
+                                        // combines two token ranges.
+                                        return Some(Err(Error::MessageWithRange(
+                                            "The plus sign cannot be applied to NaN.".to_owned(),
+                                            Range::combine_range_pair(
+                                                &start_range.unwrap(),
+                                                current_range,
+                                            ),
+                                        )));
                                     }
+                                    NumberToken::F64(f) if f.is_nan() => {
+                                        // combines two token ranges.
+                                        return Some(Err(Error::MessageWithRange(
+                                            "The plus sign cannot be applied to NaN.".to_owned(),
+                                            Range::combine_range_pair(
+                                                &start_range.unwrap(),
+                                                current_range,
+                                            ),
+                                        )));
+                                    }
+                                    NumberToken::I8(v) if *v > i8::MAX as u8 => {
+                                        // check signed number overflow
+                                        return Some(Err(Error::MessageWithRange(
+                                            format!("The byte integer number {} is overflowed.", v),
+                                            Range::combine_range_pair(
+                                                &start_range.unwrap(),
+                                                current_range,
+                                            ),
+                                        )));
+                                    }
+                                    NumberToken::I16(v) if *v > i16::MAX as u16 => {
+                                        // check signed number overflow
+                                        return Some(Err(Error::MessageWithRange(
+                                            format!(
+                                                "The short integer number {} is overflowed.",
+                                                v
+                                            ),
+                                            Range::combine_range_pair(
+                                                &start_range.unwrap(),
+                                                current_range,
+                                            ),
+                                        )));
+                                    }
+                                    NumberToken::I32(v) if *v > i32::MAX as u32 => {
+                                        // check signed number overflow
+                                        return Some(Err(Error::MessageWithRange(
+                                            format!("The integer number {} is overflowed.", v),
+                                            Range::combine_range_pair(
+                                                &start_range.unwrap(),
+                                                current_range,
+                                            ),
+                                        )));
+                                    }
+                                    NumberToken::I64(v) if *v > i64::MAX as u64 => {
+                                        // check signed number overflow
+                                        return Some(Err(Error::MessageWithRange(
+                                            format!("The long integer number {} is overflowed.", v),
+                                            Range::combine_range_pair(
+                                                &start_range.unwrap(),
+                                                current_range,
+                                            ),
+                                        )));
+                                    }
+                                    _ => {
+                                        // combines two token ranges and constructs new number token.
+                                        let ret_val = Some(Ok(TokenWithRange {
+                                            token: token.clone(),
+                                            range: Range::combine_range_pair(
+                                                &start_range.unwrap(),
+                                                current_range,
+                                            ),
+                                        }));
 
-                                    return Some(Ok(TokenWithRange::new(
-                                        Token::Comma,
-                                        Range::from_range_pair(
-                                            &start_range.unwrap(),
-                                            &end_range.unwrap(),
-                                        ),
-                                    )));
-                                } else {
-                                    return Some(Ok(TokenWithRange::new(
-                                        Token::NewLine,
-                                        Range::from_range_pair(
-                                            &start_range.unwrap(),
-                                            &end_range.unwrap(),
-                                        ),
-                                    )));
+                                        // consumes the the plus sign (it's already done) and the
+                                        // number token.
+                                        iter.upstream.next();
+
+                                        return ret_val;
+                                    }
                                 }
                             }
-                            Token::Comma => {
-                                // consume continuous newlines
-                                while let Some(Ok(TokenWithRange {
-                                    token: Token::NewLine,
-                                    range: _,
-                                })) = iter.upstream.peek(0)
-                                {
-                                    iter.upstream.next();
-                                }
-
-                                return Some(Ok(TokenWithRange::new(
-                                    Token::Comma,
-                                    Range::from_range_pair(
-                                        &start_range.unwrap(),
-                                        &end_range.unwrap(),
-                                    ),
+                            Some(Ok(TokenWithRange {
+                                token: _,
+                                range: current_range,
+                            })) => {
+                                // combines two token ranges.
+                                return Some(Err(Error::MessageWithRange(
+                                    "The plus sign cannot be applied to data other than numbers."
+                                        .to_owned(),
+                                    Range::combine_range_pair(&start_range.unwrap(), current_range),
                                 )));
                             }
-                            Token::Plus => {
-                                match iter.upstream.peek(0) {
-                                    Some(Ok(TokenWithRange {
-                                        token: Token::Number(num),
-                                        range: _,
-                                    })) => {
-                                        match num {
-                                            NumberToken::F32(f) if f.is_nan() => {
-                                                return Some(Err(Error::MessageWithRange(
-                                                    "The plus sign cannot be applied to NaN."
-                                                        .to_owned(),
-                                                    Range::new(0, 0, 0, 0, 0), // todo:: to update the range
+                            Some(Err(e)) => {
+                                return Some(Err(e.clone()));
+                            }
+                            None => {
+                                // "...+EOF"
+                                return Some(Err(Error::MessageWithPosition(
+                                    "Unexpected end of document.".to_owned(),
+                                    {
+                                        let range = start_range.unwrap();
+                                        Position {
+                                            unit: range.unit,
+                                            index: range.index + 1,
+                                            line: range.line,
+                                            column: range.column + 1,
+                                        }
+                                    },
+                                )));
+                            }
+                        }
+                    }
+                    Token::Minus => {
+                        match iter.upstream.peek(0) {
+                            Some(Ok(TokenWithRange {
+                                token: Token::Number(num),
+                                range: current_range,
+                            })) => {
+                                match num {
+                                    NumberToken::F32(v) => {
+                                        if v.is_nan() {
+                                            // combines two token ranges.
+                                            return Some(Err(Error::MessageWithRange(
+                                                "The minus sign cannot be applied to NaN."
+                                                    .to_owned(),
+                                                Range::combine_range_pair(
+                                                    &start_range.unwrap(),
+                                                    current_range,
+                                                ),
+                                            )));
+                                        } else {
+                                            // combines two token ranges and constructs new number token.
+                                            let ret_val = Some(Ok(TokenWithRange {
+                                                token: Token::Number(NumberToken::F32(v.neg())),
+                                                range: Range::combine_range_pair(
+                                                    &start_range.unwrap(),
+                                                    current_range,
+                                                ),
+                                            }));
+
+                                            // consume the minus sign (it's already done) and the
+                                            // number token
+                                            iter.upstream.next();
+
+                                            return ret_val;
+                                        }
+                                    }
+                                    NumberToken::F64(v) => {
+                                        if v.is_nan() {
+                                            // combines two token ranges.
+                                            return Some(Err(Error::MessageWithRange(
+                                                "The minus sign cannot be applied to NaN."
+                                                    .to_owned(),
+                                                Range::combine_range_pair(
+                                                    &start_range.unwrap(),
+                                                    current_range,
+                                                ),
+                                            )));
+                                        } else {
+                                            // combines two token ranges and constructs new number token.
+                                            let ret_val = Some(Ok(TokenWithRange {
+                                                token: Token::Number(NumberToken::F64(v.neg())),
+                                                range: Range::combine_range_pair(
+                                                    &start_range.unwrap(),
+                                                    current_range,
+                                                ),
+                                            }));
+
+                                            // consume the minus sign (it's already done) and the
+                                            // number token
+                                            iter.upstream.next();
+
+                                            return ret_val;
+                                        }
+                                    }
+                                    NumberToken::I8(v) => {
+                                        let combined_range = Range::combine_range_pair(
+                                            &start_range.unwrap(),
+                                            current_range,
+                                        );
+
+                                        let parse_result =
+                                            format!("-{}", v).parse::<i8>().map_err(|e| {
+                                                Error::MessageWithRange(
+                                                    format!(
+                                                "Can not convert \"{}\" to negative i8, reason: {}",
+                                                v, e
+                                            ),
+                                                    combined_range,
+                                                )
+                                            });
+
+                                        match parse_result {
+                                            Ok(v) => {
+                                                let ret_val = Some(Ok(TokenWithRange::new(
+                                                    Token::Number(NumberToken::I8(v as u8)),
+                                                    combined_range,
                                                 )));
+
+                                                // consume the minus sign (already done) and the number literal token
+                                                iter.next();
+
+                                                return ret_val; // todo:: range
                                             }
-                                            NumberToken::F64(f) if f.is_nan() => {
-                                                return Some(Err(Error::MessageWithRange(
-                                                    "The plus sign cannot be applied to NaN."
-                                                        .to_owned(),
-                                                    Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                                )));
-                                            }
-                                            _ => {
-                                                // consumes the current token (i.e., the plus sign),
-                                                // but it's already done and nothing needs to be done here.
+                                            Err(e) => {
+                                                return Some(Err(e));
                                             }
                                         }
                                     }
-                                    Some(_) => {
-                                        return Some(Err(Error::MessageWithRange(
-                                            "The plus sign cannot be applied to data other than numbers."
-                                                .to_owned(),Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                        )));
-                                    }
-                                    None => {
-                                        return Some(Err(Error::MessageWithRange(
-                                            "Unexpected end of document.".to_owned(),
-                                            Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                        )));
-                                    }
-                                }
-                            }
-                            Token::Minus => {
-                                match iter.upstream.peek(0) {
-                                    Some(Ok(TokenWithRange {
-                                        token: Token::Number(num),
-                                        range: _,
-                                    })) => {
-                                        match num {
-                                            NumberToken::F32(v) => {
-                                                if v.is_nan() {
-                                                    return Some(Err(Error::MessageWithRange(
-                                                        "The minus sign cannot be applied to NaN."
-                                                            .to_owned(),
-                                                        Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                                    )));
-                                                } else {
-                                                    let token =
-                                                        Token::Number(NumberToken::F32(v.neg()));
+                                    NumberToken::I16(v) => {
+                                        let combined_range = Range::combine_range_pair(
+                                            &start_range.unwrap(),
+                                            current_range,
+                                        );
 
-                                                    // consume the minus sign (already done) and the number literal token
-                                                    iter.upstream.next();
-
-                                                    return Some(Ok(TokenWithRange::new(
-                                                        token,
-                                                        Range::new(0, 0, 0, 0, 0),
-                                                    ))); // todo:: range
-                                                }
-                                            }
-                                            NumberToken::F64(v) => {
-                                                if v.is_nan() {
-                                                    return Some(Err(Error::MessageWithRange(
-                                                        "The minus sign cannot be applied to NaN."
-                                                            .to_owned(),
-                                                        Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                                    )));
-                                                } else {
-                                                    let token =
-                                                        Token::Number(NumberToken::F64(v.neg()));
-
-                                                    // consume the minus sign (alredy done) and the number literal token
-                                                    iter.upstream.next();
-
-                                                    return Some(Ok(TokenWithRange::new(
-                                                        token,
-                                                        Range::new(0, 0, 0, 0, 0),
-                                                    ))); // todo:: range
-                                                }
-                                            }
-                                            NumberToken::I8(v) => {
-                                                let r = format!("-{}", v).parse::<i8>().map_err(|e| {
-                                                    Error::MessageWithRange(format!(
-                                                        "Can not convert \"{}\" to negative i8, reason: {}",
-                                                        v, e
-                                                    ),
-                                                    Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                                )
-                                                });
-
-                                                match r {
-                                                    Ok(v) => {
-                                                        let token =
-                                                            Token::Number(NumberToken::I8(v as u8));
-
-                                                        // consume the minus sign (already done) and the number literal token
-                                                        iter.next();
-
-                                                        return Some(Ok(TokenWithRange::new(
-                                                            token,
-                                                            Range::new(0, 0, 0, 0, 0),
-                                                        ))); // todo:: range
-                                                    }
-                                                    Err(e) => {
-                                                        return Some(Err(e));
-                                                    }
-                                                }
-                                            }
-                                            NumberToken::I16(v) => {
-                                                let r = format!("-{}", v).parse::<i16>().map_err(|e| {
+                                        let parse_result = format!("-{}", v).parse::<i16>().map_err(|e| {
                                                     Error::MessageWithRange(format!(
                                                         "Can not convert \"{}\" to negative i16, reason: {}",
                                                         v, e
                                                     ),
-                                                    Range::new(0, 0, 0, 0, 0), // todo:: to update the range
+                                                    combined_range
                                                 )
                                                 });
 
-                                                match r {
-                                                    Ok(v) => {
-                                                        let token = Token::Number(
-                                                            NumberToken::I16(v as u16),
-                                                        );
-
-                                                        // consume the minus sign (already done) and the number literal token
-                                                        iter.next();
-
-                                                        return Some(Ok(TokenWithRange::new(
-                                                            token,
-                                                            Range::new(0, 0, 0, 0, 0),
-                                                        ))); // todo:: range
-                                                    }
-                                                    Err(e) => {
-                                                        return Some(Err(e));
-                                                    }
-                                                }
-                                            }
-                                            NumberToken::I32(v) => {
-                                                let r = format!("-{}", v).parse::<i32>().map_err(|e| {
-                                                    Error::MessageWithRange(format!(
-                                                        "Can not convert \"{}\" to negative, reason: {}",
-                                                        v, e
-                                                    ),
-                                                    Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                                )
-                                                });
-
-                                                match r {
-                                                    Ok(v) => {
-                                                        let token = Token::Number(
-                                                            NumberToken::I32(v as u32),
-                                                        );
-
-                                                        // consume the minus sign (already done) and the number literal token
-                                                        iter.next();
-
-                                                        return Some(Ok(TokenWithRange::new(
-                                                            token,
-                                                            Range::new(0, 0, 0, 0, 0),
-                                                        ))); // todo:: range
-                                                    }
-                                                    Err(e) => {
-                                                        return Some(Err(e));
-                                                    }
-                                                }
-                                            }
-                                            NumberToken::I64(v) => {
-                                                let r = format!("-{}", v).parse::<i64>().map_err(|e| {
-                                                    Error::MessageWithRange(format!(
-                                                        "Can not convert \"{}\" to negative, reason: {}",
-                                                        v, e
-                                                    ),
-                                                    Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                                )
-                                                });
-
-                                                match r {
-                                                    Ok(v) => {
-                                                        let token = Token::Number(
-                                                            NumberToken::I64(v as u64),
-                                                        );
-
-                                                        // consume the minus sign (already done) and the number literal token
-                                                        iter.next();
-
-                                                        return Some(Ok(TokenWithRange::new(
-                                                            token,
-                                                            Range::new(0, 0, 0, 0, 0),
-                                                        ))); // todo:: range
-                                                    }
-                                                    Err(e) => {
-                                                        return Some(Err(e));
-                                                    }
-                                                }
-                                            }
-                                            NumberToken::U8(_)
-                                            | NumberToken::U16(_)
-                                            | NumberToken::U32(_)
-                                            | NumberToken::U64(_) => {
-                                                return Some(Err(Error::MessageWithRange(
-                                                    "The minus sign cannot be applied to unsigned numbers."
-                                                        .to_owned(),
-                                                    Range::new(0, 0, 0, 0, 0), // todo:: to update the range
+                                        match parse_result {
+                                            Ok(v) => {
+                                                let ret_val = Some(Ok(TokenWithRange::new(
+                                                    Token::Number(NumberToken::I16(v as u16)),
+                                                    combined_range,
                                                 )));
+
+                                                // consume the minus sign (already done) and the number literal token
+                                                iter.next();
+
+                                                return ret_val;
+                                            }
+                                            Err(e) => {
+                                                return Some(Err(e));
                                             }
                                         }
                                     }
-                                    Some(_) => {
-                                        return Some(Err(Error::MessageWithRange(
-                                            "The minus sign cannot be applied to data other than numbers."
-                                                .to_owned(),
-                                            Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                        ))); // todo:: range
+                                    NumberToken::I32(v) => {
+                                        let combined_range = Range::combine_range_pair(
+                                            &start_range.unwrap(),
+                                            current_range,
+                                        );
+
+                                        let parse_result = format!("-{}", v).parse::<i32>().map_err(|e| {
+                                                    Error::MessageWithRange(format!(
+                                                        "Can not convert \"{}\" to negative, reason: {}",
+                                                        v, e
+                                                    ),
+                                                    combined_range
+                                                )
+                                                });
+
+                                        match parse_result {
+                                            Ok(v) => {
+                                                let ret_val = Some(Ok(TokenWithRange::new(
+                                                    Token::Number(NumberToken::I32(v as u32)),
+                                                    combined_range,
+                                                )));
+
+                                                // consume the minus sign (already done) and the number literal token
+                                                iter.next();
+
+                                                return ret_val;
+                                            }
+                                            Err(e) => {
+                                                return Some(Err(e));
+                                            }
+                                        }
                                     }
-                                    None => {
+                                    NumberToken::I64(v) => {
+                                        let combined_range = Range::combine_range_pair(
+                                            &start_range.unwrap(),
+                                            current_range,
+                                        );
+
+                                        let parse_result = format!("-{}", v).parse::<i64>().map_err(|e| {
+                                                    Error::MessageWithRange(format!(
+                                                        "Can not convert \"{}\" to negative, reason: {}",
+                                                        v, e
+                                                    ),
+                                                    combined_range
+                                                )
+                                                });
+
+                                        match parse_result {
+                                            Ok(v) => {
+                                                let ret_val = Some(Ok(TokenWithRange::new(
+                                                    Token::Number(NumberToken::I64(v as u64)),
+                                                    combined_range,
+                                                )));
+
+                                                // consume the minus sign (already done) and the number literal token
+                                                iter.next();
+
+                                                return ret_val;
+                                            }
+                                            Err(e) => {
+                                                return Some(Err(e));
+                                            }
+                                        }
+                                    }
+                                    NumberToken::U8(_)
+                                    | NumberToken::U16(_)
+                                    | NumberToken::U32(_)
+                                    | NumberToken::U64(_) => {
                                         return Some(Err(Error::MessageWithRange(
-                                            "Unexpected end of document.".to_owned(),
-                                            Range::new(0, 0, 0, 0, 0), // todo:: to update the range
-                                        ))); // todo:: range
+                                            "The minus sign cannot be applied to unsigned numbers."
+                                                .to_owned(),
+                                            Range::combine_range_pair(
+                                                &start_range.unwrap(),
+                                                current_range,
+                                            ),
+                                        )));
                                     }
                                 }
                             }
-                            Token::Number(NumberToken::I8(v)) if *v > i8::MAX as u8 => {
-                                // check signed number overflow
+                            Some(Ok(TokenWithRange {
+                                token: _,
+                                range: current_range,
+                            })) => {
+                                // combines two token ranges.
                                 return Some(Err(Error::MessageWithRange(
-                                    format!("The byte integer number {} is overflowed.", v),
-                                    start_range.unwrap(),
+                                    "The minus sign cannot be applied to data other than numbers."
+                                        .to_owned(),
+                                    Range::combine_range_pair(&start_range.unwrap(), current_range),
                                 )));
                             }
-                            Token::Number(NumberToken::I16(v)) if *v > i16::MAX as u16 => {
-                                // check signed number overflow
-                                return Some(Err(Error::MessageWithRange(
-                                    format!("The short integer number {} is overflowed.", v),
-                                    start_range.unwrap(),
+                            Some(Err(e)) => {
+                                return Some(Err(e.clone()));
+                            }
+                            None => {
+                                // "...-EOF"
+                                return Some(Err(Error::MessageWithPosition(
+                                    "Unexpected end of document.".to_owned(),
+                                    {
+                                        let range = start_range.unwrap();
+                                        Position {
+                                            unit: range.unit,
+                                            index: range.index + 1,
+                                            line: range.line,
+                                            column: range.column + 1,
+                                        }
+                                    },
                                 )));
                             }
-                            Token::Number(NumberToken::I32(v)) if *v > i32::MAX as u32 => {
-                                // check signed number overflow
-                                return Some(Err(Error::MessageWithRange(
-                                    format!("The integer number {} is overflowed.", v),
-                                    start_range.unwrap(),
-                                )));
-                            }
-                            Token::Number(NumberToken::I64(v)) if *v > i64::MAX as u64 => {
-                                // check signed number overflow
-                                return Some(Err(Error::MessageWithRange(
-                                    format!("The long integer number {} is overflowed.", v),
-                                    start_range.unwrap(),
-                                )));
-                            }
-                            _ => {
-                                return Some(result);
-                            }
-                        };
+                        }
                     }
-                    Err(_) => {
+                    Token::Number(NumberToken::I8(v)) if *v > i8::MAX as u8 => {
+                        // check signed number overflow
+                        return Some(Err(Error::MessageWithRange(
+                            format!("The byte integer number {} is overflowed.", v),
+                            start_range.unwrap(),
+                        )));
+                    }
+                    Token::Number(NumberToken::I16(v)) if *v > i16::MAX as u16 => {
+                        // check signed number overflow
+                        return Some(Err(Error::MessageWithRange(
+                            format!("The short integer number {} is overflowed.", v),
+                            start_range.unwrap(),
+                        )));
+                    }
+                    Token::Number(NumberToken::I32(v)) if *v > i32::MAX as u32 => {
+                        // check signed number overflow
+                        return Some(Err(Error::MessageWithRange(
+                            format!("The integer number {} is overflowed.", v),
+                            start_range.unwrap(),
+                        )));
+                    }
+                    Token::Number(NumberToken::I64(v)) if *v > i64::MAX as u64 => {
+                        // check signed number overflow
+                        return Some(Err(Error::MessageWithRange(
+                            format!("The long integer number {} is overflowed.", v),
+                            start_range.unwrap(),
+                        )));
+                    }
+                    _ => {
                         return Some(result);
                     }
-                }
+                };
             }
-            None => {
-                return None;
-            }
-        }
+            Err(_) => Some(result),
+        },
+        None => None,
     }
 }
 
@@ -504,18 +615,18 @@ mod tests {
 
     use crate::{
         error::Error,
-        lexer::{CharsWithLocationIter, NumberToken, Token, TokenIter, TokenWithRange},
-        location::Location,
+        lexer::{CharsWithPositionIter, NumberToken, Token, TokenIter, TokenWithRange},
+        location::{Position, Range},
         peekableiter::PeekableIter,
     };
 
     use super::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter};
 
-    fn lex_str_to_vec_with_location(s: &str) -> Result<Vec<TokenWithRange>, Error> {
+    fn lex_str_to_vec_with_range(s: &str) -> Result<Vec<TokenWithRange>, Error> {
         let mut chars = s.chars();
-        let mut char_location_iter = CharsWithLocationIter::new(0, &mut chars);
-        let mut peekable_char_location_iter = PeekableIter::new(&mut char_location_iter, 3);
-        let mut token_iter = TokenIter::new(&mut peekable_char_location_iter);
+        let mut char_position_iter = CharsWithPositionIter::new(0, &mut chars);
+        let mut peekable_char_position_iter = PeekableIter::new(&mut char_position_iter, 3);
+        let mut token_iter = TokenIter::new(&mut peekable_char_position_iter);
         let mut clear_iter = ClearTokenIter::new(&mut token_iter);
         let mut peekable_clear_iter = PeekableIter::new(&mut clear_iter, 1);
         let mut normalized_iter = NormalizedTokenIter::new(&mut peekable_clear_iter);
@@ -537,11 +648,35 @@ mod tests {
     }
 
     fn lex_str_to_vec(s: &str) -> Result<Vec<Token>, Error> {
-        let tokens = lex_str_to_vec_with_location(s)?
+        let tokens = lex_str_to_vec_with_range(s)?
             .iter()
             .map(|e| e.token.to_owned())
             .collect::<Vec<Token>>();
         Ok(tokens)
+    }
+
+    #[test]
+    fn test_clear_comments() {
+        assert_eq!(
+            lex_str_to_vec(
+                r#"11 // line comment 1
+                // line comment 2
+                13 /* block comment 1 */
+                /*
+                block comment 2
+                */
+                17
+                "#
+            )
+            .unwrap(),
+            vec![
+                Token::Number(NumberToken::I32(11)),
+                Token::NewLine,
+                Token::Number(NumberToken::I32(13)),
+                Token::NewLine,
+                Token::Number(NumberToken::I32(17)),
+            ]
+        );
     }
 
     #[test]
@@ -607,21 +742,21 @@ mod tests {
 
         // blanks -> blank
         assert_eq!(
-            lex_str_to_vec_with_location("11\n \n  \n13").unwrap(),
+            lex_str_to_vec_with_range("11\n \n  \n13").unwrap(),
             vec![
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Location::new(0, 0, 0, 0),
+                    &Position::new(0, 0, 0, 0),
                     2
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Location::new(0, 2, 0, 2),
+                    &Position::new(0, 2, 0, 2),
                     6
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(13)),
-                    &Location::new(0, 8, 3, 0),
+                    &Position::new(0, 8, 3, 0),
                     2
                 ),
             ]
@@ -629,16 +764,16 @@ mod tests {
 
         // comma + blanks -> comma
         assert_eq!(
-            lex_str_to_vec_with_location(",\n\n\n11").unwrap(),
+            lex_str_to_vec_with_range(",\n\n\n11").unwrap(),
             vec![
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new(0, 0, 0, 0),
+                    &Position::new(0, 0, 0, 0),
                     1
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Location::new(0, 4, 3, 0),
+                    &Position::new(0, 4, 3, 0),
                     2
                 ),
             ]
@@ -646,16 +781,16 @@ mod tests {
 
         // blanks + comma -> comma
         assert_eq!(
-            lex_str_to_vec_with_location("11\n\n\n,").unwrap(),
+            lex_str_to_vec_with_range("11\n\n\n,").unwrap(),
             vec![
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Location::new(0, 0, 0, 0),
+                    &Position::new(0, 0, 0, 0),
                     2
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new(0, 5, 3, 0),
+                    &Position::new(0, 5, 3, 0),
                     1
                 ),
             ]
@@ -663,21 +798,21 @@ mod tests {
 
         // blanks + comma + blanks -> comma
         assert_eq!(
-            lex_str_to_vec_with_location("11\n\n,\n\n13").unwrap(),
+            lex_str_to_vec_with_range("11\n\n,\n\n13").unwrap(),
             vec![
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Location::new(0, 0, 0, 0),
+                    &Position::new(0, 0, 0, 0),
                     2
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new(0, 4, 2, 0),
+                    &Position::new(0, 4, 2, 0),
                     1
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(13)),
-                    &Location::new(0, 7, 4, 0),
+                    &Position::new(0, 7, 4, 0),
                     2
                 ),
             ]
@@ -685,16 +820,16 @@ mod tests {
 
         // comma + comment + comma -> comma + comma
         assert_eq!(
-            lex_str_to_vec_with_location(",//abc\n,").unwrap(),
+            lex_str_to_vec_with_range(",//abc\n,").unwrap(),
             vec![
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new(0, 0, 0, 0),
+                    &Position::new(0, 0, 0, 0),
                     1
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new(0, 7, 1, 0),
+                    &Position::new(0, 7, 1, 0),
                     1
                 ),
             ]
@@ -702,30 +837,51 @@ mod tests {
 
         // blanks + comment + blanks -> blank
         assert_eq!(
-            lex_str_to_vec_with_location("11\n\n//abc\n\n13").unwrap(),
+            lex_str_to_vec_with_range("11\n\n//abc\n\n13").unwrap(),
             vec![
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Location::new(0, 0, 0, 0),
+                    &Position::new(0, 0, 0, 0),
                     2
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Location::new(0, 2, 0, 2),
+                    &Position::new(0, 2, 0, 2),
                     9
                 ),
-                TokenWithRange::from_location_and_length(
+                TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(13)),
-                    &Location::new(0, 11, 4, 0),
+                    &Position::new(0, 11, 4, 0),
                     2
                 ),
             ]
         );
     }
 
+    #[test]
+    fn test_trim_blanks() {
+        assert_eq!(
+            lex_str_to_vec(
+                r#"
+
+                11
+
+                13
+
+                "#
+            )
+            .unwrap(),
+            vec![
+                Token::Number(NumberToken::I32(11)),
+                Token::NewLine,
+                Token::Number(NumberToken::I32(13)),
+            ]
+        );
+    }
+
     // check type range also
     #[test]
-    fn test_normalize_plus_and_minus() {
+    fn test_normalize_plus_and_minus_decimal_numbers() {
         // implicit type, default int
         {
             assert_eq!(
@@ -738,28 +894,34 @@ mod tests {
                 vec![Token::Number(NumberToken::I32(-13_i32 as u32))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("2_147_483_648"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+2_147_483_648"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 14
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
-                lex_str_to_vec("-2_147_483_649_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
-            ));
-
-            // err: plus sign is added to non-numbers
-            assert!(matches!(
-                lex_str_to_vec("+true"),
-                Err(Error::MessageWithRange(..)) // todo:: location
-            ));
-
-            // err: minus sign is added to non-numbers
-            assert!(matches!(
-                lex_str_to_vec("-true"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("-2_147_483_649"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 14
+                    }
+                ))
             ));
         }
 
@@ -775,22 +937,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I8(-128_i8 as u8))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("128_i8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+128_i8"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 7
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-129_i8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 7
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-1_u8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 5
+                    }
+                ))
             ));
         }
 
@@ -806,22 +995,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I16(-32768_i16 as u16))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("32768_i16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+32768_i16"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 10
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-32769_i16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 10
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-1_u16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 6
+                    }
+                ))
             ));
         }
 
@@ -837,22 +1053,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I32(-2_147_483_648i32 as u32))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("2_147_483_648_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+2_147_483_648_i32"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 18
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-2_147_483_649_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 18
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-1_u32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 6
+                    }
+                ))
             ));
         }
 
@@ -872,43 +1115,246 @@ mod tests {
                 )),]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("9_223_372_036_854_775_808_i64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+9_223_372_036_854_775_808_i64"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 30
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-9_223_372_036_854_775_809_i64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 30
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-1_u64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 6
+                    }
+                ))
             ));
         }
 
         // location
 
         {
-            // todo::
+            assert_eq!(
+                lex_str_to_vec_with_range("+11").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::I32(11)),
+                    &Position::new(0, 0, 0, 0),
+                    3
+                ),]
+            );
+
+            assert_eq!(
+                lex_str_to_vec_with_range("-13").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::I32(-13_i32 as u32)),
+                    &Position::new(0, 0, 0, 0),
+                    3
+                ),]
+            );
+
+            assert_eq!(
+                lex_str_to_vec_with_range("+11,-13").unwrap(),
+                vec![
+                    TokenWithRange::from_position_and_length(
+                        Token::Number(NumberToken::I32(11)),
+                        &Position::new(0, 0, 0, 0),
+                        3
+                    ),
+                    TokenWithRange::from_position_and_length(
+                        Token::Comma,
+                        &Position::new(0, 3, 0, 3),
+                        1
+                    ),
+                    TokenWithRange::from_position_and_length(
+                        Token::Number(NumberToken::I32(-13_i32 as u32)),
+                        &Position::new(0, 4, 0, 4),
+                        3
+                    ),
+                ]
+            );
         }
+
+        // +EOF
+        assert!(matches!(
+            lex_str_to_vec("abc,+"),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 5,
+                    line: 0,
+                    column: 5,
+                }
+            ))
+        ));
+
+        // -EOF
+        assert!(matches!(
+            lex_str_to_vec("xyz,-"),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 5,
+                    line: 0,
+                    column: 5,
+                }
+            ))
+        ));
+
+        // err: plus sign is added to non-numbers
+        assert!(matches!(
+            lex_str_to_vec("+true"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 5
+                }
+            ))
+        ));
+
+        // err: minus sign is added to non-numbers
+        assert!(matches!(
+            lex_str_to_vec("-true"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 5
+                }
+            ))
+        ));
     }
 
     #[test]
-    fn test_normalize_plus_and_minus_floating_point_number() {
+    fn test_normalize_signed_integer_overflow_decimal() {
+        assert!(matches!(
+            lex_str_to_vec("2_147_483_648"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 13
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("128_i8"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 6
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("32768_i16"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 9
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("2_147_483_648_i32"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 17
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("9_223_372_036_854_775_808_i64"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 29
+                }
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_normalize_plus_and_minus_floating_point_numbers() {
         // general
         assert_eq!(
-            lex_str_to_vec("+3.402_823_5e+38").unwrap(),
-            vec![Token::Number(NumberToken::F64(3.402_823_5e38f64))]
+            lex_str_to_vec_with_range("+3.402_823_5e+38").unwrap(),
+            vec![TokenWithRange::from_position_and_length(
+                Token::Number(NumberToken::F64(3.402_823_5e38f64)),
+                &Position::new(0, 0, 0, 0),
+                16
+            )]
         );
 
         assert_eq!(
-            lex_str_to_vec("-3.402_823_5e+38").unwrap(),
-            vec![Token::Number(NumberToken::F64(-3.402_823_5e38f64))]
+            lex_str_to_vec_with_range("-3.402_823_5e+38").unwrap(),
+            vec![TokenWithRange::from_position_and_length(
+                Token::Number(NumberToken::F64(-3.402_823_5e38f64)),
+                &Position::new(0, 0, 0, 0),
+                16
+            )]
         );
 
         // 0.0, +0.0, -0.0
@@ -919,14 +1365,22 @@ mod tests {
             );
 
             assert_eq!(
-                lex_str_to_vec("+0.0").unwrap(),
-                vec![Token::Number(NumberToken::F64(0f64))]
+                lex_str_to_vec_with_range("+0.0").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(0f64)),
+                    &Position::new(0, 0, 0, 0),
+                    4
+                )]
             );
 
             // +0 == -0
             assert_eq!(
-                lex_str_to_vec("-0.0").unwrap(),
-                vec![Token::Number(NumberToken::F64(0f64))]
+                lex_str_to_vec_with_range("-0.0").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(0f64)),
+                    &Position::new(0, 0, 0, 0),
+                    4
+                )]
             );
         }
 
@@ -944,46 +1398,75 @@ mod tests {
             );
 
             assert_eq!(
-                lex_str_to_vec("+Inf").unwrap(),
-                vec![Token::Number(NumberToken::F64(f64::INFINITY))]
+                lex_str_to_vec_with_range("+Inf").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(f64::INFINITY)),
+                    &Position::new(0, 0, 0, 0),
+                    4
+                )]
             );
 
             assert_eq!(
-                lex_str_to_vec("-Inf").unwrap(),
-                vec![Token::Number(NumberToken::F64(f64::NEG_INFINITY))]
+                lex_str_to_vec_with_range("-Inf").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(f64::NEG_INFINITY)),
+                    &Position::new(0, 0, 0, 0),
+                    4
+                )]
             );
         }
 
         // err: +NaN
         assert!(matches!(
             lex_str_to_vec("+NaN"),
-            Err(Error::MessageWithRange(..)) // todo:: location
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 4
+                }
+            ))
         ));
 
         // err: -NaN
         assert!(matches!(
             lex_str_to_vec("-NaN"),
-            Err(Error::MessageWithRange(..)) // todo:: location
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 4
+                }
+            ))
         ));
-
-        // location
-        {
-            // todo:
-        }
     }
 
     #[test]
-    fn test_normalize_plus_and_minus_floating_point_number_with_explicit_type() {
+    fn test_normalize_plus_and_minus_floating_point_numbers_with_explicit_type() {
         // single precision, f32
         {
             assert_eq!(
-                lex_str_to_vec("+1.602_176_6e-19_f32").unwrap(),
-                vec![Token::Number(NumberToken::F32(1.602_176_6e-19f32))]
+                lex_str_to_vec_with_range("+1.602_176_6e-19_f32").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F32(1.602_176_6e-19f32)),
+                    &Position::new(0, 0, 0, 0),
+                    20
+                )]
             );
 
             assert_eq!(
-                lex_str_to_vec("-1.602_176_6e-19_f32").unwrap(),
-                vec![Token::Number(NumberToken::F32(-1.602_176_6e-19f32))]
+                lex_str_to_vec_with_range("-1.602_176_6e-19_f32").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F32(-1.602_176_6e-19f32)),
+                    &Position::new(0, 0, 0, 0),
+                    20
+                )]
             );
 
             assert_eq!(
@@ -992,14 +1475,22 @@ mod tests {
             );
 
             assert_eq!(
-                lex_str_to_vec("+0_f32").unwrap(),
-                vec![Token::Number(NumberToken::F32(0f32))]
+                lex_str_to_vec_with_range("+0_f32").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F32(0f32)),
+                    &Position::new(0, 0, 0, 0),
+                    6
+                )]
             );
 
             // +0 == -0
             assert_eq!(
-                lex_str_to_vec("-0_f32").unwrap(),
-                vec![Token::Number(NumberToken::F32(0f32))]
+                lex_str_to_vec_with_range("-0_f32").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F32(0f32)),
+                    &Position::new(0, 0, 0, 0),
+                    6
+                )]
             );
 
             let t = lex_str_to_vec("NaN_f32").unwrap();
@@ -1011,42 +1502,72 @@ mod tests {
             );
 
             assert_eq!(
-                lex_str_to_vec("+Inf_f32").unwrap(),
-                vec![Token::Number(NumberToken::F32(f32::INFINITY))]
+                lex_str_to_vec_with_range("+Inf_f32").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F32(f32::INFINITY)),
+                    &Position::new(0, 0, 0, 0),
+                    8
+                )]
             );
 
             assert_eq!(
-                lex_str_to_vec("-Inf_f32").unwrap(),
-                vec![Token::Number(NumberToken::F32(f32::NEG_INFINITY))]
+                lex_str_to_vec_with_range("-Inf_f32").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F32(f32::NEG_INFINITY)),
+                    &Position::new(0, 0, 0, 0),
+                    8
+                )]
             );
 
             // err: +NaN
             assert!(matches!(
                 lex_str_to_vec("+NaN_f32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
 
             // err: -NaN
             assert!(matches!(
                 lex_str_to_vec("-NaN_f32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
         }
 
         // double precision, f64
         {
             assert_eq!(
-                lex_str_to_vec("1.797_693_134_862_315_7e+308_f64").unwrap(),
-                vec![Token::Number(NumberToken::F64(
-                    1.797_693_134_862_315_7e308_f64
-                )),]
+                lex_str_to_vec_with_range("+1.797_693_134_862_315_7e+308_f64").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(1.797_693_134_862_315_7e308_f64)),
+                    &Position::new(0, 0, 0, 0),
+                    33
+                )]
             );
 
             assert_eq!(
-                lex_str_to_vec("-1.797_693_134_862_315_7e+308_f64").unwrap(),
-                vec![Token::Number(NumberToken::F64(
-                    -1.797_693_134_862_315_7e308_f64
-                )),]
+                lex_str_to_vec_with_range("-1.797_693_134_862_315_7e+308_f64").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(-1.797_693_134_862_315_7e308_f64)),
+                    &Position::new(0, 0, 0, 0),
+                    33
+                )]
             );
 
             assert_eq!(
@@ -1055,14 +1576,22 @@ mod tests {
             );
 
             assert_eq!(
-                lex_str_to_vec("+0_f64").unwrap(),
-                vec![Token::Number(NumberToken::F64(0f64))]
+                lex_str_to_vec_with_range("+0_f64").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(0f64)),
+                    &Position::new(0, 0, 0, 0),
+                    6
+                )]
             );
 
             // +0 == -0
             assert_eq!(
-                lex_str_to_vec("-0_f64").unwrap(),
-                vec![Token::Number(NumberToken::F64(0f64))]
+                lex_str_to_vec_with_range("-0_f64").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(0f64)),
+                    &Position::new(0, 0, 0, 0),
+                    6
+                )]
             );
 
             let t = lex_str_to_vec("NaN_f64").unwrap();
@@ -1074,37 +1603,58 @@ mod tests {
             );
 
             assert_eq!(
-                lex_str_to_vec("+Inf_f64").unwrap(),
-                vec![Token::Number(NumberToken::F64(f64::INFINITY))]
+                lex_str_to_vec_with_range("+Inf_f64").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(f64::INFINITY)),
+                    &Position::new(0, 0, 0, 0),
+                    8
+                )]
             );
 
             assert_eq!(
-                lex_str_to_vec("-Inf_f64").unwrap(),
-                vec![Token::Number(NumberToken::F64(f64::NEG_INFINITY))]
+                lex_str_to_vec_with_range("-Inf_f64").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(f64::NEG_INFINITY)),
+                    &Position::new(0, 0, 0, 0),
+                    8
+                )]
             );
 
             // err: +NaN
             assert!(matches!(
                 lex_str_to_vec("+NaN_f64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
 
             // err: -NaN
             assert!(matches!(
                 lex_str_to_vec("-NaN_f64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
-        }
-
-        // location
-        {
-            // todo::
         }
     }
 
     // check type range also
     #[test]
-    fn test_normalize_plus_and_minus_hex_number() {
+    fn test_normalize_plus_and_minus_hex_numbers() {
         // implicit type, default int
         {
             assert_eq!(
@@ -1117,22 +1667,34 @@ mod tests {
                 vec![Token::Number(NumberToken::I32(-0x13_i32 as u32))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0x8000_0000"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+0x8000_0000"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 12
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x8000_0001"),
-                Err(Error::MessageWithRange(..)) // todo:: location
-            ));
-
-            // err: unsigned number with minus sign
-            assert!(matches!(
-                lex_str_to_vec("-0x1_u32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 12
+                    }
+                ))
             ));
         }
 
@@ -1148,22 +1710,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I8(-0x80_i8 as u8))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0x80_i8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+0x80_i8"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x81_i8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0x1_u8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 7
+                    }
+                ))
             ));
         }
 
@@ -1179,22 +1768,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I16(-0x8000_i16 as u16))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0x8000_i16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+0x8000_i16"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 11
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x8001_i16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 11
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0x1_u16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
         }
 
@@ -1210,22 +1826,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I32(-0x8000_0000_i32 as u32))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0x8000_0000_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+0x8000_0000_i32"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 16
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x8000_0001_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 16
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0x1_u32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
         }
 
@@ -1245,34 +1888,171 @@ mod tests {
                 ))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0x8000_0000_0000_0000_i64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+0x8000_0000_0000_0000_i64"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 26
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x8000_0000_0000_0001_i64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 26
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0x1_u64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
         }
 
         // location
 
         {
-            // todo:: location
+            assert_eq!(
+                lex_str_to_vec_with_range("+0x11").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::I32(0x11)),
+                    &Position::new(0, 0, 0, 0),
+                    5
+                ),]
+            );
+
+            assert_eq!(
+                lex_str_to_vec_with_range("-0x13").unwrap(),
+                vec![TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::I32(-0x13_i32 as u32)),
+                    &Position::new(0, 0, 0, 0),
+                    5
+                ),]
+            );
+
+            assert_eq!(
+                lex_str_to_vec_with_range("+0x11,-0x13").unwrap(),
+                vec![
+                    TokenWithRange::from_position_and_length(
+                        Token::Number(NumberToken::I32(0x11)),
+                        &Position::new(0, 0, 0, 0),
+                        5
+                    ),
+                    TokenWithRange::from_position_and_length(
+                        Token::Comma,
+                        &Position::new(0, 5, 0, 5),
+                        1
+                    ),
+                    TokenWithRange::from_position_and_length(
+                        Token::Number(NumberToken::I32(-0x13_i32 as u32)),
+                        &Position::new(0, 6, 0, 6),
+                        5
+                    ),
+                ]
+            );
         }
     }
 
     #[test]
-    fn test_normalize_plus_and_minus_hex_floating_point_number() {
+    fn test_normalize_signed_integer_overflow_hex() {
+        assert!(matches!(
+            lex_str_to_vec("0x8000_0000"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 11
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("0x80_i8"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 7
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("0x8000_i16"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 10
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("0x8000_0000_i32"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 15
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("0x8000_0000_0000_0000_i64"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 25
+                }
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_normalize_plus_and_minus_hex_floating_point_numbers() {
         // 3.1415927f32
         assert_eq!(
             lex_str_to_vec("+0x1.921fb6p1f32").unwrap(),
@@ -1287,14 +2067,31 @@ mod tests {
 
         // location
 
-        {
-            // todo:: location
-        }
+        assert_eq!(
+            lex_str_to_vec_with_range("+0x1.921fb6p1f32,-0x1.5bf0a8b145769p+1_f64").unwrap(),
+            vec![
+                TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F32(std::f32::consts::PI)),
+                    &Position::new(0, 0, 0, 0),
+                    16
+                ),
+                TokenWithRange::from_position_and_length(
+                    Token::Comma,
+                    &Position::new(0, 16, 0, 16),
+                    1
+                ),
+                TokenWithRange::from_position_and_length(
+                    Token::Number(NumberToken::F64(-std::f64::consts::E)),
+                    &Position::new(0, 17, 0, 17),
+                    25
+                ),
+            ]
+        );
     }
 
     // check type range also
     #[test]
-    fn test_normalize_plus_and_minus_binary_number() {
+    fn test_normalize_plus_and_minus_binary_numbers() {
         // implicit type, default int
         {
             assert_eq!(
@@ -1302,22 +2099,39 @@ mod tests {
                 vec![Token::Number(NumberToken::I32(0b101_i32 as u32))]
             );
 
-            // err: signed overflow
+            assert_eq!(
+                lex_str_to_vec("-0b010").unwrap(),
+                vec![Token::Number(NumberToken::I32(-0b010_i32 as u32))]
+            );
+
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0b1000_0000_0000_0000__0000_0000_0000_0000_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+0b1000_0000_0000_0000__0000_0000_0000_0000"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 43
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
-                lex_str_to_vec("-0b1000_0000_0000_0000__0000_0000_0000_0001_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
-            ));
-
-            // err: unsigned number with minus sign
-            assert!(matches!(
-                lex_str_to_vec("-0b1_u32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("-0b1000_0000_0000_0000__0000_0000_0000_0001"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 43
+                    }
+                ))
             ));
         }
 
@@ -1333,22 +2147,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I8(-0x80_i8 as u8))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0b1000_0000_i8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+0b1000_0000_i8"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 15
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0001_i8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 15
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0b1_u8"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 7
+                    }
+                ))
             ));
         }
 
@@ -1364,22 +2205,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I16(-0x8000_i16 as u16))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0b1000_0000_0000_0000_i16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec("+0b1000_0000_0000_0000_i16"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 26
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0000_0000_0001_i16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 26
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0b1_u16"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
         }
 
@@ -1395,22 +2263,49 @@ mod tests {
                 vec![Token::Number(NumberToken::I32(-0x8000_0000_i32 as u32))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0b1000_0000_0000_0000__0000_0000_0000_0000_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec_with_range("+0b1000_0000_0000_0000__0000_0000_0000_0000_i32"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 47
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0000_0000_0000__0000_0000_0000_0001_i32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 47
+                    }
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0b1_u32"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
         }
 
@@ -1426,29 +2321,167 @@ mod tests {
                 vec![Token::Number(NumberToken::I64(-0x8000_0000_0000_0000_i64 as u64))]
             );
 
-            // err: signed overflow
+            // err: positive overflow
             assert!(matches!(
-                lex_str_to_vec("0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000_i64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                lex_str_to_vec_with_range("+0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000_i64"),
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 89
+                    }
+                ))
             ));
 
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0001_i64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 89
+                    }
+
+                ))
             ));
 
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0b1_u64"),
-                Err(Error::MessageWithRange(..)) // todo:: location
+                Err(Error::MessageWithRange(
+                    _,
+                    Range {
+                        unit: 0,
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                        length: 8
+                    }
+                ))
             ));
 
             // location
 
             {
-                // todo:: location
+                assert_eq!(
+                    lex_str_to_vec_with_range("+0b101").unwrap(),
+                    vec![TokenWithRange::from_position_and_length(
+                        Token::Number(NumberToken::I32(0b101_i32 as u32)),
+                        &Position::new(0, 0, 0, 0),
+                        6
+                    )]
+                );
+
+                assert_eq!(
+                    lex_str_to_vec_with_range("-0b010").unwrap(),
+                    vec![TokenWithRange::from_position_and_length(
+                        Token::Number(NumberToken::I32(-0b010_i32 as u32)),
+                        &Position::new(0, 0, 0, 0),
+                        6
+                    )]
+                );
+
+                assert_eq!(
+                    lex_str_to_vec_with_range("+0b101,-0b010").unwrap(),
+                    vec![
+                        TokenWithRange::from_position_and_length(
+                            Token::Number(NumberToken::I32(0b101_i32 as u32)),
+                            &Position::new(0, 0, 0, 0),
+                            6
+                        ),
+                        TokenWithRange::from_position_and_length(
+                            Token::Comma,
+                            &Position::new(0, 6, 0, 6),
+                            1
+                        ),
+                        TokenWithRange::from_position_and_length(
+                            Token::Number(NumberToken::I32(-0b010_i32 as u32)),
+                            &Position::new(0, 7, 0, 7),
+                            6
+                        )
+                    ]
+                );
             }
         }
+    }
+
+    #[test]
+    fn test_normalize_signed_integer_overflow_binary() {
+        assert!(matches!(
+            lex_str_to_vec("0b1000_0000_0000_0000__0000_0000_0000_0000"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 42
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("0b1000_0000_i8"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 14
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec("0b1000_0000_0000_0000_i16"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 25
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec_with_range("0b1000_0000_0000_0000__0000_0000_0000_0000_i32"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 46
+                }
+            ))
+        ));
+
+        assert!(matches!(
+            lex_str_to_vec_with_range("0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000_i64"),
+            Err(Error::MessageWithRange(
+                _,
+                Range {
+                    unit: 0,
+                    index: 0,
+                    line: 0,
+                    column: 0,
+                    length: 88
+                }
+            ))
+        ));
     }
 }
