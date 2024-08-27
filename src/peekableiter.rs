@@ -4,6 +4,8 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+// unlike the `std::iter::Peekable`, this struct
+// can peek at more than one item.
 pub struct PeekableIter<'a, T>
 where
     T: PartialEq,

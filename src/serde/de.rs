@@ -8,13 +8,23 @@ use serde::de::{self, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, Varian
 
 use crate::{
     error::Error,
-    lexer::{lex, normalize, NumberToken, Token},
-    forwarditer::ForwardIter,
+    lexer::{CharsWithPositionIter, NumberToken, Token, TokenIter, TokenWithRange},
+    location::Position,
+    normalizer::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter},
+    peekableiter::PeekableIter,
 };
 
 use super::Result;
 
-pub fn from_str<T>(input: &str) -> Result<T>
+pub fn from_str<T>(s: &str) -> Result<T>
+where
+    T: de::DeserializeOwned,
+{
+    let mut chars = s.chars();
+    from_char_iter(&mut chars)
+}
+
+pub fn from_char_iter<T>(chars: &mut dyn Iterator<Item = char>) -> Result<T>
 where
     T: de::DeserializeOwned,
 {
@@ -25,75 +35,141 @@ where
     // see:
     // https://serde.rs/lifetimes.html
 
-    let mut chars = input.chars();
-    let mut char_iter = ForwardIter::new(&mut chars, 3);
-    let tokens = lex(&mut char_iter)?;
-    let normalized_tokens = normalize(tokens)?;
-    let mut token_iter = normalized_tokens.into_iter();
-    let mut lookahead_tokens = ForwardIter::new(&mut token_iter, 2);
-    let mut deserializer = Deserializer::from_tokens(&mut lookahead_tokens);
+    let mut char_position_iter = CharsWithPositionIter::new(0, chars);
+    let mut peekable_char_position_iter = PeekableIter::new(&mut char_position_iter, 3);
+    let mut token_iter = TokenIter::new(&mut peekable_char_position_iter);
+    let mut clear_iter = ClearTokenIter::new(&mut token_iter);
+    let mut peekable_clear_iter = PeekableIter::new(&mut clear_iter, 1);
+    let mut normalized_iter = NormalizedTokenIter::new(&mut peekable_clear_iter);
+    let mut peekable_normalized_iter = PeekableIter::new(&mut normalized_iter, 1);
+    let mut trimmed_iter = TrimmedTokenIter::new(&mut peekable_normalized_iter);
+    let mut peekable_trimmed_iter = PeekableIter::new(&mut trimmed_iter, 2);
+
+    let mut deserializer = Deserializer::from_token_peekable_iter(&mut peekable_trimmed_iter);
     let t = T::deserialize(&mut deserializer)?;
 
-    if deserializer.vec.peek(0).is_some() {
-        Err(Error::Message(
-            "The ASON document ends incorrectly.".to_owned(),
-        ))
-    } else {
-        Ok(t)
+    // if deserializer.vec.peek(0).is_some() {
+    //     Err(Error::Message(
+    //         "The ASON document ends incorrectly.".to_owned(),
+    //     ))
+    // } else {
+    //     Ok(t)
+    // }
+
+    match deserializer.iter.peek(0) {
+        Some(Ok(TokenWithRange { range, .. })) => Err(Error::MessageWithPosition(
+            "The ASON document does not end properly.".to_owned(),
+            Position::from_range_start(range),
+        )),
+        Some(Err(e)) => Err(e.clone()),
+        None => {
+            // expected
+            Ok(t)
+        }
     }
 }
 
 pub struct Deserializer<'de> {
-    vec: &'de mut ForwardIter<'de, Token>,
+    // vec: &'de mut ForwardIter<'de, Token>,
+    iter: &'de mut PeekableIter<'de, Result<TokenWithRange>>,
 }
 
 impl<'de> Deserializer<'de> {
-    pub fn from_tokens(vec: &'de mut ForwardIter<'de, Token>) -> Self {
-        Self { vec }
+    // pub fn from_tokens(vec: &'de mut ForwardIter<'de, Token>) -> Self {
+    pub fn from_token_peekable_iter(
+        iter: &'de mut PeekableIter<'de, Result<TokenWithRange>>,
+    ) -> Self {
+        Self { iter }
     }
 }
 
 impl<'de> Deserializer<'de> {
-    fn consume_token(&mut self, expect_token: Token) -> Result<()> {
-        let opt_token = self.vec.next();
-        if let Some(token) = opt_token {
-            if token == expect_token {
-                Ok(())
-            } else {
-                Err(Error::Message(format!(
-                    "Expect token: {:?}, actual token: {:?}",
-                    expect_token, token
-                )))
+    fn consume_token(
+        &mut self,
+        expect_token: &Token,
+        expect_position: &Position,
+    ) -> Result<Position> {
+        // let opt_token = self.iter.next();
+        // if let Some(token) = opt_token {
+        //     if token == expect_token {
+        //         Ok(())
+        //     } else {
+        //         Err(Error::Message(format!(
+        //             "Expect token: {:?}, actual token: {:?}",
+        //             expect_token, token
+        //         )))
+        //     }
+        // } else {
+        //     Err(Error::Message(format!("Missing token: {:?}", expect_token)))
+        // }
+
+        match self.iter.next() {
+            Some(Ok(TokenWithRange { token, range })) => {
+                if &token == expect_token {
+                    Ok(Position::from_range_end(&range))
+                } else {
+                    Err(Error::MessageWithPosition(
+                        format!(
+                            "Expect token: {:?}, actual token: {:?}",
+                            expect_token, token
+                        ),
+                        *expect_position,
+                    ))
+                }
             }
-        } else {
-            Err(Error::Message(format!("Missing token: {:?}", expect_token)))
+            Some(Err(e)) => Err(e),
+            None => Err(Error::MessageWithPosition(
+                format!("Missing token: {:?}", expect_token),
+                *expect_position,
+            )),
         }
     }
 
     // consume ':'
-    fn consume_colon(&mut self) -> Result<()> {
-        self.consume_token(Token::Colon)
+    fn consume_colon(&mut self, expect_position: &Position) -> Result<Position> {
+        self.consume_token(&Token::Colon, expect_position)
     }
 
     // consume ')'
-    fn consume_right_paren(&mut self) -> Result<()> {
-        self.consume_token(Token::RightParen)
+    fn consume_right_paren(&mut self, expect_position: &Position) -> Result<Position> {
+        self.consume_token(&Token::RightParen, expect_position)
     }
 
     // consume ']'
-    fn consume_right_bracket(&mut self) -> Result<()> {
-        self.consume_token(Token::RightBracket)
+    fn consume_right_bracket(&mut self, expect_position: &Position) -> Result<Position> {
+        self.consume_token(&Token::RightBracket, expect_position)
     }
 
     // consume '}'
-    fn consume_right_brace(&mut self) -> Result<()> {
-        self.consume_token(Token::RightBrace)
+    fn consume_right_brace(&mut self, expect_position: &Position) -> Result<Position> {
+        self.consume_token(&Token::RightBrace, expect_position)
     }
 
-    // consume '\n'
-    fn consume_new_line_when_exist(&mut self) {
-        if let Some(Token::NewLine) = self.vec.peek(0) {
-            self.vec.next();
+    // consume '\n' or ',' if they exist.
+    fn consume_new_line_or_comma_if_exist(&mut self, expect_position: &Position) -> Position {
+        match self.iter.peek(0) {
+            Some(Ok(TokenWithRange {
+                token: Token::NewLine | Token::Comma,
+                range,
+            })) => {
+                let position = Position::from_range_end(range);
+                self.iter.next();
+                position
+            }
+            _ => *expect_position,
+        }
+    }
+
+    // consume '\n' or ',' if they exist.
+    fn consume_new_line_or_comma_if_exist_ignore_position(&mut self) {
+        if matches!(
+            self.iter.peek(0),
+            Some(Ok(TokenWithRange {
+                token: Token::NewLine | Token::Comma,
+                ..
+            }))
+        ) {
+            self.iter.next();
         }
     }
 }
@@ -112,29 +188,59 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Boolean(v)) = self.vec.next() {
-            visitor.visit_bool(v)
-        } else {
-            Err(Error::Message("Expect \"Boolean\".".to_owned()))
+        match self.iter.next() {
+            Some(Ok(TokenWithRange {
+                token: Token::Boolean(v),
+                range: _,
+            })) => visitor.visit_bool(v),
+            Some(Ok(TokenWithRange { token: _, range })) => Err(Error::MessageWithPosition(
+                "Expect a \"Boolean\" value.".to_owned(),
+                Position::from_range_start(&range),
+            )),
+            Some(Err(e)) => Err(e.clone()),
+            None => Err(Error::Message(
+                "Expect a \"Boolean\" value, unexpected to reach the end of document.".to_owned(),
+            )),
         }
+
+        // if let Some(Token::Boolean(v)) = self.iter.next() {
+        //     visitor.visit_bool(v)
+        // } else {
+        //     Err(Error::Message("Expect \"Boolean\".".to_owned()))
+        // }
     }
 
     fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::I8(v))) = self.vec.next() {
-            visitor.visit_i8(v as i8)
-        } else {
-            Err(Error::Message("Expect \"i8\".".to_owned()))
+        match self.iter.next() {
+            Some(Ok(TokenWithRange {
+                token: Token::Number(NumberToken::I8(v)) ,
+                range: _,
+            })) => visitor.visit_i8(v as i8),
+            Some(Ok(TokenWithRange { token: _, range })) => Err(Error::MessageWithPosition(
+                "Expect an \"i8\" value.".to_owned(),
+                Position::from_range_start(&range),
+            )),
+            Some(Err(e)) => Err(e.clone()),
+            None => Err(Error::Message(
+                "Expect an \"i8\" value, unexpected to reach the end of document.".to_owned(),
+            )),
         }
+
+        // if let Some(Token::Number(NumberToken::I8(v))) = self.iter.next() {
+        //     visitor.visit_i8(v as i8)
+        // } else {
+        //     Err(Error::Message("Expect \"i8\".".to_owned()))
+        // }
     }
 
     fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::I16(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::I16(v))) = self.iter.next() {
             visitor.visit_i16(v as i16)
         } else {
             Err(Error::Message("Expect \"i16\".".to_owned()))
@@ -145,7 +251,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::I32(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::I32(v))) = self.iter.next() {
             visitor.visit_i32(v as i32)
         } else {
             Err(Error::Message("Expect \"i32\".".to_owned()))
@@ -156,7 +262,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::I64(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::I64(v))) = self.iter.next() {
             visitor.visit_i64(v as i64)
         } else {
             Err(Error::Message("Expect \"i64\".".to_owned()))
@@ -167,7 +273,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::U8(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::U8(v))) = self.iter.next() {
             visitor.visit_u8(v)
         } else {
             Err(Error::Message("Expect \"u8\".".to_owned()))
@@ -178,7 +284,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::U16(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::U16(v))) = self.iter.next() {
             visitor.visit_u16(v)
         } else {
             Err(Error::Message("Expect \"u16\".".to_owned()))
@@ -189,7 +295,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::U32(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::U32(v))) = self.iter.next() {
             visitor.visit_u32(v)
         } else {
             Err(Error::Message("Expect \"u32\".".to_owned()))
@@ -200,7 +306,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::U64(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::U64(v))) = self.iter.next() {
             visitor.visit_u64(v)
         } else {
             Err(Error::Message("Expect \"u64\".".to_owned()))
@@ -211,7 +317,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::F32(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::F32(v))) = self.iter.next() {
             visitor.visit_f32(v)
         } else {
             Err(Error::Message("Expect \"f32\".".to_owned()))
@@ -222,7 +328,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Number(NumberToken::F64(v))) = self.vec.next() {
+        if let Some(Token::Number(NumberToken::F64(v))) = self.iter.next() {
             visitor.visit_f64(v)
         } else {
             Err(Error::Message("Expect \"f64\".".to_owned()))
@@ -233,7 +339,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Char(c)) = self.vec.next() {
+        if let Some(Token::Char(c)) = self.iter.next() {
             visitor.visit_char(c)
         } else {
             Err(Error::Message("Expect \"Char\".".to_owned()))
@@ -244,7 +350,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::String_(s)) = self.vec.next() {
+        if let Some(Token::String_(s)) = self.iter.next() {
             visitor.visit_str(&s)
         } else {
             Err(Error::Message("Expect \"String\".".to_owned()))
@@ -255,7 +361,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::String_(s)) = self.vec.next() {
+        if let Some(Token::String_(s)) = self.iter.next() {
             visitor.visit_string(s)
         } else {
             Err(Error::Message("Expect \"String\".".to_owned()))
@@ -266,7 +372,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::ByteData(v)) = self.vec.next() {
+        if let Some(Token::ByteData(v)) = self.iter.next() {
             visitor.visit_bytes(&v)
         } else {
             Err(Error::Message("Expect \"Bytes\".".to_owned()))
@@ -277,7 +383,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::ByteData(v)) = self.vec.next() {
+        if let Some(Token::ByteData(v)) = self.iter.next() {
             visitor.visit_byte_buf(v)
         } else {
             Err(Error::Message("Expect \"Bytes\".".to_owned()))
@@ -288,12 +394,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Variant(type_name, member_name)) = self.vec.next() {
+        if let Some(Token::Variant(type_name, member_name)) = self.iter.next() {
             if type_name == "Option" {
-                if member_name == "None" && !self.vec.equals(0, &Token::LeftParen) {
+                if member_name == "None" && !self.iter.equals(0, &Token::LeftParen) {
                     visitor.visit_none()
-                } else if member_name == "Some" && self.vec.equals(0, &Token::LeftParen) {
-                    self.vec.next(); // consume '('
+                } else if member_name == "Some" && self.iter.equals(0, &Token::LeftParen) {
+                    self.iter.next(); // consume '('
                     let v = visitor.visit_some(&mut *self);
                     self.consume_right_paren()?;
                     v
@@ -342,11 +448,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::LeftBracket) = self.vec.next() {
+        if let Some(Token::LeftBracket) = self.iter.next() {
             let value = visitor.visit_seq(ArrayAccessor::new(self))?;
 
             self.consume_right_bracket()?; // consume ']'
-            self.consume_new_line_when_exist(); // consume trailing newlines
+            self.consume_new_line_or_comma_if_exist_ignore_position(); // consume trailing newlines
 
             Ok(value)
         } else {
@@ -358,13 +464,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::LeftParen) = self.vec.next() {
+        if let Some(Token::LeftParen) = self.iter.next() {
             let value = visitor.visit_seq(TupleAccessor::new(self))?;
 
-            self.consume_new_line_when_exist(); // consume additional newlines
+            self.consume_new_line_or_comma_if_exist_ignore_position(); // consume additional newlines
             self.consume_right_paren()?; // consume ')'
 
-            self.consume_new_line_when_exist(); // consume trailing newlines
+            self.consume_new_line_or_comma_if_exist_ignore_position(); // consume trailing newlines
 
             Ok(value)
         } else {
@@ -408,13 +514,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::LeftBrace) = self.vec.next() {
+        if let Some(Token::LeftBrace) = self.iter.next() {
             let value = visitor.visit_map(ObjectAccessor::new(self))?;
 
-            self.consume_new_line_when_exist(); // consume additional newlines
+            self.consume_new_line_or_comma_if_exist_ignore_position(); // consume additional newlines
             self.consume_right_brace()?; // consume '}'
 
-            self.consume_new_line_when_exist(); // consume trailing newlines
+            self.consume_new_line_or_comma_if_exist_ignore_position(); // consume trailing newlines
 
             Ok(value)
         } else {
@@ -431,13 +537,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if let Some(Token::Variant(type_name, member_name)) = self.vec.next() {
+        if let Some(Token::Variant(type_name, member_name)) = self.iter.next() {
             if type_name == name {
-                if self.vec.equals(0, &Token::LeftParen) {
+                if self.iter.equals(0, &Token::LeftParen) {
                     // variant with single value or multiple values
                     let v = visitor.visit_enum(VariantAccessor::new(self, &member_name))?;
                     Ok(v)
-                } else if self.vec.equals(0, &Token::LeftBrace) {
+                } else if self.iter.equals(0, &Token::LeftBrace) {
                     // variant with struct value
                     let v = visitor.visit_enum(VariantAccessor::new(self, &member_name))?;
                     Ok(v)
@@ -463,7 +569,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         // An identifier in Serde is the type that identifies a field of a struct.
         // In ASON, struct fields  represented as strings.
 
-        if let Some(Token::Identifier(s)) = self.vec.next() {
+        if let Some(Token::Identifier(s)) = self.iter.next() {
             visitor.visit_string(s)
         } else {
             Err(Error::Message("Expect \"Object Field Name\".".to_owned()))
@@ -498,9 +604,9 @@ impl<'de, 'a> SeqAccess<'de> for ArrayAccessor<'a, 'de> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        self.de.consume_new_line_when_exist(); // includes the commas and newlines
+        self.de.consume_new_line_or_comma_if_exist_ignore_position(); // includes the commas and newlines
 
-        if self.de.vec.equals(0, &Token::RightBracket) {
+        if self.de.iter.equals(0, &Token::RightBracket) {
             // exits the procedure when the end marker ']' is encountered.
             return Ok(None);
         }
@@ -526,7 +632,7 @@ impl<'de, 'a> SeqAccess<'de> for TupleAccessor<'a, 'de> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        self.de.consume_new_line_when_exist(); // includes the commas and newlines
+        self.de.consume_new_line_or_comma_if_exist_ignore_position(); // includes the commas and newlines
         seed.deserialize(&mut *self.de).map(Some)
 
         // the deserializer knows the number of members of the
@@ -584,14 +690,14 @@ impl<'de, 'a> VariantAccess<'de> for VariantAccessor<'a, 'de> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        self.de.vec.next(); // consume '('
-        self.de.consume_new_line_when_exist();
+        self.de.iter.next(); // consume '('
+        self.de.consume_new_line_or_comma_if_exist_ignore_position();
 
         let v = seed.deserialize(&mut *self.de);
-        self.de.consume_new_line_when_exist();
+        self.de.consume_new_line_or_comma_if_exist_ignore_position();
 
-        self.de.vec.next(); // consume ')'
-        self.de.consume_new_line_when_exist();
+        self.de.iter.next(); // consume ')'
+        self.de.consume_new_line_or_comma_if_exist_ignore_position();
         v
     }
 
@@ -627,11 +733,11 @@ impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
     where
         K: de::DeserializeSeed<'de>,
     {
-        self.de.consume_new_line_when_exist();
+        self.de.consume_new_line_or_comma_if_exist_ignore_position();
 
         // it seems the struct/object accessor wouldn't stop automatically when
         // it encounters the last field.
-        if self.de.vec.equals(0, &Token::RightBrace) {
+        if self.de.iter.equals(0, &Token::RightBrace) {
             return Ok(None);
         }
 
@@ -646,9 +752,9 @@ impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
     where
         V: de::DeserializeSeed<'de>,
     {
-        self.de.consume_new_line_when_exist();
+        self.de.consume_new_line_or_comma_if_exist_ignore_position();
         self.de.consume_colon()?;
-        self.de.consume_new_line_when_exist();
+        self.de.consume_new_line_or_comma_if_exist_ignore_position();
 
         // Deserialize a field value.
         seed.deserialize(&mut *self.de)

@@ -4,13 +4,11 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use std::{fmt::Display, ops::Neg};
-
-use chrono::{DateTime, FixedOffset};
+use std::ops::Neg;
 
 use crate::{
     error::Error,
-    lexer::{NumberToken, Token, TokenIter, TokenWithRange},
+    lexer::{NumberToken, Token, TokenWithRange},
     location::{Position, Range},
     peekableiter::PeekableIter,
 };
@@ -137,15 +135,21 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                 iter.upstream.next();
                             }
 
-                            return Some(Ok(TokenWithRange::new(
+                            Some(Ok(TokenWithRange::new(
                                 Token::Comma,
-                                Range::combine_range_pair(&start_range.unwrap(), &end_range.unwrap()),
-                            )));
+                                Range::combine_range_pair(
+                                    &start_range.unwrap(),
+                                    &end_range.unwrap(),
+                                ),
+                            )))
                         } else {
-                            return Some(Ok(TokenWithRange::new(
+                            Some(Ok(TokenWithRange::new(
                                 Token::NewLine,
-                                Range::combine_range_pair(&start_range.unwrap(), &end_range.unwrap()),
-                            )));
+                                Range::combine_range_pair(
+                                    &start_range.unwrap(),
+                                    &end_range.unwrap(),
+                                ),
+                            )))
                         }
                     }
                     Token::Comma => {
@@ -158,10 +162,10 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                             iter.upstream.next();
                         }
 
-                        return Some(Ok(TokenWithRange::new(
+                        Some(Ok(TokenWithRange::new(
                             Token::Comma,
                             Range::combine_range_pair(&start_range.unwrap(), &end_range.unwrap()),
-                        )));
+                        )))
                     }
                     Token::Plus => {
                         match iter.upstream.peek(0) {
@@ -172,37 +176,37 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                 match num {
                                     NumberToken::F32(f) if f.is_nan() => {
                                         // combines two token ranges.
-                                        return Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithRange(
                                             "The plus sign cannot be applied to NaN.".to_owned(),
                                             Range::combine_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
-                                        )));
+                                        )))
                                     }
                                     NumberToken::F64(f) if f.is_nan() => {
                                         // combines two token ranges.
-                                        return Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithRange(
                                             "The plus sign cannot be applied to NaN.".to_owned(),
                                             Range::combine_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
-                                        )));
+                                        )))
                                     }
                                     NumberToken::I8(v) if *v > i8::MAX as u8 => {
                                         // check signed number overflow
-                                        return Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithRange(
                                             format!("The byte integer number {} is overflowed.", v),
                                             Range::combine_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
-                                        )));
+                                        )))
                                     }
                                     NumberToken::I16(v) if *v > i16::MAX as u16 => {
                                         // check signed number overflow
-                                        return Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithRange(
                                             format!(
                                                 "The short integer number {} is overflowed.",
                                                 v
@@ -211,27 +215,27 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
-                                        )));
+                                        )))
                                     }
                                     NumberToken::I32(v) if *v > i32::MAX as u32 => {
                                         // check signed number overflow
-                                        return Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithRange(
                                             format!("The integer number {} is overflowed.", v),
                                             Range::combine_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
-                                        )));
+                                        )))
                                     }
                                     NumberToken::I64(v) if *v > i64::MAX as u64 => {
                                         // check signed number overflow
-                                        return Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithRange(
                                             format!("The long integer number {} is overflowed.", v),
                                             Range::combine_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
-                                        )));
+                                        )))
                                     }
                                     _ => {
                                         // combines two token ranges and constructs new number token.
@@ -247,7 +251,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         // number token.
                                         iter.upstream.next();
 
-                                        return ret_val;
+                                        ret_val
                                     }
                                 }
                             }
@@ -256,18 +260,16 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                 range: current_range,
                             })) => {
                                 // combines two token ranges.
-                                return Some(Err(Error::MessageWithRange(
+                                Some(Err(Error::MessageWithRange(
                                     "The plus sign cannot be applied to data other than numbers."
                                         .to_owned(),
                                     Range::combine_range_pair(&start_range.unwrap(), current_range),
-                                )));
+                                )))
                             }
-                            Some(Err(e)) => {
-                                return Some(Err(e.clone()));
-                            }
+                            Some(Err(e)) => Some(Err(e.clone())),
                             None => {
                                 // "...+EOF"
-                                return Some(Err(Error::MessageWithPosition(
+                                Some(Err(Error::MessageWithPosition(
                                     "Unexpected end of document.".to_owned(),
                                     {
                                         let range = start_range.unwrap();
@@ -278,7 +280,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             column: range.column + 1,
                                         }
                                     },
-                                )));
+                                )))
                             }
                         }
                     }
@@ -292,14 +294,14 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     NumberToken::F32(v) => {
                                         if v.is_nan() {
                                             // combines two token ranges.
-                                            return Some(Err(Error::MessageWithRange(
+                                            Some(Err(Error::MessageWithRange(
                                                 "The minus sign cannot be applied to NaN."
                                                     .to_owned(),
                                                 Range::combine_range_pair(
                                                     &start_range.unwrap(),
                                                     current_range,
                                                 ),
-                                            )));
+                                            )))
                                         } else {
                                             // combines two token ranges and constructs new number token.
                                             let ret_val = Some(Ok(TokenWithRange {
@@ -314,20 +316,20 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             // number token
                                             iter.upstream.next();
 
-                                            return ret_val;
+                                            ret_val
                                         }
                                     }
                                     NumberToken::F64(v) => {
                                         if v.is_nan() {
                                             // combines two token ranges.
-                                            return Some(Err(Error::MessageWithRange(
+                                            Some(Err(Error::MessageWithRange(
                                                 "The minus sign cannot be applied to NaN."
                                                     .to_owned(),
                                                 Range::combine_range_pair(
                                                     &start_range.unwrap(),
                                                     current_range,
                                                 ),
-                                            )));
+                                            )))
                                         } else {
                                             // combines two token ranges and constructs new number token.
                                             let ret_val = Some(Ok(TokenWithRange {
@@ -342,7 +344,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             // number token
                                             iter.upstream.next();
 
-                                            return ret_val;
+                                            ret_val
                                         }
                                     }
                                     NumberToken::I8(v) => {
@@ -372,11 +374,9 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                                 // consume the minus sign (already done) and the number literal token
                                                 iter.next();
 
-                                                return ret_val; // todo:: range
+                                                ret_val
                                             }
-                                            Err(e) => {
-                                                return Some(Err(e));
-                                            }
+                                            Err(e) => Some(Err(e)),
                                         }
                                     }
                                     NumberToken::I16(v) => {
@@ -404,11 +404,9 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                                 // consume the minus sign (already done) and the number literal token
                                                 iter.next();
 
-                                                return ret_val;
+                                                ret_val
                                             }
-                                            Err(e) => {
-                                                return Some(Err(e));
-                                            }
+                                            Err(e) => Some(Err(e)),
                                         }
                                     }
                                     NumberToken::I32(v) => {
@@ -436,11 +434,9 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                                 // consume the minus sign (already done) and the number literal token
                                                 iter.next();
 
-                                                return ret_val;
+                                                ret_val
                                             }
-                                            Err(e) => {
-                                                return Some(Err(e));
-                                            }
+                                            Err(e) => Some(Err(e)),
                                         }
                                     }
                                     NumberToken::I64(v) => {
@@ -468,26 +464,22 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                                 // consume the minus sign (already done) and the number literal token
                                                 iter.next();
 
-                                                return ret_val;
+                                                ret_val
                                             }
-                                            Err(e) => {
-                                                return Some(Err(e));
-                                            }
+                                            Err(e) => Some(Err(e)),
                                         }
                                     }
                                     NumberToken::U8(_)
                                     | NumberToken::U16(_)
                                     | NumberToken::U32(_)
-                                    | NumberToken::U64(_) => {
-                                        return Some(Err(Error::MessageWithRange(
-                                            "The minus sign cannot be applied to unsigned numbers."
-                                                .to_owned(),
-                                            Range::combine_range_pair(
-                                                &start_range.unwrap(),
-                                                current_range,
-                                            ),
-                                        )));
-                                    }
+                                    | NumberToken::U64(_) => Some(Err(Error::MessageWithRange(
+                                        "The minus sign cannot be applied to unsigned numbers."
+                                            .to_owned(),
+                                        Range::combine_range_pair(
+                                            &start_range.unwrap(),
+                                            current_range,
+                                        ),
+                                    ))),
                                 }
                             }
                             Some(Ok(TokenWithRange {
@@ -495,18 +487,16 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                 range: current_range,
                             })) => {
                                 // combines two token ranges.
-                                return Some(Err(Error::MessageWithRange(
+                                Some(Err(Error::MessageWithRange(
                                     "The minus sign cannot be applied to data other than numbers."
                                         .to_owned(),
                                     Range::combine_range_pair(&start_range.unwrap(), current_range),
-                                )));
+                                )))
                             }
-                            Some(Err(e)) => {
-                                return Some(Err(e.clone()));
-                            }
+                            Some(Err(e)) => Some(Err(e.clone())),
                             None => {
                                 // "...-EOF"
-                                return Some(Err(Error::MessageWithPosition(
+                                Some(Err(Error::MessageWithPosition(
                                     "Unexpected end of document.".to_owned(),
                                     {
                                         let range = start_range.unwrap();
@@ -517,42 +507,40 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             column: range.column + 1,
                                         }
                                     },
-                                )));
+                                )))
                             }
                         }
                     }
                     Token::Number(NumberToken::I8(v)) if *v > i8::MAX as u8 => {
                         // check signed number overflow
-                        return Some(Err(Error::MessageWithRange(
+                        Some(Err(Error::MessageWithRange(
                             format!("The byte integer number {} is overflowed.", v),
                             start_range.unwrap(),
-                        )));
+                        )))
                     }
                     Token::Number(NumberToken::I16(v)) if *v > i16::MAX as u16 => {
                         // check signed number overflow
-                        return Some(Err(Error::MessageWithRange(
+                        Some(Err(Error::MessageWithRange(
                             format!("The short integer number {} is overflowed.", v),
                             start_range.unwrap(),
-                        )));
+                        )))
                     }
                     Token::Number(NumberToken::I32(v)) if *v > i32::MAX as u32 => {
                         // check signed number overflow
-                        return Some(Err(Error::MessageWithRange(
+                        Some(Err(Error::MessageWithRange(
                             format!("The integer number {} is overflowed.", v),
                             start_range.unwrap(),
-                        )));
+                        )))
                     }
                     Token::Number(NumberToken::I64(v)) if *v > i64::MAX as u64 => {
                         // check signed number overflow
-                        return Some(Err(Error::MessageWithRange(
+                        Some(Err(Error::MessageWithRange(
                             format!("The long integer number {} is overflowed.", v),
                             start_range.unwrap(),
-                        )));
+                        )))
                     }
-                    _ => {
-                        return Some(result);
-                    }
-                };
+                    _ => Some(result),
+                }
             }
             Err(_) => Some(result),
         },

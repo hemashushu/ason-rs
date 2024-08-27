@@ -26,132 +26,367 @@ pub fn parse_from(s: &str) -> Result<AsonNode, Error> {
     let mut trimmed_iter = TrimmedTokenIter::new(&mut peekable_normalized_iter);
     let mut peekable_trimmed_iter = PeekableIter::new(&mut trimmed_iter, 2);
 
-    let root = parse_node(&mut peekable_trimmed_iter)?;
+    let mut parser = Parser::new(&mut peekable_trimmed_iter);
+    let root = parser.parse_node()?;
 
-    match peekable_trimmed_iter.peek(0) {
-        Some(Ok(TokenWithRange { range, .. })) => Err(Error::MessageWithPosition(
+    // check trailing token
+    match parser.next_token()? {
+        Some(_) => Err(Error::MessageWithPosition(
             "The ASON document does not end properly.".to_owned(),
-            Position::from_range_start(range),
+            parser.get_position_from_range_start(),
         )),
-        Some(Err(e)) => Err(e.clone()),
-        None => {
-            // expected
-            Ok(root)
-        }
+        None => Ok(root),
     }
 }
 
-fn parse_node(iter: &mut PeekableIter<Result<TokenWithRange, Error>>) -> Result<AsonNode, Error> {
-    loop {
-        match iter.peek(0) {
-            Some(Ok(TokenWithRange {
-                token: current_token,
-                range: current_range,
-            })) => {
-                let node = match current_token {
-                    Token::NewLine => {
-                        // it is possible to exist a newline token after the ']', '}' and ')' punctuations.
-                        iter.next();
-                        continue;
-                    }
-                    Token::Comma
-                        if !matches!(
-                            iter.peek(1),
-                            Some(Ok(TokenWithRange {
-                                token: Token::Comma,
-                                ..
-                            }))
-                        ) =>
-                    {
-                        // it is possible to exist a comma token after the ']', '}' and ')' punctuations.
-                        iter.next();
-                        continue;
-                    }
-                    Token::Number(n) => {
-                        let v = convert_number_token(*n);
-                        iter.next();
-                        v
-                    }
-                    Token::Boolean(b) => {
-                        let v = AsonNode::Boolean(*b);
-                        iter.next();
-                        v
-                    }
-                    Token::Char(c) => {
-                        let v = AsonNode::Char(*c);
-                        iter.next();
-                        v
-                    }
-                    Token::String_(s) => {
-                        let v = AsonNode::String_(s.to_owned());
-                        iter.next();
-                        v
-                    }
-                    Token::Date(d) => {
-                        let v = AsonNode::DateTime(*d);
-                        iter.next();
-                        v
-                    }
-                    Token::Variant(type_name, member_name) => {
-                        match iter.peek(1) {
-                            Some(Ok(TokenWithRange {
-                                token: Token::LeftParen,
-                                ..
-                            })) => {
-                                // tuple variant or the new type variant (i.e. single value variant)
-                                parse_tuple_variant(iter)?
-                            }
-                            Some(Ok(TokenWithRange {
-                                token: Token::LeftBrace,
-                                ..
-                            })) => {
-                                // struct variant
-                                parse_struct_variant(iter)?
-                            }
-                            // note: let the next loop to handle the error
-                            _ => {
-                                // unit variant
-                                let v = AsonNode::Variant(Variant::new(type_name, member_name));
-                                iter.next();
-                                v
+struct Parser<'a> {
+    upstream: &'a mut PeekableIter<'a, Result<TokenWithRange, Error>>,
+    current_range: Range,
+}
+
+impl<'a> Parser<'a> {
+    fn new(upstream: &'a mut PeekableIter<'a, Result<TokenWithRange, Error>>) -> Self {
+        Self {
+            upstream,
+            current_range: Range::new(0, 0, 0, 0, 0),
+        }
+    }
+
+    fn next_token(&mut self) -> Result<Option<Token>, Error> {
+        match self.upstream.next() {
+            Some(Ok(TokenWithRange { token, range })) => {
+                self.current_range = range;
+                Ok(Some(token))
+            }
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
+        }
+    }
+
+    fn peek_token(&self, offset: usize) -> Result<Option<&Token>, Error> {
+        match self.upstream.peek(offset) {
+            Some(Ok(TokenWithRange { token, .. })) => Ok(Some(token)),
+            Some(Err(e)) => Err(e.clone()),
+            None => Ok(None),
+        }
+    }
+
+    fn get_position_from_range_start(&self) -> Position {
+        Position::from_range_start(&self.current_range)
+    }
+
+    fn get_position_from_range_end(&self) -> Position {
+        Position::from_range_end(&self.current_range)
+    }
+
+    fn consume_token(&mut self, expect_token: &Token) -> Result<(), Error> {
+        match self.next_token()? {
+            Some(token) => {
+                if &token == expect_token {
+                    Ok(())
+                } else {
+                    Err(Error::MessageWithPosition(
+                        format!(
+                            "Expect token: {:?}, actual token: {:?}",
+                            expect_token, token
+                        ),
+                        self.get_position_from_range_start(),
+                    ))
+                }
+            }
+            None => Err(Error::MessageWithPosition(
+                format!("Missing token: {:?}", expect_token),
+                self.get_position_from_range_end(),
+            )),
+        }
+    }
+
+    // consume ':'
+    fn consume_colon(&mut self) -> Result<(), Error> {
+        self.consume_token(&Token::Colon)
+    }
+
+    // consume '\n' or ',' if they exist.
+    fn consume_new_line_or_comma_if_exist(&mut self) -> Result<(), Error> {
+        if matches!(self.peek_token(0)?, Some(Token::NewLine | Token::Comma)) {
+            self.next_token()?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> Parser<'a> {
+    fn parse_node(&mut self) -> Result<AsonNode, Error> {
+        loop {
+            match self.peek_token(0)? {
+                Some(current_token) => {
+                    let node = match current_token {
+                        Token::NewLine => {
+                            // it is possible to exist a newline token after the ']', '}' and ')' punctuations.
+                            self.next_token()?;
+                            continue;
+                        }
+                        Token::Comma if !matches!(self.peek_token(1)?, Some(Token::Comma)) => {
+                            // it is possible to exist a comma token after the ']', '}' and ')' punctuations.
+                            self.next_token()?;
+                            continue;
+                        }
+                        Token::Number(n) => {
+                            let v = convert_number_token(*n);
+                            self.next_token()?;
+                            v
+                        }
+                        Token::Boolean(b) => {
+                            let v = AsonNode::Boolean(*b);
+                            self.next_token()?;
+                            v
+                        }
+                        Token::Char(c) => {
+                            let v = AsonNode::Char(*c);
+                            self.next_token()?;
+                            v
+                        }
+                        Token::String_(s) => {
+                            let v = AsonNode::String_(s.to_owned());
+                            self.next_token()?;
+                            v
+                        }
+                        Token::Date(d) => {
+                            let v = AsonNode::DateTime(*d);
+                            self.next_token()?;
+                            v
+                        }
+                        Token::Variant(type_name, member_name) => {
+                            match self.peek_token(1)? {
+                                Some(Token::LeftParen) => {
+                                    // tuple variant or the new type variant (i.e. single value variant)
+                                    self.parse_tuple_variant()?
+                                }
+                                Some(Token::LeftBrace) => {
+                                    // struct variant
+                                    self.parse_struct_variant()?
+                                }
+                                _ => {
+                                    // unit variant
+                                    let v = AsonNode::Variant(Variant::new(type_name, member_name));
+                                    self.next_token()?;
+                                    v
+                                }
                             }
                         }
-                    }
-                    Token::ByteData(b) => {
-                        let v = AsonNode::ByteData(b.to_owned());
-                        iter.next();
-                        v
-                    }
-                    Token::LeftBrace => {
-                        // object: {...}
-                        parse_object(iter)?
-                    }
-                    Token::LeftBracket => {
-                        // array: [...]
-                        parse_array(iter)?
-                    }
-                    Token::LeftParen => {
-                        // tuple: (...)
-                        parse_tuple(iter)?
-                    }
-                    _ => {
-                        return Err(Error::MessageWithPosition(
-                            "Syntax error, unexpected token.".to_owned(),
-                            Position::from_range_start(current_range),
-                        ))
-                    }
-                };
+                        Token::ByteData(b) => {
+                            let v = AsonNode::ByteData(b.to_owned());
+                            self.next_token()?;
+                            v
+                        }
+                        Token::LeftBrace => {
+                            // object: {...}
+                            self.parse_object()?
+                        }
+                        Token::LeftBracket => {
+                            // array: [...]
+                            self.parse_array()?
+                        }
+                        Token::LeftParen => {
+                            // tuple: (...)
+                            self.parse_tuple()?
+                        }
+                        _ => {
+                            return Err(Error::MessageWithPosition(
+                                "Syntax error, unexpected token.".to_owned(),
+                                self.get_position_from_range_start(),
+                            ))
+                        }
+                    };
 
-                return Ok(node);
+                    return Ok(node);
+                }
+                None => {
+                    return Err(Error::Message(
+                        "Incomplete document, unexpected to reach the end of document.".to_owned(),
+                    ));
+                }
             }
-            Some(Err(e)) => {
-                return Err(e.clone());
+        }
+    }
+
+    fn parse_tuple_variant(&mut self) -> Result<AsonNode, Error> {
+        // type::member(...)?  //
+        // ^           ^    ^__// to here
+        // |           |-------// left paren, validated
+        // |-------------------// current token, validated
+
+        // consume variant token
+        let (type_name, member_name) =
+            if let Some(Token::Variant(type_name, member_name)) = self.next_token()? {
+                (type_name, member_name)
+            } else {
+                unreachable!()
+            };
+
+        self.next_token()?; // consume '('
+
+        let mut items = vec![];
+
+        loop {
+            self.consume_new_line_or_comma_if_exist()?;
+
+            if matches!(self.peek_token(0)?, Some(Token::RightParen)) {
+                break;
             }
-            None => {
-                return Err(Error::Message(
-                    "Incomplete document, unexpected to reach the end of document.".to_owned(),
+
+            let value = self.parse_node()?;
+            items.push(value);
+        }
+
+        self.next_token()?; // consume ')'
+
+        let variant_item = match items.len() {
+            0 => {
+                return Err(Error::MessageWithPosition(
+                    "The values of tuple variant can not be empty.".to_owned(),
+                    self.get_position_from_range_start(),
                 ));
             }
+            1 => Variant::with_value(&type_name, &member_name, items.remove(0)),
+            _ => Variant::with_values(&type_name, &member_name, items),
+        };
+
+        Ok(AsonNode::Variant(variant_item))
+    }
+
+    fn parse_struct_variant(&mut self) -> Result<AsonNode, Error> {
+        // type::member{...}?  //
+        // ^           ^    ^__// to here
+        // |           |_______// left brace, validated
+        // |-------------------// current token, validated
+
+        // consume variant token
+        let (type_name, member_name) =
+            if let Some(Token::Variant(type_name, member_name)) = self.next_token()? {
+                (type_name, member_name)
+            } else {
+                unreachable!()
+            };
+
+        let kvps = self.parse_key_value_pairs()?;
+
+        Ok(AsonNode::Variant(Variant::with_object(
+            &type_name,
+            &member_name,
+            kvps,
+        )))
+    }
+
+    fn parse_key_value_pairs(&mut self) -> Result<Vec<KeyValuePair>, Error> {
+        // {...}?  //
+        // ^    ^__// to here
+        // |-------// current token, validated
+
+        self.next_token()?; // consume '{'
+
+        let mut kvps: Vec<KeyValuePair> = vec![];
+
+        loop {
+            self.consume_new_line_or_comma_if_exist()?;
+
+            if matches!(self.peek_token(0)?, Some(Token::RightBrace)) {
+                break;
+            }
+
+            let name = match self.next_token()? {
+                Some(Token::Identifier(n)) => n,
+                Some(_) => {
+                    return Err(Error::MessageWithPosition(
+                        "Expect a key name for the object.".to_owned(),
+                        self.get_position_from_range_start(),
+                    ));
+                }
+                None => {
+                    return Err(Error::MessageWithPosition(
+                        "Incomplete object, unexpected to reach the end of document.".to_owned(),
+                        self.get_position_from_range_end(),
+                    ));
+                }
+            };
+
+            self.consume_new_line_or_comma_if_exist()?;
+            self.consume_colon()?;
+            self.consume_new_line_or_comma_if_exist()?;
+
+            let value = self.parse_node()?;
+            let name_value_pair = KeyValuePair {
+                key: name,
+                value: Box::new(value),
+            };
+            kvps.push(name_value_pair);
+        }
+
+        self.next_token()?; // consume '}'
+
+        Ok(kvps)
+    }
+
+    fn parse_object(&mut self) -> Result<AsonNode, Error> {
+        let kvps = self.parse_key_value_pairs()?;
+        Ok(AsonNode::Object(kvps))
+    }
+
+    fn parse_array(&mut self) -> Result<AsonNode, Error> {
+        // [...]?  //
+        // ^    ^__// to here
+        // |-------// current token, validated
+
+        self.next_token()?; // consume '['
+
+        let mut items: Vec<AsonNode> = vec![];
+
+        loop {
+            self.consume_new_line_or_comma_if_exist()?;
+
+            if matches!(self.peek_token(0)?, Some(Token::RightBracket)) {
+                break;
+            }
+
+            let value = self.parse_node()?;
+            items.push(value);
+        }
+
+        self.next_token()?; // consume ']'
+
+        Ok(AsonNode::List(items))
+    }
+
+    fn parse_tuple(&mut self) -> Result<AsonNode, Error> {
+        // (...)?  //
+        // ^    ^__// to here
+        // |-------// current token, validated
+
+        self.next_token()?; // consume '('
+
+        let mut items: Vec<AsonNode> = vec![];
+
+        loop {
+            self.consume_new_line_or_comma_if_exist()?;
+
+            if matches!(self.peek_token(0)?, Some(Token::RightParen)) {
+                break;
+            }
+
+            let value = self.parse_node()?;
+            items.push(value);
+        }
+
+        self.next_token()?; // consume ')'
+
+        if items.is_empty() {
+            Err(Error::MessageWithPosition(
+                "Tuple can not be empty.".to_owned(),
+                self.get_position_from_range_start(),
+            ))
+        } else {
+            Ok(AsonNode::Tuple(items))
         }
     }
 }
@@ -171,336 +406,6 @@ fn convert_number_token(token: NumberToken) -> AsonNode {
     };
 
     AsonNode::Number(number)
-}
-
-fn parse_tuple_variant(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-) -> Result<AsonNode, Error> {
-    // type::member(...)?  //
-    // ^           ^    ^__// to here
-    // |           |-------// left paren, validated
-    // |-------------------// current token, validated
-
-    // consume variant token
-    let (type_name, member_name, next_position) = if let Some(Ok(TokenWithRange {
-        token: Token::Variant(type_name, member_name),
-        range,
-    })) = iter.next()
-    {
-        (type_name, member_name, Position::from_range_end(&range))
-    } else {
-        unreachable!()
-    };
-
-    consume_left_paren(iter, &next_position)?;
-
-    // consume_new_line_or_comma_if_exist_ignore_position(iter);
-
-    let mut items = vec![];
-
-    // let value = parse_node(iter)?;
-    // values.push(value);
-
-    loop {
-        consume_new_line_or_comma_if_exist_ignore_position(iter);
-
-        // match iter.peek(0) {
-        //     Some(Ok(TokenWithRange {
-        //         token: Token::RightParen,
-        //         ..
-        //     })) => {
-        //         break;
-        //     }
-        //     _ => {
-        //         let value = parse_node(iter)?;
-        //         values.push(value);
-        //         consume_new_line_or_comma_if_exist_ignore_position(iter);
-        //     }
-        // }
-
-        if matches!(
-            iter.peek(0),
-            Some(Ok(TokenWithRange {
-                token: Token::RightParen,
-                ..
-            }))
-        ) {
-            break;
-        }
-
-        let value = parse_node(iter)?;
-        items.push(value);
-    }
-
-    // consume ')'
-    let next_position = if let Some(Ok(TokenWithRange { range, .. })) = iter.next() {
-        Position::from_range_start(&range)
-    } else {
-        unreachable!()
-    };
-
-    let variant_item = match items.len() {
-        0 => {
-            return Err(Error::MessageWithPosition(
-                "The values of tuple variant can not be empty.".to_owned(),
-                next_position,
-            ));
-        }
-        1 => Variant::with_value(&type_name, &member_name, items.remove(0)),
-        _ => Variant::with_values(&type_name, &member_name, items),
-    };
-
-    // iter.next(); // consume ')'
-
-    Ok(AsonNode::Variant(variant_item))
-}
-
-fn parse_struct_variant(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-) -> Result<AsonNode, Error> {
-    // type::member{...}?  //
-    // ^           ^    ^__// to here
-    // |           |_______// left brace, validated
-    // |-------------------// current token, validated
-
-    let (type_name, member_name) = if let Some(Ok(TokenWithRange {
-        token: Token::Variant(type_name, member_name),
-        ..
-    })) = iter.next()
-    {
-        (type_name, member_name)
-    } else {
-        unreachable!()
-    };
-
-    let kvps = parse_key_value_pairs(iter)?;
-
-    Ok(AsonNode::Variant(Variant::with_object(
-        &type_name,
-        &member_name,
-        kvps,
-    )))
-}
-
-fn parse_key_value_pairs(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-) -> Result<Vec<KeyValuePair>, Error> {
-    // {...}?  //
-    // ^    ^__// to here
-    // |-------// current token, validated
-
-    // consume '{'
-    iter.next();
-
-    let mut kvps: Vec<KeyValuePair> = vec![];
-
-    loop {
-        consume_new_line_or_comma_if_exist_ignore_position(iter);
-
-        if matches!(
-            iter.peek(0),
-            Some(Ok(TokenWithRange {
-                token: Token::RightBrace,
-                ..
-            }))
-        ) {
-            break;
-        }
-
-        let (name, mut next_position) =
-            if let Some(Ok(TokenWithRange { token, range })) = iter.peek(0) {
-                if let Token::Identifier(n) = token {
-                    let name = n.to_owned();
-                    let next_position = Position::from_range_end(range);
-                    iter.next();
-                    (name, next_position)
-                } else {
-                    return Err(Error::MessageWithPosition(
-                        "Expect a key name for the object.".to_owned(),
-                        Position::from_range_start(range),
-                    ));
-                }
-            } else {
-                return Err(Error::Message(
-                    "Incomplete object, unexpected to reach the end of document.".to_owned(),
-                ));
-            };
-
-        next_position = consume_new_line_or_comma_if_exist(iter, &next_position);
-        consume_colon(iter, &next_position)?;
-        consume_new_line_or_comma_if_exist_ignore_position(iter);
-
-        let value = parse_node(iter)?;
-        let name_value_pair = KeyValuePair {
-            key: name,
-            value: Box::new(value),
-        };
-        kvps.push(name_value_pair);
-    }
-
-    iter.next(); // consume '}'
-
-    Ok(kvps)
-}
-
-fn parse_object(iter: &mut PeekableIter<Result<TokenWithRange, Error>>) -> Result<AsonNode, Error> {
-    let kvps = parse_key_value_pairs(iter)?;
-    Ok(AsonNode::Object(kvps))
-}
-
-fn parse_array(iter: &mut PeekableIter<Result<TokenWithRange, Error>>) -> Result<AsonNode, Error> {
-    // [...]?  //
-    // ^    ^__// to here
-    // |-------// current token, validated
-
-    iter.next(); // consume '['
-
-    let mut items: Vec<AsonNode> = vec![];
-
-    loop {
-        consume_new_line_or_comma_if_exist_ignore_position(iter);
-
-        if matches!(
-            iter.peek(0),
-            Some(Ok(TokenWithRange {
-                token: Token::RightBracket,
-                ..
-            }))
-        ) {
-            break;
-        }
-
-        let value = parse_node(iter)?;
-        items.push(value);
-    }
-
-    iter.next(); // consume ']'
-
-    Ok(AsonNode::List(items))
-}
-
-fn parse_tuple(iter: &mut PeekableIter<Result<TokenWithRange, Error>>) -> Result<AsonNode, Error> {
-    // (...)?  //
-    // ^    ^__// to here
-    // |-------// current token, validated
-
-    iter.next(); // consume '('
-
-    let mut items: Vec<AsonNode> = vec![];
-
-    loop {
-        consume_new_line_or_comma_if_exist_ignore_position(iter);
-
-        if matches!(
-            iter.peek(0),
-            Some(Ok(TokenWithRange {
-                token: Token::RightParen,
-                ..
-            }))
-        ) {
-            break;
-        }
-
-        let value = parse_node(iter)?;
-        items.push(value);
-    }
-
-    // consume ')'
-    let next_position = if let Some(Ok(TokenWithRange { range, .. })) = iter.next() {
-        Position::from_range_start(&range)
-    } else {
-        unreachable!()
-    };
-
-    if items.is_empty() {
-        Err(Error::MessageWithPosition(
-            "Tuple can not be empty.".to_owned(),
-            next_position,
-        ))
-    } else {
-        Ok(AsonNode::Tuple(items))
-    }
-}
-
-fn consume_token(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-    expect_token: &Token,
-    expect_position: &Position,
-) -> Result<Position, Error> {
-    match iter.next() {
-        Some(Ok(TokenWithRange { token, range })) => {
-            if &token == expect_token {
-                Ok(Position::from_range_end(&range))
-            } else {
-                Err(Error::MessageWithPosition(
-                    format!(
-                        "Expect token: {:?}, actual token: {:?}",
-                        expect_token, token
-                    ),
-                    *expect_position,
-                ))
-            }
-        }
-        Some(Err(e)) => Err(e),
-        None => Err(Error::MessageWithPosition(
-            format!("Missing token: {:?}", expect_token),
-            *expect_position,
-        )),
-    }
-}
-
-// consume ':'
-fn consume_colon(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-    expect_position: &Position,
-) -> Result<Position, Error> {
-    consume_token(iter, &Token::Colon, expect_position)
-}
-
-fn consume_left_paren(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-    expect_position: &Position,
-) -> Result<Position, Error> {
-    consume_token(iter, &Token::LeftParen, expect_position)
-}
-
-fn consume_right_paren(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-    expect_position: &Position,
-) -> Result<Position, Error> {
-    consume_token(iter, &Token::RightParen, expect_position)
-}
-
-// consume '\n' or ',' if they exist.
-fn consume_new_line_or_comma_if_exist(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-    expect_position: &Position,
-) -> Position {
-    match iter.peek(0) {
-        Some(Ok(TokenWithRange {
-            token: Token::NewLine | Token::Comma,
-            range,
-        })) => {
-            let position = Position::from_range_end(range);
-            iter.next();
-            position
-        }
-        _ => *expect_position,
-    }
-}
-
-fn consume_new_line_or_comma_if_exist_ignore_position(
-    iter: &mut PeekableIter<Result<TokenWithRange, Error>>,
-) {
-    if matches!(
-        iter.peek(0),
-        Some(Ok(TokenWithRange {
-            token: Token::NewLine | Token::Comma,
-            ..
-        }))
-    ) {
-        iter.next();
-    }
 }
 
 #[cfg(test)]
@@ -580,98 +485,6 @@ mod tests {
             .unwrap(),
             AsonNode::ByteData(vec![0x11u8, 0x13, 0x17, 0x19])
         );
-    }
-
-    #[test]
-    fn test_parse_variant() {
-        // empty value
-        assert_eq!(
-            parse_from(
-                r#"
-            Option::None
-            "#
-            )
-            .unwrap(),
-            AsonNode::Variant(Variant::new("Option", "None"))
-        );
-
-        // single value
-        assert_eq!(
-            parse_from(
-                r#"
-            Option::Some(123)
-            "#
-            )
-            .unwrap(),
-            AsonNode::Variant(Variant::with_value(
-                "Option",
-                "Some",
-                AsonNode::Number(Number::I32(123))
-            ))
-        );
-
-        // multiple values
-        assert_eq!(
-            parse_from(
-                r#"
-            Color::RGB(100,75,0)
-            "#
-            )
-            .unwrap(),
-            AsonNode::Variant(Variant::with_values(
-                "Color",
-                "RGB",
-                vec![
-                    AsonNode::Number(Number::I32(100)),
-                    AsonNode::Number(Number::I32(75)),
-                    AsonNode::Number(Number::I32(0)),
-                ]
-            ))
-        );
-
-        // object value
-        assert_eq!(
-            parse_from(
-                r#"
-            Shape::Rect{width:123, height:456}
-            "#
-            )
-            .unwrap(),
-            AsonNode::Variant(Variant::with_object(
-                "Shape",
-                "Rect",
-                vec![
-                    KeyValuePair::new("width", AsonNode::Number(Number::I32(123))),
-                    KeyValuePair::new("height", AsonNode::Number(Number::I32(456))),
-                ]
-            ))
-        );
-
-        // err: missing value(s)
-        assert!(matches!(
-            parse_from(r#"Option::Some()"#),
-            Err(Error::MessageWithPosition(
-                _,
-                Position {
-                    unit: 0,
-                    index: 13,
-                    line: 0,
-                    column: 13
-                }
-            ))
-        ));
-
-        // err: missing ')'
-        assert!(matches!(
-            parse_from(r#"Color::RGB(11,13"#),
-            Err(Error::Message(_))
-        ));
-
-        // err: missing '}'
-        assert!(matches!(
-            parse_from(r#"Color::Rect{width:11"#),
-            Err(Error::Message(_))
-        ));
     }
 
     #[test]
@@ -808,7 +621,18 @@ mod tests {
         ));
 
         // err: missing '}'
-        assert!(matches!(parse_from(r#"{id:123"#), Err(Error::Message(_))));
+        assert!(matches!(
+            parse_from(r#"{id:123"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 7,
+                    line: 0,
+                    column: 7
+                }
+            ))
+        ));
     }
 
     #[test]
@@ -951,6 +775,106 @@ mod tests {
 
         // err: missing ')'
         assert!(matches!(parse_from(r#"(123,"#), Err(Error::Message(_))));
+    }
+
+    #[test]
+    fn test_parse_variant() {
+        // empty value
+        assert_eq!(
+            parse_from(
+                r#"
+            Option::None
+            "#
+            )
+            .unwrap(),
+            AsonNode::Variant(Variant::new("Option", "None"))
+        );
+
+        // single value
+        assert_eq!(
+            parse_from(
+                r#"
+            Option::Some(123)
+            "#
+            )
+            .unwrap(),
+            AsonNode::Variant(Variant::with_value(
+                "Option",
+                "Some",
+                AsonNode::Number(Number::I32(123))
+            ))
+        );
+
+        // multiple values
+        assert_eq!(
+            parse_from(
+                r#"
+            Color::RGB(100,75,0)
+            "#
+            )
+            .unwrap(),
+            AsonNode::Variant(Variant::with_values(
+                "Color",
+                "RGB",
+                vec![
+                    AsonNode::Number(Number::I32(100)),
+                    AsonNode::Number(Number::I32(75)),
+                    AsonNode::Number(Number::I32(0)),
+                ]
+            ))
+        );
+
+        // object value
+        assert_eq!(
+            parse_from(
+                r#"
+            Shape::Rect{width:123, height:456}
+            "#
+            )
+            .unwrap(),
+            AsonNode::Variant(Variant::with_object(
+                "Shape",
+                "Rect",
+                vec![
+                    KeyValuePair::new("width", AsonNode::Number(Number::I32(123))),
+                    KeyValuePair::new("height", AsonNode::Number(Number::I32(456))),
+                ]
+            ))
+        );
+
+        // err: missing value(s)
+        assert!(matches!(
+            parse_from(r#"Option::Some()"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 13,
+                    line: 0,
+                    column: 13
+                }
+            ))
+        ));
+
+        // err: missing ')'
+        assert!(matches!(
+            parse_from(r#"Color::RGB(11,13"#),
+            Err(Error::Message(_))
+        ));
+
+        // err: missing '}'
+        assert!(matches!(
+            parse_from(r#"Color::Rect{width:11"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 20,
+                    line: 0,
+                    column: 20
+                }
+            ))
+        ));
     }
 
     #[test]

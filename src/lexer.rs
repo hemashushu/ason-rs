@@ -2197,7 +2197,7 @@ fn lex_datetime(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
 
     let start_position = Some(consume_d.position);
     let mut end_position = Some(consume_quote.position);
-    let mut last_char = Some(consume_quote.character);
+    // let mut last_char = Some(consume_quote.character);
 
     let mut date_string = String::new();
 
@@ -2350,7 +2350,7 @@ fn lex_byte_data_hexadecimal(iter: &mut TokenIter) -> Result<TokenWithRange, Err
 
     let start_position = Some(consume_h.position);
     let mut end_position = Some(consume_open_quote.position);
-    let mut last_char = Some(consume_open_quote.character);
+    // let mut last_char = Some(consume_open_quote.character);
 
     let mut bytes: Vec<u8> = Vec::new();
     let mut chars: [char; 2] = ['0', '0'];

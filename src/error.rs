@@ -49,7 +49,7 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 impl Error {
-    pub fn print_error_with_source(&self, source: &str) -> String {
+    pub fn print_error_with_source(&self, _source: &str) -> String {
         // print pretty error with source text
         todo!()
     }
