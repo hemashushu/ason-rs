@@ -92,7 +92,7 @@ impl Variant {
         }
     }
 
-    pub fn with_values(type_name: &str, member_name: &str, values: Vec<AsonNode>) -> Self {
+    pub fn with_tuple(type_name: &str, member_name: &str, values: Vec<AsonNode>) -> Self {
         Self {
             type_name: type_name.to_owned(),
             member_name: member_name.to_owned(),

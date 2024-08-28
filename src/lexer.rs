@@ -224,281 +224,286 @@ impl TokenWithRange {
     }
 }
 
-fn iter_upstream_equals_char(iter: &TokenIter, offset: usize, c: char) -> bool {
-    if let Some(posc) = iter.upstream.peek(offset) {
-        posc.character == c
-    } else {
-        false
-    }
-}
-
-fn position_forward(position: Position) -> Position {
-    Position {
-        index: position.index + 1,
-        column: position.column + 1,
-        ..position
-    }
-}
-
-fn position_forward_by_line(position: Position) -> Position {
-    Position {
-        index: position.index + 1,
-        line: position.line + 1,
-        column: 0,
-        ..position
-    }
-}
-
-fn position_forward_multiple(position: Position, amount: usize) -> Position {
-    Position {
-        index: position.index + amount,
-        column: position.column + amount,
-        ..position
-    }
-}
-
-fn position_backward(position: Position) -> Position {
-    Position {
-        index: position.index - 1,
-        column: position.column - 1,
-        ..position
-    }
-}
-
 pub struct TokenIter<'a> {
     upstream: &'a mut PeekableIter<'a, CharWithPosition>,
+    last_position: Position,
+    last_char: char,
+    saved_positions: Vec<Position>,
 }
 
 impl<'a> TokenIter<'a> {
     pub fn new(upstream: &'a mut PeekableIter<'a, CharWithPosition>) -> Self {
-        Self { upstream }
+        Self {
+            upstream,
+            last_position: Position::new(0, 0, 0, 0),
+            last_char: '\0',
+            saved_positions: vec![],
+        }
     }
+
+    fn next_char(&mut self) -> Option<char> {
+        match self.upstream.next() {
+            Some(CharWithPosition {
+                character,
+                position,
+            }) => {
+                self.last_position = position;
+                self.last_char = character;
+                Some(character)
+            }
+            None => None,
+        }
+    }
+
+    fn peek_char(&self, offset: usize) -> Option<&char> {
+        match self.upstream.peek(offset) {
+            Some(CharWithPosition { character, .. }) => Some(character),
+            None => None,
+        }
+    }
+
+    fn peek_char_and_equals(&self, offset: usize, expected_char: char) -> bool {
+        matches!(
+            self.upstream.peek(offset),
+            Some(CharWithPosition { character, .. }) if character == &expected_char)
+    }
+
+    fn peek_position(&self, offset: usize) -> Option<&Position> {
+        match self.upstream.peek(offset) {
+            Some(CharWithPosition { position, .. }) => Some(position),
+            None => None,
+        }
+    }
+
+    // fn push_last_position(&mut self) {
+    //     self.saved_positions.push(self.last_position);
+    // }
+
+    fn push_peek_position(&mut self) {
+        self.saved_positions.push(*self.peek_position(0).unwrap());
+    }
+
+    fn pop_saved_position(&mut self) -> Position {
+        self.saved_positions.pop().unwrap()
+    }
+
+    // fn peek_saved_position(&self) -> &Position {
+    //     self.saved_positions.last().unwrap()
+    // }
 }
 
 impl<'a> Iterator for TokenIter<'a> {
     type Item = Result<TokenWithRange, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        lex(self)
+        self.lex_next()
     }
 }
 
-fn lex(iter: &mut TokenIter) -> Option<Result<TokenWithRange, Error>> {
-    // skip all whitespaces
-    while let Some(CharWithPosition {
-        character: current_char,
-        position: _,
-    }) = iter.upstream.peek(0)
-    {
-        match current_char {
-            ' ' | '\t' => {
-                // consume whitespace
-                iter.upstream.next();
-            }
-            _ => {
-                break;
-            }
+impl<'a> TokenIter<'a> {
+    fn lex_next(&mut self) -> Option<Result<TokenWithRange, Error>> {
+        // skip all whitespaces
+        while matches!(self.peek_char(0), Some(' ' | '\t')) {
+            self.next_char();
         }
-    }
 
-    if let Some(current_cl) = iter.upstream.peek(0) {
-        let current_char = current_cl.character;
-        let current_position = current_cl.position;
+        if let Some(current_char) = self.peek_char(0) {
+            let result = match current_char {
+                '\r' if self.peek_char_and_equals(1, '\n') => {
+                    self.push_peek_position();
 
-        match current_char {
-            '\r' if iter_upstream_equals_char(iter, 1, '\n') => {
-                // `\r\n`
-                iter.upstream.next();
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::NewLine,
-                    &current_position,
-                    2,
-                )))
-            }
-            '\n' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::NewLine,
-                    &current_position,
-                    1,
-                )))
-            }
-            ',' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::Comma,
-                    &current_position,
-                    1,
-                )))
-            }
-            ':' => {
-                // note that this is the standalone colon.
-                // it does not include the seperator "::" which is
-                // exists in the middle of the variant full name.
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::Colon,
-                    &current_position,
-                    1,
-                )))
-            }
-            '{' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::LeftBrace,
-                    &current_position,
-                    1,
-                )))
-            }
-            '}' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::RightBrace,
-                    &current_position,
-                    1,
-                )))
-            }
-            '[' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::LeftBracket,
-                    &current_position,
-                    1,
-                )))
-            }
-            ']' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::RightBracket,
-                    &current_position,
-                    1,
-                )))
-            }
-            '(' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::LeftParen,
-                    &current_position,
-                    1,
-                )))
-            }
-            ')' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::RightParen,
-                    &current_position,
-                    1,
-                )))
-            }
-            '+' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::Plus,
-                    &current_position,
-                    1,
-                )))
-            }
-            '-' => {
-                iter.upstream.next();
-                Some(Ok(TokenWithRange::from_position_and_length(
-                    Token::Minus,
-                    &current_position,
-                    1,
-                )))
-            }
-            '0'..='9' => {
-                // number
-                Some(lex_number(iter))
-            }
-            'h' if iter_upstream_equals_char(iter, 1, '"') => {
-                // hex byte data
-                Some(lex_byte_data_hexadecimal(iter))
-            }
-            'd' if iter_upstream_equals_char(iter, 1, '"') => {
-                // date
-                Some(lex_datetime(iter))
-            }
-            'r' if iter_upstream_equals_char(iter, 1, '"') => {
-                // raw string
-                Some(lex_raw_string(iter))
-            }
-            'r' if iter_upstream_equals_char(iter, 1, '#')
-                && iter_upstream_equals_char(iter, 2, '"') =>
-            {
-                // raw string with hash symbol
-                Some(lex_raw_string_with_hash_symbol(iter))
-            }
-            '"' => {
-                if iter_upstream_equals_char(iter, 1, '"')
-                    && iter_upstream_equals_char(iter, 2, '"')
-                {
-                    // auto-trimmed string
-                    Some(lex_auto_trimmed_string(iter))
-                } else {
-                    // normal string
-                    Some(lex_string(iter))
+                    self.next_char(); // consume '\r'
+                    self.next_char(); // consume '\n'
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::NewLine,
+                        &self.pop_saved_position(),
+                        2,
+                    ))
                 }
-            }
-            '\'' => {
-                // char
-                Some(lex_char(iter))
-            }
-            '/' if iter_upstream_equals_char(iter, 1, '/') => {
-                // line comment
-                Some(lex_line_comment(iter))
-            }
-            '/' if iter_upstream_equals_char(iter, 1, '*') => {
-                // block comment
-                Some(lex_block_comment(iter))
-            }
-            'a'..='z' | 'A'..='Z' | '_' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
-                // identifier (the key name of struct/object) or keyword
-                Some(lex_identifier_or_keyword(iter, current_position))
-            }
-            _ => Some(Err(Error::MessageWithPosition(
-                format!("Unexpected char '{}' in ASON document.", current_char),
-                current_position,
-            ))),
+                '\n' => {
+                    self.next_char(); // consule '\n'
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::NewLine,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                ',' => {
+                    self.next_char(); // consume ','
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::Comma,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                ':' => {
+                    self.next_char(); // consule ':'
+
+                    // note that this is the standalone colon.
+                    // it does not include the seperator "::" which is
+                    // exists in the middle of the variant full name.
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::Colon,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '{' => {
+                    self.next_char(); // consule '{'
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::LeftBrace,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '}' => {
+                    self.next_char(); // consule '}'
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::RightBrace,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '[' => {
+                    self.next_char(); // consule '['
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::LeftBracket,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                ']' => {
+                    self.next_char(); // consule ']'
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::RightBracket,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '(' => {
+                    self.next_char(); // consule '('
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::LeftParen,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                ')' => {
+                    self.next_char(); // consule ')'
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::RightParen,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '+' => {
+                    self.next_char(); // consule '+'
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::Plus,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '-' => {
+                    self.next_char(); // consule '-'
+
+                    Ok(TokenWithRange::from_position_and_length(
+                        Token::Minus,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '0'..='9' => {
+                    // number
+                    self.lex_number()
+                }
+                'h' if self.peek_char_and_equals(1, '"') => {
+                    // hex byte data
+                    self.lex_byte_data_hexadecimal()
+                }
+                'd' if self.peek_char_and_equals(1, '"') => {
+                    // date
+                    self.lex_datetime()
+                }
+                'r' if self.peek_char_and_equals(1, '"') => {
+                    // raw string
+                    self.lex_raw_string()
+                }
+                'r' if self.peek_char_and_equals(1, '#') && self.peek_char_and_equals(2, '"') => {
+                    // raw string with hash symbol
+                    self.lex_raw_string_with_hash_symbol()
+                }
+                '"' => {
+                    if self.peek_char_and_equals(1, '"') && self.peek_char_and_equals(2, '"') {
+                        // auto-trimmed string
+                        self.lex_auto_trimmed_string()
+                    } else {
+                        // normal string
+                        self.lex_string()
+                    }
+                }
+                '\'' => {
+                    // char
+                    self.lex_char()
+                }
+                '/' if self.peek_char_and_equals(1, '/') => {
+                    // line comment
+                    self.lex_line_comment()
+                }
+                '/' if self.peek_char_and_equals(1, '*') => {
+                    // block comment
+                    self.lex_block_comment()
+                }
+                'a'..='z' | 'A'..='Z' | '_' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
+                    // identifier (the key name of struct/object) or keyword
+                    self.lex_identifier_or_keyword()
+                }
+                _ => Err(Error::MessageWithPosition(
+                    format!("Syntax error, unexpected char '{}'.", current_char),
+                    *self.peek_position(0).unwrap(),
+                )),
+            };
+
+            Some(result)
+        } else {
+            None
         }
-    } else {
-        None
     }
-}
 
-fn lex_identifier_or_keyword(
-    iter: &mut TokenIter,
-    last_position: Position,
-) -> Result<TokenWithRange, Error> {
-    // key_nameT  //
-    // ^       ^__// to here
-    // |__________// current char, validated
-    //
-    // current char = the character of `iter.upstream.peek(0)``
-    // T = terminator chars || EOF
+    fn lex_identifier_or_keyword(&mut self) -> Result<TokenWithRange, Error> {
+        // key_nameT  //
+        // ^       ^__// to here
+        // |__________// current char, validated
+        //
+        // current char = the character of `iter.upstream.peek(0)``
+        // T = terminator chars || EOF
 
-    let mut name_string = String::new();
-    let mut found_double_colon = false; // found the variant separator "::"
+        let mut name_string = String::new();
+        let mut found_double_colon = false; // to indicate whether the variant separator "::" is found
 
-    let start_position = Some(last_position);
-    let mut end_position = start_position;
+        self.push_peek_position();
 
-    loop {
-        if let Some(current_cl) = iter.upstream.peek(0) {
-            let current_char = current_cl.character;
-            let current_position = current_cl.position;
-            end_position = Some(current_position);
-
+        while let Some(current_char) = self.peek_char(0) {
             match current_char {
                 '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => {
-                    name_string.push(current_char);
-                    iter.upstream.next();
+                    name_string.push(*current_char);
+                    self.next_char(); // consume char
                 }
-                ':' if iter_upstream_equals_char(iter, 1, ':') => {
+                ':' if self.peek_char_and_equals(1, ':') => {
                     found_double_colon = true;
                     name_string.push_str("::");
-                    iter.upstream.next();
-                    iter.upstream.next();
+                    self.next_char(); // consume 1st ":"
+                    self.next_char(); // consume 2nd ":"
                 }
                 '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
                     // A char is a ‘Unicode scalar value’, which is any ‘Unicode code point’ other than a surrogate code point.
@@ -533,8 +538,8 @@ fn lex_identifier_or_keyword(
                     // see also
                     // https://www.unicode.org/reports/tr31/tr31-37.html
 
-                    name_string.push(current_char);
-                    iter.upstream.next();
+                    name_string.push(*current_char);
+                    self.next_char(); // consume char
                 }
                 ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
                 | '\'' | '"' => {
@@ -544,144 +549,134 @@ fn lex_identifier_or_keyword(
                 _ => {
                     return Err(Error::MessageWithPosition(
                         format!("Invalid char '{}' for identifier.", current_char),
-                        current_position,
+                        *self.peek_position(0).unwrap(),
                     ));
                 }
             }
+        }
+
+        let token = if found_double_colon {
+            let (type_name, member_name) = name_string.split_once("::").unwrap();
+            Token::Variant(type_name.to_owned(), member_name.to_owned())
         } else {
-            // EOF
-            end_position = Some(position_forward(end_position.unwrap()));
-            break;
-        }
+            match name_string.as_str() {
+                "true" => Token::Boolean(true),
+                "false" => Token::Boolean(false),
+                "NaN" | "NaN_f64" => Token::Number(NumberToken::F64(f64::NAN)), // the default floating-point type is f64
+                "NaN_f32" => Token::Number(NumberToken::F32(f32::NAN)),
+                "Inf" | "Inf_f64" => Token::Number(NumberToken::F64(f64::INFINITY)), // the default floating-point type is f64
+                "Inf_f32" => Token::Number(NumberToken::F32(f32::INFINITY)),
+                _ => Token::Identifier(name_string),
+            }
+        };
+
+        let name_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        Ok(TokenWithRange::new(token, name_range))
     }
 
-    let token = if found_double_colon {
-        let (type_name, member_name) = name_string.split_once("::").unwrap();
-        Token::Variant(type_name.to_owned(), member_name.to_owned())
-    } else {
-        match name_string.as_str() {
-            "true" => Token::Boolean(true),
-            "false" => Token::Boolean(false),
-            "NaN" | "NaN_f64" => Token::Number(NumberToken::F64(f64::NAN)), // the default floating-point type is f64
-            "NaN_f32" => Token::Number(NumberToken::F32(f32::NAN)),
-            "Inf" | "Inf_f64" => Token::Number(NumberToken::F64(f64::INFINITY)), // the default floating-point type is f64
-            "Inf_f32" => Token::Number(NumberToken::F32(f32::INFINITY)),
-            _ => Token::Identifier(name_string),
-        }
-    };
-
-    Ok(TokenWithRange::new(
-        token,
-        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
-
-// Number formats
-//
-// decimal:
-//
-// 123
-// 123.456
-// -123
-// 1.23e4
-// 1.23e+4
-// 1.23e-4
-// -1.23e4
-//
-// hexadecimal:
-//
-// 0xabcd
-// -0xaabb
-// 0xabcd_u32
-//
-// hexadecimal floating-point:
-// refer: https://www.ibm.com/docs/en/i/7.5?topic=literals-hexadecimal-floating-point
-//
-// 0x1.23p4
-// 0x1.23p+4
-// 0x1.23p-4
-// 0x1.23p4_f64
-//
-// binary:
-//
-// 0b0011
-// -0b1100
-// 0b0011_u16
-//
-// Number data types:
-//
-// - i32, u32
-// - i64, u64
-// - i8,  u8
-// - i16, u16
-// - f32, f64
-//
-// the default type of integer numbers is i32
-// the default type of floating-point numbers is f64
-
-fn lex_number(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // 123456T  //
-    // ^     ^__// to here
-    // |________// current char
-
-    if iter_upstream_equals_char(iter, 0, '0') && iter_upstream_equals_char(iter, 1, 'b') {
-        // '0b...'
-        lex_number_binary(iter)
-    } else if iter_upstream_equals_char(iter, 0, '0') && iter_upstream_equals_char(iter, 1, 'x') {
-        // '0x...'
-        lex_number_hex(iter)
-    } else {
-        // '1234'
-        // '1.23'
-        lex_number_decimal(iter)
-    }
-}
-
-fn lex_number_decimal(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // 123456T  //
-    // ^     ^__// to here
-    // |________// current char
+    // Number formats
     //
-    // T = terminator chars || EOF
-
-    let mut num_string = String::new();
-    let mut num_type: Option<NumberType> = None; // "_ixx", "_uxx", "_fxx"
-    let mut found_point = false; // found '.'
-    let mut found_e = false; // found 'e'
-
-    // samples:
+    // decimal:
     //
     // 123
-    // 3.14
-    // 2.99e8
-    // 2.99e+8
-    // 6.672e-34
+    // 123.456
+    // -123
+    // 1.23e4
+    // 1.23e+4
+    // 1.23e-4
+    // -1.23e4
+    //
+    // hexadecimal:
+    //
+    // 0xabcd
+    // -0xaabb
+    // 0xabcd_u32
+    //
+    // hexadecimal floating-point:
+    // refer: https://www.ibm.com/docs/en/i/7.5?topic=literals-hexadecimal-floating-point
+    //
+    // 0x1.23p4
+    // 0x1.23p+4
+    // 0x1.23p-4
+    // 0x1.23p4_f64
+    //
+    // binary:
+    //
+    // 0b0011
+    // -0b1100
+    // 0b0011_u16
+    //
+    // Number data types:
+    //
+    // - i32, u32
+    // - i64, u64
+    // - i8,  u8
+    // - i16, u16
+    // - f32, f64
+    //
+    // the default type of integer numbers is i32
+    // the default type of floating-point numbers is f64
 
-    let first_cl = iter.upstream.peek(0).unwrap();
+    fn lex_number(&mut self) -> Result<TokenWithRange, Error> {
+        // 123456T  //
+        // ^     ^__// to here
+        // |________// current char, validated
+        //
+        // T = terminator chars || EOF
 
-    let start_position = Some(first_cl.position);
-    let mut end_position = start_position;
+        if self.peek_char_and_equals(0, '0') && self.peek_char_and_equals(1, 'b') {
+            // '0b...'
+            self.lex_number_binary()
+        } else if self.peek_char_and_equals(0, '0') && self.peek_char_and_equals(1, 'x') {
+            // '0x...'
+            self.lex_number_hex()
+        } else {
+            // '1234'
+            // '1.23'
+            self.lex_number_decimal()
+        }
+    }
 
-    loop {
-        if let Some(current_cl) = iter.upstream.peek(0) {
-            let current_char = current_cl.character;
-            let current_position = current_cl.position;
+    fn lex_number_decimal(&mut self) -> Result<TokenWithRange, Error> {
+        // 123456T  //
+        // ^     ^__// to here
+        // |________// current char, validated
+        //
+        // T = terminator chars || EOF
 
-            end_position = Some(current_position);
+        let mut num_string = String::new();
+        let mut num_type: Option<NumberType> = None; // "_ixx", "_uxx", "_fxx"
+        let mut found_point = false; // to indicated whether char '.' is found
+        let mut found_e = false; // to indicated whether char 'e' is found
 
+        // samples:
+        //
+        // 123
+        // 3.14
+        // 2.99e8
+        // 2.99e+8
+        // 6.672e-34
+
+        self.push_peek_position();
+
+        while let Some(current_char) = self.peek_char(0) {
             match current_char {
                 '0'..='9' => {
                     // valid digits for decimal number
-                    num_string.push(current_char);
-                    iter.upstream.next();
+                    num_string.push(*current_char);
+
+                    self.next_char(); // consume digit
                 }
                 '_' => {
-                    iter.upstream.next();
+                    self.next_char(); // consume '_'
                 }
                 '.' if !found_point => {
                     found_point = true;
-                    num_string.push(current_char);
-                    iter.upstream.next();
+                    num_string.push(*current_char);
+
+                    self.next_char(); // consume '.'
                 }
                 'e' if !found_e => {
                     found_e = true;
@@ -689,32 +684,24 @@ fn lex_number_decimal(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
                     // 123e45
                     // 123e+45
                     // 123e-45
-                    if iter_upstream_equals_char(iter, 1, '-') {
+                    if self.peek_char_and_equals(1, '-') {
                         num_string.push_str("e-");
-                        iter.upstream.next();
-                        iter.upstream.next();
-                    } else if iter_upstream_equals_char(iter, 1, '+') {
+                        self.next_char(); // consume 'e'
+                        self.next_char(); // consume '-'
+                    } else if self.peek_char_and_equals(1, '+') {
                         num_string.push_str("e+");
-                        iter.upstream.next();
-                        iter.upstream.next();
+                        self.next_char(); // consume 'e'
+                        self.next_char(); // consume '+'
                     } else {
-                        num_string.push(current_char);
-                        iter.upstream.next();
+                        num_string.push(*current_char);
+                        self.next_char(); // consume 'e'
                     }
                 }
                 'i' | 'u' | 'f'
-                    if num_type.is_none()
-                        && matches!(
-                            iter.upstream.peek(1),
-                            Some(CharWithPosition {
-                                character: '0'..='9',
-                                position: _
-                            })
-                        ) =>
+                    if num_type.is_none() && matches!(self.peek_char(1), Some('0'..='9')) =>
                 {
-                    let (tn, nt) = lex_number_type(iter)?;
+                    let nt = self.lex_number_type_suffix()?;
                     num_type.replace(nt);
-                    end_position = Some(position_forward_multiple(end_position.unwrap(), tn.len()));
                     break;
                 }
                 ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
@@ -725,346 +712,315 @@ fn lex_number_decimal(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
                 _ => {
                     return Err(Error::MessageWithPosition(
                         format!("Invalid char '{}' for decimal number.", current_char),
-                        current_position,
+                        *self.peek_position(0).unwrap(),
                     ));
                 }
-            }
-        } else {
-            // EOF
-            end_position = Some(position_forward(end_position.unwrap()));
-            break;
-        }
-    }
-
-    // check syntax
-    if num_string.ends_with('.') {
-        let dot_position = position_backward(end_position.unwrap());
-        return Err(Error::MessageWithPosition(
-            format!(
-                "A decimal number can not ends with \".\": \"{}\".",
-                num_string
-            ),
-            dot_position,
-        ));
-    }
-
-    if num_string.ends_with('e') {
-        let exp_position = position_backward(end_position.unwrap());
-        return Err(Error::MessageWithPosition(
-            format!(
-                "A decimal number can not ends with \"e\": \"{}\".",
-                num_string
-            ),
-            exp_position,
-        ));
-    }
-
-    let num_token: NumberToken;
-
-    if let Some(nt) = num_type {
-        // numbers with explicit type
-        match nt {
-            NumberType::I8 => {
-                let v = num_string.parse::<u8>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i8 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I8(v);
-            }
-            NumberType::U8 => {
-                let v = num_string.parse::<u8>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u8 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U8(v);
-            }
-            NumberType::I16 => {
-                let v = num_string.parse::<u16>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i16 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I16(v);
-            }
-            NumberType::U16 => {
-                let v = num_string.parse::<u16>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u16 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U16(v);
-            }
-            NumberType::I32 => {
-                let v = num_string.parse::<u32>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i32 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I32(v);
-            }
-            NumberType::U32 => {
-                let v = num_string.parse::<u32>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u32 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U32(v);
-            }
-            NumberType::I64 => {
-                let v = num_string.parse::<u64>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i64 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I64(v);
-            }
-            NumberType::U64 => {
-                let v = num_string.parse::<u64>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u64 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U64(v);
-            }
-            NumberType::F32 => {
-                let v = num_string.parse::<f32>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to f32 floating-point number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                // overflow when parsing from string
-                if v.is_infinite() {
-                    return Err(Error::MessageWithRange(
-                        format!("F32 floating point number \"{}\" is overflow.", num_string),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    ));
-                }
-
-                num_token = NumberToken::F32(v);
-            }
-            NumberType::F64 => {
-                let v = num_string.parse::<f64>().map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to f64 floating-point number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                // overflow when parsing from string
-                if v.is_infinite() {
-                    return Err(Error::MessageWithRange(
-                        format!("F64 floating point number \"{}\" is overflow.", num_string),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    ));
-                }
-
-                num_token = NumberToken::F64(v);
             }
         }
-    } else if found_point || found_e {
-        // the default floating-point number type is f64
 
-        let v = num_string.parse::<f64>().map_err(|e| {
-            Error::MessageWithRange(
+        // check syntax
+        if num_string.ends_with('.') {
+            return Err(Error::MessageWithPosition(
                 format!(
-                    "Can not convert \"{}\" to f64 floating-point number, reason: {}",
-                    num_string, e
+                    "A decimal number can not ends with \".\": \"{}\".",
+                    num_string
                 ),
-                Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-            )
-        })?;
-
-        // overflow when parsing from string
-        if v.is_infinite() {
-            return Err(Error::MessageWithRange(
-                format!("F64 floating point number \"{}\" is overflow.", num_string),
-                Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
+                self.last_position,
             ));
         }
 
-        num_token = NumberToken::F64(v);
-    } else {
-        // the default integer number type is i32
-
-        let v = num_string.parse::<u32>().map_err(|e| {
-            Error::MessageWithRange(
+        if num_string.ends_with('e') {
+            return Err(Error::MessageWithPosition(
                 format!(
-                    "Can not convert \"{}\" to i32 integer number, reason: {}",
-                    num_string, e
+                    "A decimal number can not ends with \"e\": \"{}\".",
+                    num_string
                 ),
-                Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-            )
-        })?;
+                self.last_position,
+            ));
+        }
 
-        num_token = NumberToken::I32(v);
+        let num_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        let num_token: NumberToken = if let Some(nt) = num_type {
+            // numbers with explicit type
+            match nt {
+                NumberType::I8 => {
+                    let v = num_string.parse::<u8>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i8 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I8(v)
+                }
+                NumberType::U8 => {
+                    let v = num_string.parse::<u8>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u8 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U8(v)
+                }
+                NumberType::I16 => {
+                    let v = num_string.parse::<u16>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i16 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I16(v)
+                }
+                NumberType::U16 => {
+                    let v = num_string.parse::<u16>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u16 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U16(v)
+                }
+                NumberType::I32 => {
+                    let v = num_string.parse::<u32>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i32 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I32(v)
+                }
+                NumberType::U32 => {
+                    let v = num_string.parse::<u32>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u32 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U32(v)
+                }
+                NumberType::I64 => {
+                    let v = num_string.parse::<u64>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i64 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I64(v)
+                }
+                NumberType::U64 => {
+                    let v = num_string.parse::<u64>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u64 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U64(v)
+                }
+                NumberType::F32 => {
+                    let v = num_string.parse::<f32>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to f32 floating-point number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    // overflow when parsing from string
+                    if v.is_infinite() {
+                        return Err(Error::MessageWithRange(
+                            format!("F32 floating point number \"{}\" is overflow.", num_string),
+                            num_range,
+                        ));
+                    }
+
+                    NumberToken::F32(v)
+                }
+                NumberType::F64 => {
+                    let v = num_string.parse::<f64>().map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to f64 floating-point number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    // overflow when parsing from string
+                    if v.is_infinite() {
+                        return Err(Error::MessageWithRange(
+                            format!("F64 floating point number \"{}\" is overflow.", num_string),
+                            num_range,
+                        ));
+                    }
+
+                    NumberToken::F64(v)
+                }
+            }
+        } else if found_point || found_e {
+            // the default floating-point number type is f64
+
+            let v = num_string.parse::<f64>().map_err(|e| {
+                Error::MessageWithRange(
+                    format!(
+                        "Can not convert \"{}\" to f64 floating-point number, reason: {}",
+                        num_string, e
+                    ),
+                    num_range,
+                )
+            })?;
+
+            // overflow when parsing from string
+            if v.is_infinite() {
+                return Err(Error::MessageWithRange(
+                    format!("F64 floating point number \"{}\" is overflow.", num_string),
+                    num_range,
+                ));
+            }
+
+            NumberToken::F64(v)
+        } else {
+            // the default integer number type is i32
+
+            let v = num_string.parse::<u32>().map_err(|e| {
+                Error::MessageWithRange(
+                    format!(
+                        "Can not convert \"{}\" to i32 integer number, reason: {}",
+                        num_string, e
+                    ),
+                    num_range,
+                )
+            })?;
+
+            NumberToken::I32(v)
+        };
+
+        Ok(TokenWithRange::new(Token::Number(num_token), num_range))
     }
 
-    Ok(TokenWithRange::new(
-        Token::Number(num_token),
-        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
+    fn lex_number_type_suffix(&mut self) -> Result<NumberType, Error> {
+        // iddT  //
+        // ^^ ^__// to here
+        // ||____// d = 0..9, validated
+        // |_____// current char, validated
+        //
+        // i = i/u/f
+        // d = 0..=9
+        // T = terminator chars || EOF
 
-fn lex_number_type(iter: &mut TokenIter) -> Result<(String, NumberType), Error> {
-    // iddT  //
-    // ^^ ^__// to here
-    // ||____// d = 0..9, validated
-    // |_____// current char, validated
-    //
-    // i = i/u/f
-    // d = 0..=9
-    // T = terminator chars || EOF
+        self.push_peek_position();
 
-    let consume_prefix = iter.upstream.next().unwrap(); // consume the char 'i/u/f'
+        self.next_char(); // consume char 'i/u/f'
 
-    let start_position = Some(consume_prefix.position);
-    let mut end_position = start_position;
+        let mut type_name = String::new();
+        type_name.push(self.last_char);
 
-    let mut type_name = String::new();
-    type_name.push(consume_prefix.character);
-
-    loop {
-        if let Some(current_cl) = iter.upstream.peek(0) {
-            let current_char = current_cl.character;
-            let current_position = current_cl.position;
-            end_position = Some(current_position);
-
+        while let Some(current_char) = self.peek_char(0) {
             match current_char {
                 '0'..='9' => {
                     // valid char for type name
-                    type_name.push(current_char);
-                    iter.upstream.next();
+                    type_name.push(*current_char);
+
+                    // consume digit
+                    self.next_char();
                 }
                 _ => {
                     break;
                 }
             }
-        } else {
-            // EOF
-            end_position = Some(position_forward(end_position.unwrap()));
-            break;
         }
+
+        let type_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        let nt = NumberType::from_str(&type_name)
+            .map_err(|msg| Error::MessageWithRange(msg, type_range))?;
+
+        Ok(nt)
     }
 
-    let nt = NumberType::from_str(&type_name).map_err(|msg| {
-        Error::MessageWithRange(
-            msg,
-            Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-        )
-    })?;
+    fn lex_number_hex(&mut self) -> Result<TokenWithRange, Error> {
+        // 0xaabbT  //
+        // ^^    ^__// to here
+        // ||_______// validated
+        // |________// current char, validated
+        //
+        // T = terminator chars || EOF
 
-    Ok((type_name, nt))
-}
+        self.push_peek_position();
 
-fn lex_number_hex(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // 0xaabbT  //
-    // ^^    ^__// to here
-    // ||_______// validated
-    // |________// current char, validated
-    //
-    // T = terminator chars || EOF
+        self.next_char(); // consume '0'
+        self.next_char(); // consume 'x'
 
-    let consume_zero = iter.upstream.next().unwrap(); // consume '0'
-    let consume_x = iter.upstream.next().unwrap(); // consume 'x'
+        let mut num_string = String::new();
+        let mut num_type: Option<NumberType> = None; // "_ixx", "_uxx"
 
-    let start_position = Some(consume_zero.position);
-    let mut end_position = Some(consume_x.position);
+        let mut found_point: bool = false; // to indicated whether char '.' is found
+        let mut found_p: bool = false; // to indicated whether char 'p' is found
 
-    let mut num_string = String::new();
-    let mut num_type: Option<NumberType> = None; // "_ixx", "_uxx"
-
-    let mut found_point: bool = false; // '.'
-    let mut found_p: bool = false; // 'p'
-
-    loop {
-        if let Some(current_cl) = iter.upstream.peek(0) {
-            let current_char = current_cl.character;
-            let current_position = current_cl.position;
-
-            end_position = Some(current_position);
-
+        while let Some(current_char) = self.peek_char(0) {
             match current_char {
                 'f' if num_type.is_none()
                     && found_p
-                    && matches!(
-                        iter.upstream.peek(1),
-                        Some(CharWithPosition {
-                            character: '0'..='9',
-                            position: _
-                        })
-                    ) =>
+                    && matches!(self.peek_char(1), Some('0'..='9')) =>
                 {
                     // 'f' is allowed only in the hex floating point literal mode, (i.e. the
                     //  character 'p' should be detected first)
-                    let (tn, nt) = lex_number_type(iter)?;
+                    let nt = self.lex_number_type_suffix()?;
                     num_type.replace(nt);
-                    end_position = Some(position_forward_multiple(end_position.unwrap(), tn.len()));
                     break;
                 }
                 '0'..='9' | 'a'..='f' | 'A'..='F' => {
                     // valid digits for hex number
-                    num_string.push(current_char);
-                    iter.upstream.next();
+                    num_string.push(*current_char);
+
+                    self.next_char(); // consume digit
                 }
                 '_' => {
-                    iter.upstream.next();
+                    self.next_char(); // consume '_'
                 }
                 '.' if !found_point && !found_p => {
                     // going to be hex floating point literal mode
                     found_point = true;
 
-                    num_string.push(current_char);
-                    iter.upstream.next();
+                    num_string.push(*current_char);
+
+                    self.next_char(); // consume '.'
                 }
                 'p' | 'P' if !found_p => {
                     // hex floating point literal mode
@@ -1073,36 +1029,30 @@ fn lex_number_hex(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
                     // 0x0.123p45
                     // 0x0.123p+45
                     // 0x0.123p-45
-                    if iter_upstream_equals_char(iter, 1, '-') {
+                    if self.peek_char_and_equals(1, '-') {
                         num_string.push_str("p-");
-                        iter.upstream.next();
-                        iter.upstream.next();
-                    } else if iter_upstream_equals_char(iter, 1, '+') {
+                        self.next_char(); // consume 'p'
+                        self.next_char(); // consume '-'
+                    } else if self.peek_char_and_equals(1, '+') {
                         num_string.push_str("p+");
-                        iter.upstream.next();
-                        iter.upstream.next();
+                        self.next_char(); // consume 'p'
+                        self.next_char(); // consume '+'
                     } else {
-                        num_string.push(current_char);
-                        iter.upstream.next();
+                        num_string.push(*current_char);
+                        self.next_char(); // consume 'p'
                     }
                 }
                 'i' | 'u'
                     if num_type.is_none()
                         && !found_point
                         && !found_p
-                        && matches!(
-                            iter.upstream.peek(1),
-                            Some(CharWithPosition {
-                                character: '0'..='9',
-                                position: _
-                            })
-                        ) =>
+                        && matches!(self.peek_char(1), Some('0'..='9')) =>
                 {
                     // only 'i' and 'u' are allowed for hexadecimal integer numbers,
                     // and 'f' is a ordinary hex digit.
-                    let (tn, nt) = lex_number_type(iter)?;
+                    let nt = self.lex_number_type_suffix()?;
                     num_type.replace(nt);
-                    end_position = Some(position_forward_multiple(end_position.unwrap(), tn.len()));
+
                     break;
                 }
                 ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
@@ -1113,267 +1063,246 @@ fn lex_number_hex(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
                 _ => {
                     return Err(Error::MessageWithPosition(
                         format!("Invalid char '{}' for hexadecimal number.", current_char),
-                        current_position,
+                        *self.peek_position(0).unwrap(),
                     ));
                 }
             }
-        } else {
-            // EOF
-            end_position = Some(position_forward(end_position.unwrap()));
-            break;
         }
-    }
 
-    if num_string.is_empty() {
-        return Err(Error::MessageWithRange(
-            "Empty hexadecimal number".to_owned(),
-            Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-        ));
-    }
+        let num_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
 
-    if found_point && !found_p {
-        return Err(Error::MessageWithRange(
-            format!(
+        if num_string.is_empty() {
+            return Err(Error::MessageWithRange(
+                "Empty hexadecimal number".to_owned(),
+                num_range,
+            ));
+        }
+
+        if found_point && !found_p {
+            return Err(Error::MessageWithRange(
+                format!(
                 "String \"{}\" is missing the exponent of the hexadecimal floating point number.",
                 num_string
             ),
-            Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-        ));
-    }
+                num_range,
+            ));
+        }
 
-    let num_token: NumberToken;
+        let num_token = if found_p {
+            // the default type for floating-point is f64
+            let mut to_f64 = true;
 
-    if found_p {
-        // the default type for floating-point is f64
-        let mut to_f64 = true;
+            if let Some(nt) = num_type {
+                match nt {
+                    NumberType::F32 => {
+                        to_f64 = false;
+                    }
+                    NumberType::F64 => {
+                        to_f64 = true;
+                    }
+                    _ => {
+                        return Err(Error::MessageWithRange(format!(
+                                "Invalid type \"{}\" for hexadecimal floating-point numbers, only type \"f32\" and \"f64\" are allowed.",
+                                nt
+                            ),
+                            num_range
+                        ));
+                    }
+                }
+            };
 
-        if let Some(nt) = num_type {
+            num_string.insert_str(0, "0x");
+
+            if to_f64 {
+                let v = hexfloat2::parse::<f64>(&num_string).map_err(|_| {
+                    // there is no detail message provided by `hexfloat2::parse`.
+                    Error::MessageWithRange(
+                        format!(
+                            "Can not convert \"{}\" to f64 floating-point number.",
+                            num_string
+                        ),
+                        num_range,
+                    )
+                })?;
+
+                NumberToken::F64(v)
+            } else {
+                let v = hexfloat2::parse::<f32>(&num_string).map_err(|_| {
+                    // there is no detail message provided by `hexfloat2::parse`.
+                    Error::MessageWithRange(
+                        format!(
+                            "Can not convert \"{}\" to f32 floating-point number.",
+                            num_string
+                        ),
+                        num_range,
+                    )
+                })?;
+
+                NumberToken::F32(v)
+            }
+        } else if let Some(nt) = num_type {
             match nt {
-                NumberType::F32 => {
-                    to_f64 = false;
+                NumberType::I8 => {
+                    let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i8 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I8(v)
                 }
-                NumberType::F64 => {
-                    to_f64 = true;
+                NumberType::U8 => {
+                    let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u8 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U8(v)
                 }
-                _ => {
-                    return Err(Error::MessageWithRange(format!(
-                        "Invalid type \"{}\" for hexadecimal floating-point numbers, only type \"f32\" and \"f64\" are allowed.",
-                        nt
-                    ), Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap())));
+                NumberType::I16 => {
+                    let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i16 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I16(v)
+                }
+                NumberType::U16 => {
+                    let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u16 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U16(v)
+                }
+                NumberType::I32 => {
+                    let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i32 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I32(v)
+                }
+                NumberType::U32 => {
+                    let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u32 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U32(v)
+                }
+                NumberType::I64 => {
+                    let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i64 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I64(v)
+                }
+                NumberType::U64 => {
+                    let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u64 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U64(v)
+                }
+                NumberType::F32 | NumberType::F64 => {
+                    // '0x..f32' and '0x..f64' would only be parsed
+                    // as ordinary hex digits
+                    unreachable!()
                 }
             }
-        }
-
-        num_string.insert_str(0, "0x");
-
-        if to_f64 {
-            let v = hexfloat2::parse::<f64>(&num_string).map_err(|_| {
-                // there is no detail message provided by `hexfloat2::parse`.
-                Error::MessageWithRange(
-                    format!(
-                        "Can not convert \"{}\" to f64 floating-point number.",
-                        num_string
-                    ),
-                    Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                )
-            })?;
-
-            num_token = NumberToken::F64(v)
         } else {
-            let v = hexfloat2::parse::<f32>(&num_string).map_err(|_| {
-                // there is no detail message provided by `hexfloat2::parse`.
+            // default
+            // convert to i32
+            let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
                 Error::MessageWithRange(
                     format!(
-                        "Can not convert \"{}\" to f32 floating-point number.",
-                        num_string
+                        "Can not convert \"{}\" to i32 integer number, reason: {}",
+                        num_string, e
                     ),
-                    Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
+                    num_range,
                 )
             })?;
 
-            num_token = NumberToken::F32(v)
+            NumberToken::I32(v)
         };
-    } else if let Some(nt) = num_type {
-        match nt {
-            NumberType::I8 => {
-                let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i8 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
 
-                num_token = NumberToken::I8(v);
-            }
-            NumberType::U8 => {
-                let v = u8::from_str_radix(&num_string, 16).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u8 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U8(v);
-            }
-            NumberType::I16 => {
-                let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i16 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I16(v);
-            }
-            NumberType::U16 => {
-                let v = u16::from_str_radix(&num_string, 16).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u16 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U16(v);
-            }
-            NumberType::I32 => {
-                let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i32 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I32(v);
-            }
-            NumberType::U32 => {
-                let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u32 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U32(v);
-            }
-            NumberType::I64 => {
-                let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i64 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I64(v);
-            }
-            NumberType::U64 => {
-                let v = u64::from_str_radix(&num_string, 16).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u64 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U64(v);
-            }
-            NumberType::F32 | NumberType::F64 => {
-                // '0x..f32' and '0x..f64' would only be parsed
-                // as ordinary hex digits
-                unreachable!()
-            }
-        }
-    } else {
-        // default
-        // convert to i32
-        let v = u32::from_str_radix(&num_string, 16).map_err(|e| {
-            Error::MessageWithRange(
-                format!(
-                    "Can not convert \"{}\" to i32 integer number, reason: {}",
-                    num_string, e
-                ),
-                Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-            )
-        })?;
-
-        num_token = NumberToken::I32(v);
+        Ok(TokenWithRange::new(Token::Number(num_token), num_range))
     }
 
-    Ok(TokenWithRange::new(
-        Token::Number(num_token),
-        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
+    fn lex_number_binary(&mut self) -> Result<TokenWithRange, Error> {
+        // 0b1010T  //
+        // ^^    ^__// to here
+        // ||_______// validated
+        // |________// current char, validated
+        //
+        // T = terminator chars || EOF
 
-fn lex_number_binary(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // 0b1010T  //
-    // ^^    ^__// to here
-    // ||_______// validated
-    // |________// current char, validated
-    //
-    // T = terminator chars || EOF
+        self.push_peek_position();
 
-    let consume_zero = iter.upstream.next().unwrap(); // consume '0'
-    let consume_b = iter.upstream.next().unwrap(); // consume 'b'
+        self.next_char(); // consume '0'
+        self.next_char(); // consume 'b'
 
-    let start_position = Some(consume_zero.position);
-    let mut end_position = Some(consume_b.position);
+        let mut num_string = String::new();
+        let mut num_type: Option<NumberType> = None;
 
-    let mut num_string = String::new();
-    let mut num_type: Option<NumberType> = None;
-
-    loop {
-        if let Some(current_cl) = iter.upstream.peek(0) {
-            let current_char = current_cl.character;
-            let current_position = current_cl.position;
-
-            end_position = Some(current_position);
-
+        while let Some(current_char) = self.peek_char(0) {
             match current_char {
                 '0' | '1' => {
                     // valid digits for binary number
-                    num_string.push(current_char);
-                    iter.upstream.next();
+                    num_string.push(*current_char);
+
+                    self.next_char(); // consume digit
                 }
                 '_' => {
-                    iter.upstream.next();
+                    self.next_char(); // consume '_'
                 }
                 // binary form only supports integer numbers, does not support floating-point numbers
-                'i' | 'u'
-                    if num_type.is_none()
-                        && matches!(
-                            iter.upstream.peek(1),
-                            Some(CharWithPosition {
-                                character: '0'..='9',
-                                position: _
-                            })
-                        ) =>
-                {
-                    let (tn, nt) = lex_number_type(iter)?;
+                'i' | 'u' if num_type.is_none() && matches!(self.peek_char(1), Some('0'..='9')) => {
+                    let nt = self.lex_number_type_suffix()?;
                     num_type.replace(nt);
-                    end_position = Some(position_forward_multiple(end_position.unwrap(), tn.len()));
                     break;
                 }
                 ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
@@ -1384,328 +1313,288 @@ fn lex_number_binary(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
                 _ => {
                     return Err(Error::MessageWithPosition(
                         format!("Invalid char '{}' for binary number.", current_char),
-                        current_position,
+                        *self.peek_position(0).unwrap(),
                     ));
+                }
+            }
+        }
+
+        let num_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        if num_string.is_empty() {
+            return Err(Error::MessageWithRange(
+                "Empty binary number.".to_owned(),
+                num_range,
+            ));
+        }
+
+        let num_token = if let Some(nt) = num_type {
+            match nt {
+                NumberType::I8 => {
+                    let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i8 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I8(v)
+                }
+                NumberType::U8 => {
+                    let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u8 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U8(v)
+                }
+                NumberType::I16 => {
+                    let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i16 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I16(v)
+                }
+                NumberType::U16 => {
+                    let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u16 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U16(v)
+                }
+                NumberType::I32 => {
+                    let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i32 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I32(v)
+                }
+                NumberType::U32 => {
+                    let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u32 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U32(v)
+                }
+                NumberType::I64 => {
+                    let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to i64 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::I64(v)
+                }
+                NumberType::U64 => {
+                    let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
+                        Error::MessageWithRange(
+                            format!(
+                                "Can not convert \"{}\" to u64 integer number, reason: {}",
+                                num_string, e
+                            ),
+                            num_range,
+                        )
+                    })?;
+
+                    NumberToken::U64(v)
+                }
+                NumberType::F32 | NumberType::F64 => {
+                    unreachable!()
                 }
             }
         } else {
-            // EOF
-            end_position = Some(position_forward(end_position.unwrap()));
-            break;
-        }
+            // default
+            // convert to i32
+
+            let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
+                Error::MessageWithRange(
+                    format!(
+                        "Can not convert \"{}\" to i32 integer number, reason: {}",
+                        num_string, e
+                    ),
+                    num_range,
+                )
+            })?;
+
+            NumberToken::I32(v)
+        };
+
+        Ok(TokenWithRange::new(Token::Number(num_token), num_range))
     }
 
-    if num_string.is_empty() {
-        return Err(Error::MessageWithRange(
-            "Empty binary number.".to_owned(),
-            Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-        ));
-    }
+    fn lex_char(&mut self) -> Result<TokenWithRange, Error> {
+        // 'a'?  //
+        // ^  ^__// to here
+        // |_____// current char, validated
 
-    let num_token: NumberToken;
+        self.push_peek_position();
 
-    if let Some(nt) = num_type {
-        match nt {
-            NumberType::I8 => {
-                let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i8 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
+        self.next_char(); // consume "'"
 
-                num_token = NumberToken::I8(v);
-            }
-            NumberType::U8 => {
-                let v = u8::from_str_radix(&num_string, 2).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u8 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U8(v);
-            }
-            NumberType::I16 => {
-                let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i16 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I16(v);
-            }
-            NumberType::U16 => {
-                let v = u16::from_str_radix(&num_string, 2).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u16 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U16(v);
-            }
-            NumberType::I32 => {
-                let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i32 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I32(v);
-            }
-            NumberType::U32 => {
-                let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u32 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U32(v);
-            }
-            NumberType::I64 => {
-                let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to i64 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::I64(v);
-            }
-            NumberType::U64 => {
-                let v = u64::from_str_radix(&num_string, 2).map_err(|e| {
-                    Error::MessageWithRange(
-                        format!(
-                            "Can not convert \"{}\" to u64 integer number, reason: {}",
-                            num_string, e
-                        ),
-                        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-                    )
-                })?;
-
-                num_token = NumberToken::U64(v);
-            }
-            NumberType::F32 | NumberType::F64 => {
-                unreachable!()
-            }
-        }
-    } else {
-        // default
-        // convert to i32
-
-        let v = u32::from_str_radix(&num_string, 2).map_err(|e| {
-            Error::MessageWithRange(
-                format!(
-                    "Can not convert \"{}\" to i32 integer number, reason: {}",
-                    num_string, e
-                ),
-                Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-            )
-        })?;
-
-        num_token = NumberToken::I32(v);
-    }
-
-    Ok(TokenWithRange::new(
-        Token::Number(num_token),
-        Range::from_position_pair(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
-
-fn lex_char(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // 'a'?  //
-    // ^  ^__// to here
-    // |_____// current char, validated
-
-    let consume_quote = iter.upstream.next().unwrap(); // consume the left single quote
-
-    let start_position = Some(consume_quote.position);
-    let mut end_position = start_position;
-
-    let ch: char;
-
-    match iter.upstream.next() {
-        Some(prev_previous_cl) => {
-            let prev_previous_char = prev_previous_cl.character;
-            let prev_previous_position = prev_previous_cl.position;
-            end_position = Some(prev_previous_position);
-
-            match prev_previous_char {
-                '\\' => {
-                    // escape chars
-                    match iter.upstream.next() {
-                        Some(previous_cl) => {
-                            let previous_char = previous_cl.character;
-                            let previous_position = previous_cl.position;
-                            end_position = Some(previous_position);
-
-                            match previous_char {
-                                '\\' => {
-                                    ch = '\\';
-                                }
-                                '\'' => {
-                                    ch = '\'';
-                                }
-                                '"' => {
-                                    // double quote does not necessary to be escaped for char
-                                    // however, it is still supported for consistency between chars and strings.
-                                    ch = '"';
-                                }
-                                't' => {
-                                    // horizontal tabulation
-                                    ch = '\t';
-                                }
-                                'r' => {
-                                    // carriage return (CR, ascii 13)
-                                    ch = '\r';
-                                }
-                                'n' => {
-                                    // new line character (line feed, LF, ascii 10)
-                                    ch = '\n';
-                                }
-                                '0' => {
-                                    // null char
-                                    ch = '\0';
-                                }
-                                'u' => {
-                                    if iter_upstream_equals_char(iter, 0, '{') {
-                                        // unicode code point, e.g. '\u{2d}', '\u{6587}'
-                                        let (codepoint_string, character) = unescape_unicode(iter)?;
-                                        end_position = Some(position_forward_multiple(
-                                            end_position.unwrap(),
-                                            codepoint_string.len(),
-                                        ));
-                                        ch = character;
-                                    } else {
+        let ch = match self.next_char() {
+            Some(prev_previous_char) => {
+                match prev_previous_char {
+                    '\\' => {
+                        // escape chars
+                        match self.next_char() {
+                            Some(previous_char) => {
+                                match previous_char {
+                                    '\\' => '\\',
+                                    '\'' => '\'',
+                                    '"' => {
+                                        // double quote does not necessary to be escaped for char
+                                        // however, it is still supported for consistency between chars and strings.
+                                        '"'
+                                    }
+                                    't' => {
+                                        // horizontal tabulation
+                                        '\t'
+                                    }
+                                    'r' => {
+                                        // carriage return (CR, ascii 13)
+                                        '\r'
+                                    }
+                                    'n' => {
+                                        // new line character (line feed, LF, ascii 10)
+                                        '\n'
+                                    }
+                                    '0' => {
+                                        // null char
+                                        '\0'
+                                    }
+                                    'u' => {
+                                        if self.peek_char_and_equals(0, '{') {
+                                            // unicode code point, e.g. '\u{2d}', '\u{6587}'
+                                            self.unescape_unicode()?
+                                        } else {
+                                            return Err(Error::MessageWithPosition(
+                                                "Missing the open brace for unicode escape sequence.".to_owned(),
+                                                self.last_position.forward_char()
+                                            ));
+                                        }
+                                    }
+                                    _ => {
                                         return Err(Error::MessageWithPosition(
-                                            format!("Missing the open brace for unicode escape sequence."),
-                                            position_forward(previous_position)
+                                            format!("Unexpected escape char '{}'.", previous_char),
+                                            self.last_position,
                                         ));
                                     }
                                 }
-                                _ => {
-                                    return Err(Error::MessageWithPosition(
-                                        format!("Unsupported escape char '{}'.", previous_char),
-                                        previous_position,
-                                    ));
-                                }
+                            }
+                            None => {
+                                // `\` + EOF
+                                return Err(Error::MessageWithPosition(
+                                    "Incomplete escape char sequence.".to_owned(),
+                                    self.last_position,
+                                ));
                             }
                         }
-                        None => {
-                            // `'\EOF`
-                            return Err(Error::MessageWithPosition(
-                                "Incomplete char escape sequence.".to_owned(),
-                                end_position.unwrap(),
-                            ));
-                        }
+                    }
+                    '\'' => {
+                        // `''`
+                        return Err(Error::MessageWithRange(
+                            "Empty char.".to_owned(),
+                            Range::from_position_pair_include(
+                                &self.pop_saved_position(),
+                                &self.last_position,
+                            ),
+                        ));
+                    }
+                    _ => {
+                        // ordinary char
+                        prev_previous_char
                     }
                 }
-                '\'' => {
-                    // `''`
-                    return Err(Error::MessageWithRange(
-                        "Empty char.".to_owned(),
-                        Range::from_position_pair_include(
-                            &start_position.unwrap(),
-                            &end_position.unwrap(),
-                        ),
-                    ));
-                }
-                _ => {
-                    // ordinary char
-                    ch = prev_previous_char;
-                }
+            }
+            None => {
+                // `'EOF`
+                return Err(Error::MessageWithPosition(
+                    "Incomplete char, unexpected to reach the end of document.".to_owned(),
+                    self.last_position.forward_char(),
+                ));
+            }
+        };
+
+        // consume the right single quote
+        match self.next_char() {
+            Some('\'') => {
+                // Ok
+            }
+            Some(character) => {
+                // `'a?`
+                return Err(Error::MessageWithPosition(
+                    format!(
+                        "Expected the closed quote for char, but found '{}'.",
+                        character
+                    ),
+                    self.last_position,
+                ));
+            }
+            None => {
+                // `'aEOF`
+                return Err(Error::MessageWithPosition(
+                    "Incomplete char, unexpected to reach the end of document.".to_owned(),
+                    self.last_position.forward_char(),
+                ));
             }
         }
-        None => {
-            // `''`
-            return Err(Error::MessageWithPosition(
-                "Empty char.".to_owned(),
-                position_forward(end_position.unwrap()),
-            ));
-        }
+
+        let ch_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        Ok(TokenWithRange::new(Token::Char(ch), ch_range))
     }
 
-    // consume the right single quote
-    match iter.upstream.next() {
-        Some(CharWithPosition {
-            character: '\'',
-            position,
-        }) => {
-            end_position = Some(position);
-        }
-        Some(CharWithPosition {
-            character,
-            position,
-        }) => {
-            // `'a?`
-            return Err(Error::MessageWithPosition(
-                format!(
-                    "Expected the closed quote for char, but found '{}'.",
-                    character
-                ),
-                position,
-            ));
-        }
-        None => {
-            // `'aEOF`
-            return Err(Error::MessageWithPosition(
-                "Incomplete char, missing the closed quote.".to_owned(),
-                position_forward(end_position.unwrap()),
-            ));
-        }
-    }
+    fn unescape_unicode(&mut self) -> Result<char, Error> {
+        // \u{6587}?  //
+        //   ^     ^__// to here
+        //   |________// current char, validated
 
-    Ok(TokenWithRange::new(
-        Token::Char(ch),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
+        self.push_peek_position();
 
-fn unescape_unicode(iter: &mut TokenIter) -> Result<(String, char), Error> {
-    // \u{6587}?  //
-    //   ^     ^__// to here
-    //   |________// current char, validated
+        self.next_char(); // comsume char '{'
 
-    let consume_brace = iter.upstream.next().unwrap(); // comsume char '{'
+        let mut codepoint_string = String::new();
 
-    let start_position = Some(consume_brace.position);
-    let mut end_position = start_position;
-
-    let mut codepoint_string = String::new();
-
-    loop {
-        match iter.upstream.next() {
-            Some(previous_cl) => {
-                let previous_char = previous_cl.character;
-                let previous_position = previous_cl.position;
-                end_position = Some(previous_position);
-
-                match previous_char {
+        loop {
+            match self.next_char() {
+                Some(previous_char) => match previous_char {
                     '}' => break,
                     '0'..='9' | 'a'..='f' | 'A'..='F' => codepoint_string.push(previous_char),
                     _ => {
@@ -1714,833 +1603,733 @@ fn unescape_unicode(iter: &mut TokenIter) -> Result<(String, char), Error> {
                                 "Invalid character '{}' for unicode escape sequence.",
                                 previous_char
                             ),
-                            previous_position,
+                            self.last_position,
                         ));
                     }
+                },
+                None => {
+                    // EOF
+                    return Err(Error::MessageWithPosition(
+                        "Incomplete unicode escape sequence, missing the closed brace.".to_owned(),
+                        self.last_position.forward_char(),
+                    ));
                 }
             }
-            None => {
-                // EOF
-                return Err(Error::MessageWithPosition(
-                    "Incomplete unicode escape sequence, missing the closed brace.".to_owned(),
-                    position_forward(end_position.unwrap()),
-                ));
-            }
-        }
 
-        if codepoint_string.len() > 6 {
-            return Err(Error::MessageWithRange(
-                "Only max 6 hexadecimal digits are allowed for unicode point code.".to_owned(),
-                Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-            ));
-        }
-    }
-
-    if codepoint_string.is_empty() {
-        return Err(Error::MessageWithRange(
-            "Empty unicode code point.".to_owned(),
-            Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-        ));
-    }
-
-    let codepoint = u32::from_str_radix(&codepoint_string, 16).unwrap();
-
-    if let Some(ch) = char::from_u32(codepoint) {
-        // valid code point:
-        // 0 to 0x10FFFF, inclusive
-        //
-        // ref:
-        // https://doc.rust-lang.org/std/primitive.char.html
-        Ok((codepoint_string, ch))
-    } else {
-        Err(Error::MessageWithRange(
-            "Invalid unicode code point.".to_owned(),
-            Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-        ))
-    }
-}
-
-fn lex_string(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // "abc"?  //
-    // ^    ^__// to here
-    // |_______// current char, validated
-
-    let consume_quote = iter.upstream.next().unwrap(); // consume the left quote
-
-    let start_position = Some(consume_quote.position);
-    let mut end_position = start_position;
-    let mut last_char = Some(consume_quote.character);
-
-    let mut ss = String::new();
-
-    loop {
-        match iter.upstream.next() {
-            Some(prev_previous_cl) => {
-                let prev_previous_char = prev_previous_cl.character;
-                let prev_previous_position = prev_previous_cl.position;
-                end_position = Some(prev_previous_position);
-                last_char = Some(prev_previous_char);
-
-                match prev_previous_char {
-                    '\\' => {
-                        // escape chars
-                        match iter.upstream.next() {
-                            Some(previous_cl) => {
-                                let previous_char = previous_cl.character;
-                                let previous_position = previous_cl.position;
-                                end_position = Some(previous_position);
-                                last_char = Some(previous_char);
-
-                                match previous_char {
-                                    '\\' => {
-                                        ss.push('\\');
-                                    }
-                                    '\'' => {
-                                        // single quote does not necessary to be escaped for string
-                                        // however, it is still supported for consistency between chars and strings.
-                                        ss.push('\'');
-                                    }
-                                    '"' => {
-                                        ss.push('"');
-                                    }
-                                    't' => {
-                                        // horizontal tabulation
-                                        ss.push('\t');
-                                    }
-                                    'r' => {
-                                        // carriage return (CR, ascii 13)
-                                        ss.push('\r');
-                                    }
-                                    'n' => {
-                                        // new line character (line feed, LF, ascii 10)
-                                        ss.push('\n');
-                                    }
-                                    '0' => {
-                                        // null char
-                                        ss.push('\0');
-                                    }
-                                    'u' => {
-                                        if iter_upstream_equals_char(iter, 0, '{') {
-                                            // unicode code point, e.g. '\u{2d}', '\u{6587}'
-                                            let (codepoint_string, ch) = unescape_unicode(iter)?;
-
-                                            end_position = Some(position_forward_multiple(
-                                                end_position.unwrap(),
-                                                codepoint_string.len(),
-                                            ));
-                                            last_char = Some('}');
-
-                                            ss.push(ch);
-                                        } else {
-                                            return Err(Error::MessageWithPosition(
-                                                format!(
-                                                    "Missing the open brace for unicode escape sequence."
-                                                ),
-                                                position_forward(previous_position)
-                                            ));
-                                        }
-                                    }
-                                    '\r' if iter_upstream_equals_char(iter, 0, '\n') => {
-                                        // (single line) long string
-
-                                        let consume_n = iter.upstream.next().unwrap(); // consume '\n'
-                                        end_position = Some(consume_n.position);
-                                        last_char = Some(consume_n.character);
-
-                                        consume_leading_whitespaces(
-                                            iter,
-                                            end_position.unwrap(),
-                                            None,
-                                        )?;
-                                    }
-                                    '\n' => {
-                                        // (single line) long string
-                                        consume_leading_whitespaces(
-                                            iter,
-                                            end_position.unwrap(),
-                                            None,
-                                        )?;
-                                    }
-                                    _ => {
-                                        return Err(Error::MessageWithPosition(
-                                            format!("Unsupported escape char '{}'.", previous_char),
-                                            previous_position,
-                                        ));
-                                    }
-                                }
-                            }
-                            None => {
-                                // `'\EOF`
-                                return Err(Error::MessageWithPosition(
-                                    "Incomplete char escape sequence.".to_owned(),
-                                    end_position.unwrap(),
-                                ));
-                            }
-                        }
-                    }
-                    '"' => {
-                        // end of the string
-                        break;
-                    }
-                    _ => {
-                        // ordinary char
-                        ss.push(prev_previous_char);
-                    }
-                }
-            }
-            // `"...EOF`
-            None => {
-                return Err(Error::MessageWithPosition(
-                    "Incomplete string, missing the closed quote.".to_owned(),
-                    if let Some('\n') = last_char {
-                        position_forward_by_line(end_position.unwrap())
-                    } else {
-                        position_forward(end_position.unwrap())
-                    },
-                ))
-            }
-        }
-    }
-
-    Ok(TokenWithRange::new(
-        Token::String_(ss),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
-
-/// return the amount of leading whitespaces
-fn consume_leading_whitespaces(
-    iter: &mut TokenIter,
-    last_position: Position,
-    expect_whitespaces: Option<usize>,
-) -> Result<usize, Error> {
-    // \nssssS  //
-    //   ^   ^__// to here ('s' = whitespace, 'S' = not whitespace)
-    //   |______// current char, UNVALIDATED
-
-    let mut end_position = Some(last_position);
-    let mut count = 0;
-
-    loop {
-        if let Some(max) = expect_whitespaces {
-            if count >= max {
+            if codepoint_string.len() > 6 {
                 break;
             }
         }
 
-        match iter.upstream.peek(0) {
-            Some(current_cl) => {
-                let current_char = current_cl.character;
-                let current_position = current_cl.position;
-                end_position = Some(current_position);
+        let codepoint_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
 
-                match current_char {
-                    ' ' | '\t' => {
-                        count += 1;
-                        iter.upstream.next();
-                    }
-                    _ => {
-                        break;
-                    }
-                }
-            }
-            None => {
-                // EOF
-                return Err(Error::MessageWithPosition(
-                    "Incomplete string, missing the closed quote.".to_owned(),
-                    position_forward(end_position.unwrap()),
-                ));
-            }
+        if codepoint_string.len() > 6 {
+            return Err(Error::MessageWithRange(
+                "Only max 6 hexadecimal digits are allowed for unicode point code.".to_owned(),
+                codepoint_range,
+            ));
+        }
+
+        if codepoint_string.is_empty() {
+            return Err(Error::MessageWithRange(
+                "Empty unicode code point.".to_owned(),
+                codepoint_range,
+            ));
+        }
+
+        let codepoint = u32::from_str_radix(&codepoint_string, 16).unwrap();
+
+        if let Some(ch) = char::from_u32(codepoint) {
+            // valid code point:
+            // 0 to 0x10FFFF, inclusive
+            //
+            // ref:
+            // https://doc.rust-lang.org/std/primitive.char.html
+            Ok(ch)
+        } else {
+            Err(Error::MessageWithRange(
+                "Invalid unicode code point.".to_owned(),
+                codepoint_range,
+            ))
         }
     }
 
-    Ok(count)
-}
+    fn lex_string(&mut self) -> Result<TokenWithRange, Error> {
+        // "abc"?  //
+        // ^    ^__// to here
+        // |_______// current char, validated
 
-fn lex_raw_string(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // r"abc"?  //
-    // ^^    ^__// to here
-    // ||_______// validated
-    // |________// current char, validated
+        self.push_peek_position();
 
-    let consume_r = iter.upstream.next().unwrap(); // consume char 'r'
-    let consume_quote = iter.upstream.next().unwrap(); // consume the quote
+        self.next_char(); // consume '"'
 
-    let start_position = Some(consume_r.position);
-    let mut end_position = Some(consume_quote.position);
-    let mut last_char = Some(consume_quote.character);
-
-    let mut ss = String::new();
-
-    loop {
-        match iter.upstream.next() {
-            Some(previous_cl) => {
-                let previous_char = previous_cl.character;
-                let previous_position = previous_cl.position;
-                end_position = Some(previous_position);
-                last_char = Some(previous_char);
-
-                match previous_char {
-                    '"' => {
-                        // end of the string
-                        break;
-                    }
-                    _ => {
-                        // ordinary char
-                        ss.push(previous_char);
-                    }
-                }
-            }
-            None => {
-                // EOF
-                return Err(Error::MessageWithPosition(
-                    "Incomplete string, missing closed quote.".to_owned(),
-                    if let Some('\n') = last_char {
-                        position_forward_by_line(end_position.unwrap())
-                    } else {
-                        position_forward(end_position.unwrap())
-                    },
-                ));
-            }
-        }
-    }
-
-    Ok(TokenWithRange::new(
-        Token::String_(ss),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
-
-fn lex_raw_string_with_hash_symbol(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // r#"abc"#?  //
-    // ^^^     ^__// to here
-    // |||________// validated
-    // ||_________// validated
-    // |__________// current char, validated
-
-    let consume_r = iter.upstream.next().unwrap(); // consume char 'r'
-    let _consume_hash = iter.upstream.next().unwrap(); // consume the hash
-    let consume_quote = iter.upstream.next().unwrap(); // consume the quote
-
-    let start_position = Some(consume_r.position);
-    let mut end_position = Some(consume_quote.position);
-    let mut last_char = Some(consume_quote.character);
-
-    let mut ss = String::new();
-
-    loop {
-        match iter.upstream.next() {
-            Some(previous_cl) => {
-                let previous_char = previous_cl.character;
-                let previous_position = previous_cl.position;
-
-                last_char = Some(previous_char);
-                end_position = Some(previous_position);
-
-                match previous_char {
-                    '"' if iter_upstream_equals_char(iter, 0, '#') => {
-                        // end of the string
-
-                        // consume the hash
-                        let consume_hash = iter.upstream.next().unwrap();
-                        end_position = Some(consume_hash.position);
-                        last_char = Some(consume_hash.character);
-                        break;
-                    }
-                    _ => {
-                        // ordinary char
-                        ss.push(previous_char);
-                    }
-                }
-            }
-            None => {
-                return Err(Error::MessageWithPosition(
-                    "Incomplete string, missing the closed quote.".to_owned(),
-                    if let Some('\n') = last_char {
-                        position_forward_by_line(end_position.unwrap())
-                    } else {
-                        position_forward(end_position.unwrap())
-                    },
-                ));
-            }
-        }
-    }
-
-    Ok(TokenWithRange::new(
-        Token::String_(ss),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
-
-fn lex_auto_trimmed_string(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // """\n                    //
-    // ^^^  auto-trimmed string //
-    // |||  ...\n               //
-    // |||  """?                //
-    // |||     ^________________// to here ('?' = any chars or EOF)
-    // |||______________________// validated
-    // ||_______________________// validated
-    // |________________________// current char, validated
-
-    let consume_quote_1 = iter.upstream.next().unwrap(); // consume the 1st char "
-    let _consume_quote_2 = iter.upstream.next().unwrap(); // consume the 2nd char "
-    let consume_quote_3 = iter.upstream.next().unwrap(); // consume the 3rd char "
-
-    let start_position = Some(consume_quote_1.position);
-    let mut end_position = Some(consume_quote_3.position);
-    let mut last_char = Some(consume_quote_3.character);
-
-    if iter_upstream_equals_char(iter, 0, '\n') {
-        let consume_n = iter.upstream.next().unwrap(); // consume '\n'
-
-        end_position = Some(consume_n.position);
-        last_char = Some(consume_n.character);
-    } else if iter_upstream_equals_char(iter, 0, '\r') && iter_upstream_equals_char(iter, 1, '\n') {
-        let _consume_r = iter.upstream.next().unwrap(); // consume '\r'
-        let consume_n = iter.upstream.next().unwrap(); // consume '\n'
-
-        end_position = Some(consume_n.position);
-        last_char = Some(consume_n.character);
-    } else {
-        return Err(Error::MessageWithPosition(
-            "The content of auto-trimmed string should start on a new line.".to_owned(),
-            position_forward(end_position.unwrap()),
-        ));
-    }
-
-    let leading_whitespace_count = consume_leading_whitespaces(iter, end_position.unwrap(), None)?;
-
-    let mut ss = String::new();
-    let mut current_line = String::new();
-
-    loop {
-        match iter.upstream.next() {
-            Some(previous_cl) => {
-                let previous_char = previous_cl.character;
-                let previous_position = previous_cl.position;
-
-                end_position = Some(previous_position);
-                last_char = Some(previous_char);
-
-                match previous_char {
-                    '\n' => {
-                        ss.push('\n');
-                        current_line.clear();
-
-                        consume_leading_whitespaces(
-                            iter,
-                            end_position.unwrap(),
-                            Some(leading_whitespace_count),
-                        )?;
-                    }
-                    '\r' if iter_upstream_equals_char(iter, 0, '\n') => {
-                        let consume_n = iter.upstream.next().unwrap(); // consume '\n'
-
-                        end_position = Some(consume_n.position);
-                        last_char = Some(consume_n.character);
-
-                        ss.push_str("\r\n");
-                        current_line.clear();
-
-                        consume_leading_whitespaces(
-                            iter,
-                            end_position.unwrap(),
-                            Some(leading_whitespace_count),
-                        )?;
-                    }
-                    '"' if current_line.trim().is_empty()
-                        && iter_upstream_equals_char(iter, 0, '"')
-                        && iter_upstream_equals_char(iter, 1, '"') =>
-                    {
-                        let _consume_n1 = iter.upstream.next().unwrap(); // consume '"'
-                        let consume_n2 = iter.upstream.next().unwrap(); // consume '"'
-
-                        // consume '"'
-                        end_position = Some(consume_n2.position);
-                        last_char = Some(consume_n2.character);
-                        break;
-                    }
-                    _ => {
-                        // ordinary char
-                        ss.push(previous_char);
-                        current_line.push(previous_char);
-                    }
-                }
-            }
-            None => {
-                return Err(Error::MessageWithPosition(
-                    "Incomplete string, missing the closed quote.".to_owned(),
-                    if let Some('\n') = last_char {
-                        position_forward_by_line(end_position.unwrap())
-                    } else {
-                        position_forward(end_position.unwrap())
-                    },
-                ));
-            }
-        }
-    }
-
-    Ok(TokenWithRange::new(
-        Token::String_(ss.trim_end().to_owned()),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
-
-fn lex_datetime(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // d"2024-03-16T16:30:50+08:00"?  //
-    // ^^                          ^__// to here
-    // ||_____________________________// validated
-    // |______________________________// current char, validated
-
-    let consume_d = iter.upstream.next().unwrap(); // consume the char 'd'
-    let consume_quote = iter.upstream.next().unwrap(); // consume left quote
-
-    let start_position = Some(consume_d.position);
-    let mut end_position = Some(consume_quote.position);
-    // let mut last_char = Some(consume_quote.character);
-
-    let mut date_string = String::new();
-
-    loop {
-        match iter.upstream.next() {
-            Some(previous_cl) => {
-                let previous_char = previous_cl.character;
-                let previous_position = previous_cl.position;
-                end_position = Some(previous_position);
-
-                match previous_char {
-                    '"' => {
-                        // end of the date time string
-                        break;
-                    }
-                    '0'..='9' | '-' | ':' | ' ' | 't' | 'T' | 'z' | 'Z' | '+' => {
-                        // valid chars
-                        date_string.push(previous_char);
-                    }
-                    _ => {
-                        return Err(Error::MessageWithPosition(
-                            format!("Invalid char '{}' for datetime.", previous_char),
-                            end_position.unwrap(),
-                        ));
-                    }
-                }
-            }
-            None => {
-                return Err(Error::MessageWithPosition(
-                    "Incomplete date time.".to_owned(),
-                    position_forward(end_position.unwrap()),
-                ))
-            }
-        }
-    }
-
-    let len = date_string.len();
-
-    if len == 10 {
-        // YYYY-MM-DD
-        date_string.push_str("T00:00:00Z");
-    } else if len == 19 {
-        // YYYY-MM-DD HH:mm:ss
-        date_string.push('Z');
-    } else if len == 20 || len == 25 {
-        // ref3339
-        // YYYY-MM-DDTHH:mm:ssZ
-        // YYYY-MM-DDTHH:mm:ss+08:00
-    } else {
-        return Err(Error::MessageWithRange(
-            format!(
-                "Invalid date time string: {}, the correct format is: \"YYYY-MM-DD HH:mm:ss\"",
-                date_string
-            ),
-            Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-        ));
-    }
-
-    let rfc3339 = DateTime::parse_from_rfc3339(&date_string).map_err(|e| {
-        Error::MessageWithRange(
-            format!(
-                "Unable parse the string \"{}\" to datetime, reason: {}",
-                date_string, e
-            ),
-            Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-        )
-    })?;
-
-    Ok(TokenWithRange::new(
-        Token::Date(rfc3339),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
-
-fn lex_byte_data_hexadecimal(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // h"00 11 aa bb"?  //
-    // ^^            ^__// to here
-    // ||_______________// validated
-    // |________________// current char, validated
-
-    let consume_optional_whitespaces = |t: &mut PeekableIter<CharWithPosition>| -> usize {
-        // exit when encounting non-whitespaces or EOF
-        let mut amount: usize = 0;
-
-        while let Some(CharWithPosition {
-            character: ' ' | '\t' | '\r' | '\n',
-            position: _,
-        }) = t.peek(0)
-        {
-            amount += 1;
-            t.next();
-        }
-
-        amount
-    };
-
-    let consume_one_or_more_whitespaces = |t: &mut PeekableIter<CharWithPosition>,
-                                           last_position: Position|
-     -> Result<usize, Error> {
-        let mut amount: usize = 0;
-        let mut found: bool = false;
-        let mut end_position = Some(last_position);
-        let mut last_char = None;
+        let mut ss = String::new();
 
         loop {
-            match t.peek(0) {
-                Some(current_cl) => {
-                    let current_char = current_cl.character;
-                    let current_position = current_cl.position;
-                    end_position = Some(current_position);
-                    last_char = Some(current_char);
+            match self.next_char() {
+                Some(prev_previous_char) => {
+                    match prev_previous_char {
+                        '\\' => {
+                            // escape chars
+                            match self.next_char() {
+                                Some(previous_char) => {
+                                    match previous_char {
+                                        '\\' => {
+                                            ss.push('\\');
+                                        }
+                                        '\'' => {
+                                            // single quote does not necessary to be escaped for string
+                                            // however, it is still supported for consistency between chars and strings.
+                                            ss.push('\'');
+                                        }
+                                        '"' => {
+                                            ss.push('"');
+                                        }
+                                        't' => {
+                                            // horizontal tabulation
+                                            ss.push('\t');
+                                        }
+                                        'r' => {
+                                            // carriage return (CR, ascii 13)
+                                            ss.push('\r');
+                                        }
+                                        'n' => {
+                                            // new line character (line feed, LF, ascii 10)
+                                            ss.push('\n');
+                                        }
+                                        '0' => {
+                                            // null char
+                                            ss.push('\0');
+                                        }
+                                        'u' => {
+                                            if self.peek_char_and_equals(0, '{') {
+                                                // unicode code point, e.g. '\u{2d}', '\u{6587}'
+                                                let ch = self.unescape_unicode()?;
+                                                ss.push(ch);
+                                            } else {
+                                                return Err(Error::MessageWithPosition(
 
-                    match current_char {
-                        ' ' | '\t' | '\r' | '\n' => {
-                            // consume
-                            t.next();
-                            found = true;
-                            amount += 1;
+                                                        "Missing the open brace for unicode escape sequence.".to_owned(),
+
+                                                    self.last_position.forward_char()
+                                                ));
+                                            }
+                                        }
+                                        '\r' if self.peek_char_and_equals(0, '\n') => {
+                                            // (single line) long string
+
+                                            self.next_char(); // consume '\n'
+                                            self.consume_leading_whitespaces(None)?;
+                                        }
+                                        '\n' => {
+                                            // (single line) long string
+                                            self.consume_leading_whitespaces(None)?;
+                                        }
+                                        _ => {
+                                            return Err(Error::MessageWithPosition(
+                                                format!(
+                                                    "Unsupported escape char '{}'.",
+                                                    previous_char
+                                                ),
+                                                self.last_position,
+                                            ));
+                                        }
+                                    }
+                                }
+                                None => {
+                                    // `\` + EOF
+                                    return Err(Error::MessageWithPosition(
+                                        "Incomplete char escape sequence.".to_owned(),
+                                        self.last_position,
+                                    ));
+                                }
+                            }
+                        }
+                        '"' => {
+                            // end of the string
+                            break;
                         }
                         _ => {
-                            if found {
-                                break;
-                            } else {
-                                return Err(Error::MessageWithPosition(
-                                    "Expect whitespace between the hexadecimal byte data digits."
-                                        .to_owned(),
-                                    end_position.unwrap(),
-                                ));
-                            }
+                            // ordinary char
+                            ss.push(prev_previous_char);
                         }
                     }
                 }
                 None => {
+                    // `"...EOF`
                     return Err(Error::MessageWithPosition(
-                        "Incomplete hexadecimal byte data, missing the closed quote.".to_owned(),
-                        if let Some('\n') = last_char {
-                            position_forward_by_line(end_position.unwrap())
+                        "Incomplete string, unexpected to reach the end of document.".to_owned(),
+                        if self.last_char == '\n' {
+                            self.last_position.forward_new_line()
                         } else {
-                            position_forward(end_position.unwrap())
+                            self.last_position.forward_char()
                         },
                     ));
                 }
             }
         }
-        Ok(amount)
-    };
 
-    let consume_h = iter.upstream.next().unwrap(); // consume char 'h'
-    let consume_open_quote = iter.upstream.next().unwrap(); // consume quote '"'
+        let ss_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
 
-    let start_position = Some(consume_h.position);
-    let mut end_position = Some(consume_open_quote.position);
-    // let mut last_char = Some(consume_open_quote.character);
+        Ok(TokenWithRange::new(Token::String_(ss), ss_range))
+    }
 
-    let mut bytes: Vec<u8> = Vec::new();
-    let mut chars: [char; 2] = ['0', '0'];
+    /// return the amount of leading whitespaces
+    fn consume_leading_whitespaces(
+        &mut self,
+        expect_whitespace_numbers: Option<usize>,
+    ) -> Result<usize, Error> {
+        // \nssssS  //
+        //   ^   ^__// to here ('s' = whitespace, 'S' = not whitespace)
+        //   |______// current char, UNVALIDATED
 
-    let numbers_of_whitespace = consume_optional_whitespaces(&mut iter.upstream);
-    end_position = Some(position_forward_multiple(
-        end_position.unwrap(),
-        numbers_of_whitespace,
-    ));
+        let mut count = 0;
 
-    loop {
-        if iter_upstream_equals_char(iter, 0, '"') {
-            break;
+        loop {
+            if let Some(max) = expect_whitespace_numbers {
+                if count >= max {
+                    break;
+                }
+            }
+
+            match self.peek_char(0) {
+                Some(current_char) => {
+                    match current_char {
+                        ' ' | '\t' => {
+                            count += 1;
+
+                            self.next_char(); // consume ' ' or '\t'
+                        }
+                        _ => {
+                            break;
+                        }
+                    }
+                }
+                None => {
+                    // EOF
+                    return Err(Error::MessageWithPosition(
+                        "Incomplete string, unexpected to reach the end of document.".to_owned(),
+                        self.last_position.forward_char(),
+                    ));
+                }
+            }
         }
 
-        for c in &mut chars {
-            match iter.upstream.next() {
-                Some(previous_cl) => {
-                    let previous_char = previous_cl.character;
-                    let previous_locatio = previous_cl.position;
-                    end_position = Some(previous_locatio);
+        Ok(count)
+    }
 
+    fn lex_raw_string(&mut self) -> Result<TokenWithRange, Error> {
+        // r"abc"?  //
+        // ^^    ^__// to here
+        // ||_______// validated
+        // |________// current char, validated
+
+        self.push_peek_position();
+
+        self.next_char(); // consume char 'r'
+        self.next_char(); // consume the '"'
+
+        let mut ss = String::new();
+
+        loop {
+            match self.next_char() {
+                Some(previous_char) => {
                     match previous_char {
-                        'a'..='f' | 'A'..='F' | '0'..='9' => {
-                            *c = previous_char;
+                        '"' => {
+                            // end of the string
+                            break;
+                        }
+                        _ => {
+                            // ordinary char
+                            ss.push(previous_char);
+                        }
+                    }
+                }
+                None => {
+                    // `r"...EOF`
+                    return Err(Error::MessageWithPosition(
+                        "Incomplete string,unexpected to reach the end of document.".to_owned(),
+                        if self.last_char == '\n' {
+                            self.last_position.forward_new_line()
+                        } else {
+                            self.last_position.forward_char()
+                        },
+                    ));
+                }
+            }
+        }
+
+        let ss_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        Ok(TokenWithRange::new(Token::String_(ss), ss_range))
+    }
+
+    fn lex_raw_string_with_hash_symbol(&mut self) -> Result<TokenWithRange, Error> {
+        // r#"abc"#?  //
+        // ^^^     ^__// to here
+        // |||________// validated
+        // ||_________// validated
+        // |__________// current char, validated
+
+        // hash symbol = '#', i.e. the pound sign
+
+        self.push_peek_position();
+
+        self.next_char(); // consume 'r'
+        self.next_char(); // consume '#'
+        self.next_char(); // consume '"'
+
+        let mut ss = String::new();
+
+        loop {
+            match self.next_char() {
+                Some(previous_char) => {
+                    match previous_char {
+                        '"' if self.peek_char_and_equals(0, '#') => {
+                            // it is the end of the string
+                            self.next_char(); // consume '#'
+                            break;
+                        }
+                        _ => {
+                            // ordinary char
+                            ss.push(previous_char);
+                        }
+                    }
+                }
+                None => {
+                    // `r#"...EOF`
+                    return Err(Error::MessageWithPosition(
+                        "Incomplete string, unexpected to reach the end of document.".to_owned(),
+                        if self.last_char == '\n' {
+                            self.last_position.forward_new_line()
+                        } else {
+                            self.last_position.forward_char()
+                        },
+                    ));
+                }
+            }
+        }
+
+        let ss_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        Ok(TokenWithRange::new(Token::String_(ss), ss_range))
+    }
+
+    fn lex_auto_trimmed_string(&mut self) -> Result<TokenWithRange, Error> {
+        // """\n                    //
+        // ^^^  auto-trimmed string //
+        // |||  ...\n               //
+        // |||  """?                //
+        // |||     ^________________// to here ('?' = any chars or EOF)
+        // |||______________________// validated
+        // ||_______________________// validated
+        // |________________________// current char, validated
+
+        self.push_peek_position();
+
+        self.next_char(); // consume the 1st '"'
+        self.next_char(); // consume the 2nd '"'
+        self.next_char(); // consume the 3rd '"'
+
+        if self.peek_char_and_equals(0, '\n') {
+            self.next_char(); // consume '\n'
+        } else if self.peek_char_and_equals(0, '\r') && self.peek_char_and_equals(1, '\n') {
+            self.next_char(); // consume '\r'
+            self.next_char(); // consume '\n'
+        } else {
+            return Err(Error::MessageWithPosition(
+                "The content of auto-trimmed string should start on a new line.".to_owned(),
+                self.last_position.forward_char(),
+            ));
+        }
+
+        let leading_whitespace_count = self.consume_leading_whitespaces(None)?;
+
+        let mut ss = String::new();
+        let mut current_line = String::new();
+
+        loop {
+            match self.next_char() {
+                Some(previous_char) => {
+                    match previous_char {
+                        '\n' => {
+                            ss.push('\n');
+                            current_line.clear();
+                            self.consume_leading_whitespaces(Some(leading_whitespace_count))?;
+                        }
+                        '\r' if self.peek_char_and_equals(0, '\n') => {
+                            self.next_char(); // consume '\n'
+
+                            ss.push_str("\r\n");
+                            current_line.clear();
+                            self.consume_leading_whitespaces(Some(leading_whitespace_count))?;
+                        }
+                        '"' if current_line.trim().is_empty()
+                            && self.peek_char_and_equals(0, '"')
+                            && self.peek_char_and_equals(1, '"') =>
+                        {
+                            // it is the end of string
+                            self.next_char(); // consume '"'
+                            self.next_char(); // consume '"'
+                            break;
+                        }
+                        _ => {
+                            // ordinary char
+                            ss.push(previous_char);
+                            current_line.push(previous_char);
+                        }
+                    }
+                }
+                None => {
+                    // `"""\n...EOF`
+                    return Err(Error::MessageWithPosition(
+                        "Incomplete string, unexpected to reach the end of document.".to_owned(),
+                        if self.last_char == '\n' {
+                            self.last_position.forward_new_line()
+                        } else {
+                            self.last_position.forward_char()
+                        },
+                    ));
+                }
+            }
+        }
+
+        let ss_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        Ok(TokenWithRange::new(
+            Token::String_(ss.trim_end().to_owned()),
+            ss_range,
+        ))
+    }
+
+    fn lex_datetime(&mut self) -> Result<TokenWithRange, Error> {
+        // d"2024-03-16T16:30:50+08:00"?  //
+        // ^^                          ^__// to here
+        // ||_____________________________// validated
+        // |______________________________// current char, validated
+
+        self.push_peek_position();
+
+        self.next_char(); // consume the char 'd'
+        self.next_char(); // consume left quote
+
+        let mut date_string = String::new();
+
+        loop {
+            match self.next_char() {
+                Some(previous_char) => {
+                    match previous_char {
+                        '"' => {
+                            // it is the end of the date time string
+                            break;
+                        }
+                        '0'..='9' | '-' | ':' | ' ' | 't' | 'T' | 'z' | 'Z' | '+' => {
+                            // valid chars
+                            date_string.push(previous_char);
                         }
                         _ => {
                             return Err(Error::MessageWithPosition(
-                                format!(
-                                    "Invalid digit '{}' for hexadecimal byte data.",
-                                    previous_char
-                                ),
-                                end_position.unwrap(),
+                                format!("Invalid char '{}' for datetime.", previous_char),
+                                self.last_position,
                             ));
                         }
                     }
                 }
                 None => {
                     return Err(Error::MessageWithPosition(
-                        "Incomplete hexadecimal byte data, a byte must consist of two digits."
-                            .to_owned(),
-                        position_forward(end_position.unwrap()),
+                        "Incomplete date time, unexpected to reach the end of document.".to_owned(),
+                        self.last_position.forward_char(),
                     ))
                 }
             }
         }
 
-        let byte_string = String::from_iter(chars);
-        let byte_number = u8::from_str_radix(&byte_string, 16).unwrap();
-        bytes.push(byte_number);
+        let date_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
 
-        if iter_upstream_equals_char(iter, 0, '"') {
-            break;
+        let len = date_string.len();
+
+        if len == 10 {
+            // YYYY-MM-DD
+            date_string.push_str("T00:00:00Z");
+        } else if len == 19 {
+            // YYYY-MM-DD HH:mm:ss
+            date_string.push('Z');
+        } else if len == 20 || len == 25 {
+            // ref3339
+            // YYYY-MM-DDTHH:mm:ssZ
+            // YYYY-MM-DDTHH:mm:ss+08:00
+        } else {
+            return Err(Error::MessageWithRange(
+                format!(
+                    "Invalid date time string: {}, the correct format is: \"YYYY-MM-DD HH:mm:ss\"",
+                    date_string
+                ),
+                date_range,
+            ));
         }
 
-        // consume at lease one whitespace
-        consume_one_or_more_whitespaces(&mut iter.upstream, end_position.unwrap())?;
+        let rfc3339 = DateTime::parse_from_rfc3339(&date_string).map_err(|e| {
+            Error::MessageWithRange(
+                format!(
+                    "Unable parse the string \"{}\" to datetime, reason: {}",
+                    date_string, e
+                ),
+                date_range,
+            )
+        })?;
+
+        Ok(TokenWithRange::new(Token::Date(rfc3339), date_range))
     }
 
-    let consume_closed_quote = iter.upstream.next().unwrap(); // consume '"'
-    end_position = Some(consume_closed_quote.position);
+    fn lex_byte_data_hexadecimal(&mut self) -> Result<TokenWithRange, Error> {
+        // h"00 11 aa bb"?  //
+        // ^^            ^__// to here
+        // ||_______________// validated
+        // |________________// current char, validated
 
-    Ok(TokenWithRange::new(
-        Token::ByteData(bytes),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
+        let consume_zero_or_more_whitespaces = |iter: &mut TokenIter| -> usize {
+            // exit when encounting non-whitespaces or EOF
+            let mut amount: usize = 0;
 
-fn lex_line_comment(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // xx...[\r]\n?  //
-    // ^^         ^__// to here ('?' = any char or EOF)
-    // ||____________// validated
-    // |_____________// current char, validated
-    //
-    // x = '/'
+            while let Some(' ' | '\t' | '\r' | '\n') = iter.peek_char(0) {
+                amount += 1;
+                iter.next_char();
+            }
 
-    let consume_slash1 = iter.upstream.next().unwrap(); // consume char the 1st '/'
-    let consume_slash2 = iter.upstream.next().unwrap(); // consume char the 2nd '/'
+            amount
+        };
 
-    let start_position = Some(consume_slash1.position);
-    let mut end_position = Some(consume_slash2.position);
+        let consume_one_or_more_whitespaces = |iter: &mut TokenIter| -> Result<usize, Error> {
+            let mut amount: usize = 0;
 
-    let mut comment_string = String::new();
-
-    while let Some(current_cl) = iter.upstream.peek(0) {
-        let current_char = current_cl.character;
-        let current_position = current_cl.position;
-
-        // ignore all chars except '\n' or '\r\n'
-        // note that the line comment does not include the trailing new line chars (\n or \r\n),
-
-        if current_char == '\n' {
-            break;
-        } else if current_char == '\r' && iter_upstream_equals_char(iter, 0, '\n') {
-            break;
-        }
-
-        iter.upstream.next();
-        end_position = Some(current_position);
-        comment_string.push(current_char);
-    }
-
-    Ok(TokenWithRange::new(
-        Token::Comment(Comment::Line(comment_string)),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
-}
-
-fn lex_block_comment(iter: &mut TokenIter) -> Result<TokenWithRange, Error> {
-    // /*...*/?  //
-    // ^^     ^__// to here
-    // ||________// validated
-    // |_________// current char, validated
-
-    let consume_slash = iter.upstream.next().unwrap(); // consume char '/'
-    let consume_asterisk = iter.upstream.next().unwrap(); // consume char '*'
-
-    let start_position = Some(consume_slash.position);
-    let mut end_position = Some(consume_asterisk.position);
-    let mut last_char = Some(consume_asterisk.character);
-
-    let mut comment_string = String::new();
-    let mut depth = 1;
-
-    loop {
-        match iter.upstream.next() {
-            Some(previous_cl) => {
-                let previous_char = previous_cl.character;
-                let previous_position = previous_cl.position;
-                end_position = Some(previous_position);
-                last_char = Some(previous_char);
-
-                match previous_char {
-                    '/' if iter_upstream_equals_char(iter, 0, '*') => {
-                        // nested block comment
-                        comment_string.push_str("/*");
-
-                        // consume '*'
-                        let consume_asterisk = iter.upstream.next().unwrap();
-                        end_position = Some(consume_asterisk.position);
-                        last_char = Some(consume_asterisk.character);
-
-                        // increase depth
-                        depth += 1;
-                    }
-                    '*' if iter_upstream_equals_char(iter, 0, '/') => {
-                        // consume '/'
-                        let consume_slah = iter.upstream.next().unwrap();
-                        end_position = Some(consume_slah.position);
-                        last_char = Some(consume_slah.character);
-
-                        // decrease depth
-                        depth -= 1;
-
-                        // check pairs
-                        if depth == 0 {
-                            break;
-                        } else {
-                            comment_string.push_str("*/");
+            loop {
+                match iter.peek_char(0) {
+                    Some(current_char) => {
+                        match current_char {
+                            ' ' | '\t' | '\r' | '\n' => {
+                                // consume whitespace
+                                iter.next_char();
+                                amount += 1;
+                            }
+                            _ => {
+                                if amount > 0 {
+                                    break;
+                                } else {
+                                    return Err(Error::MessageWithPosition(
+                                        "Expect whitespace between the hexadecimal byte data digits."
+                                            .to_owned(),
+                                        iter.last_position.forward_char()
+                                    ));
+                                }
+                            }
                         }
                     }
-                    _ => {
-                        // ignore all chars except "/*" and "*/"
-                        // note that line comments within block comments are ignored also.
-                        comment_string.push(previous_char);
+                    None => {
+                        return Err(Error::MessageWithPosition(
+                            "Incomplete hexadecimal byte data, unexpected to reach the end of document.".to_owned(),
+                            if iter.last_char == '\n' {
+                                iter.last_position.forward_new_line()
+                            } else {
+                                iter.last_position.forward_char()
+                            },
+                        ));
                     }
                 }
             }
-            None => {
-                let msg = if depth > 1 {
-                    "Incomplete block comment, nested block comments are not closed.".to_owned()
-                } else {
-                    "Incomplete block comment, missing the closed tag.".to_owned()
-                };
 
-                let position = if let Some('\n') = last_char {
-                    position_forward_by_line(end_position.unwrap())
-                } else {
-                    position_forward(end_position.unwrap())
-                };
+            Ok(amount)
+        };
 
-                return Err(Error::MessageWithPosition(msg, position));
+        self.push_peek_position();
+
+        self.next_char(); // consume char 'h'
+        self.next_char(); // consume quote '"'
+
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut chars: [char; 2] = ['0', '0'];
+
+        consume_zero_or_more_whitespaces(self);
+
+        loop {
+            if self.peek_char_and_equals(0, '"') {
+                break;
             }
+
+            for c in &mut chars {
+                match self.next_char() {
+                    Some(previous_char) => {
+                        match previous_char {
+                            'a'..='f' | 'A'..='F' | '0'..='9' => {
+                                *c = previous_char;
+                            }
+                            _ => {
+                                return Err(Error::MessageWithPosition(
+                                    format!(
+                                        "Invalid digit '{}' for hexadecimal byte data.",
+                                        previous_char
+                                    ),
+                                    self.last_position
+                                ));
+                            }
+                        }
+                    }
+                    None => {
+                        return Err(Error::MessageWithPosition(
+                            "Incomplete hexadecimal byte data, unexpected to reach the end of document.".to_owned(),
+                                if self.last_char == '\n' {
+                                    self.last_position.forward_new_line()
+                                } else {
+                                    self.last_position.forward_char()
+                                },
+                        ))
+                    }
+                }
+            }
+
+            let byte_string = String::from_iter(chars);
+            let byte_number = u8::from_str_radix(&byte_string, 16).unwrap();
+            bytes.push(byte_number);
+
+            if self.peek_char_and_equals(0, '"') {
+                break;
+            }
+
+            // consume at lease one whitespace
+            consume_one_or_more_whitespaces(self)?;
         }
+
+        self.next_char(); // consume '"'
+
+        let bytes_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        Ok(TokenWithRange::new(Token::ByteData(bytes), bytes_range))
     }
 
-    Ok(TokenWithRange::new(
-        Token::Comment(Comment::Block(comment_string)),
-        Range::from_position_pair_include(&start_position.unwrap(), &end_position.unwrap()),
-    ))
+    fn lex_line_comment(&mut self) -> Result<TokenWithRange, Error> {
+        // xx...[\r]\n?  //
+        // ^^         ^__// to here ('?' = any char or EOF)
+        // ||____________// validated
+        // |_____________// current char, validated
+        //
+        // x = '/'
+
+        self.push_peek_position();
+
+        self.next_char(); // consume the 1st '/'
+        self.next_char(); // consume the 2nd '/'
+
+        let mut comment_string = String::new();
+
+        while let Some(current_char) = self.peek_char(0) {
+            // ignore all chars except '\n' or '\r\n'
+            // note that the "line comment token" does not include the trailing new line chars (\n or \r\n),
+
+            match current_char {
+                '\n' => {
+                    break;
+                }
+                '\r' if self.peek_char_and_equals(0, '\n') => {
+                    break;
+                }
+                _ => {
+                    comment_string.push(*current_char);
+
+                    self.next_char(); // consume char
+                }
+            }
+        }
+
+        let comment_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        Ok(TokenWithRange::new(
+            Token::Comment(Comment::Line(comment_string)),
+            comment_range,
+        ))
+    }
+
+    fn lex_block_comment(&mut self) -> Result<TokenWithRange, Error> {
+        // /*...*/?  //
+        // ^^     ^__// to here
+        // ||________// validated
+        // |_________// current char, validated
+
+        self.push_peek_position();
+
+        self.next_char(); // consume '/'
+        self.next_char(); // consume '*'
+
+        let mut comment_string = String::new();
+        let mut depth = 1;
+
+        loop {
+            match self.next_char() {
+                Some(previous_char) => {
+                    match previous_char {
+                        '/' if self.peek_char_and_equals(0, '*') => {
+                            // nested block comment
+                            comment_string.push_str("/*");
+
+                            self.next_char(); // consume '*'
+
+                            // increase depth
+                            depth += 1;
+                        }
+                        '*' if self.peek_char_and_equals(0, '/') => {
+                            self.next_char(); // consume '/'
+
+                            // decrease depth
+                            depth -= 1;
+
+                            // check pairs
+                            if depth == 0 {
+                                break;
+                            } else {
+                                comment_string.push_str("*/");
+                            }
+                        }
+                        _ => {
+                            // ignore all chars except "/*" and "*/"
+                            // note that line comments within block comments are ignored also.
+                            comment_string.push(previous_char);
+                        }
+                    }
+                }
+                None => {
+                    let msg = if depth > 1 {
+                        "Incomplete nested block comment, unexpected to reach the end of document."
+                            .to_owned()
+                    } else {
+                        "Incomplete block comment, unexpected to reach the end of document."
+                            .to_owned()
+                    };
+
+                    let position = if self.last_char == '\n' {
+                        self.last_position.forward_new_line()
+                    } else {
+                        self.last_position.forward_char()
+                    };
+
+                    return Err(Error::MessageWithPosition(msg, position));
+                }
+            }
+        }
+
+        let comment_range =
+            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+
+        Ok(TokenWithRange::new(
+            Token::Comment(Comment::Block(comment_string)),
+            comment_range,
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -2601,79 +2390,80 @@ mod tests {
     }
 
     #[test]
-    fn test_chars_with_position_iter1() {
-        let mut chars = "a\nmn\nxyz".chars();
-        let mut iter = CharsWithPositionIter::new(0, &mut chars);
+    fn test_chars_with_position_iter() {
+        {
+            let mut chars0 = "a\nmn\nxyz".chars();
+            let mut iter0 = CharsWithPositionIter::new(0, &mut chars0);
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('a', Position::new(0, 0, 0, 0)))
-        );
+            assert_eq!(
+                iter0.next(),
+                Some(CharWithPosition::new('a', Position::new(0, 0, 0, 0)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('\n', Position::new(0, 1, 0, 1)))
-        );
+            assert_eq!(
+                iter0.next(),
+                Some(CharWithPosition::new('\n', Position::new(0, 1, 0, 1)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('m', Position::new(0, 2, 1, 0)))
-        );
+            assert_eq!(
+                iter0.next(),
+                Some(CharWithPosition::new('m', Position::new(0, 2, 1, 0)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('n', Position::new(0, 3, 1, 1)))
-        );
+            assert_eq!(
+                iter0.next(),
+                Some(CharWithPosition::new('n', Position::new(0, 3, 1, 1)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('\n', Position::new(0, 4, 1, 2)))
-        );
+            assert_eq!(
+                iter0.next(),
+                Some(CharWithPosition::new('\n', Position::new(0, 4, 1, 2)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('x', Position::new(0, 5, 2, 0)))
-        );
+            assert_eq!(
+                iter0.next(),
+                Some(CharWithPosition::new('x', Position::new(0, 5, 2, 0)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('y', Position::new(0, 6, 2, 1)))
-        );
+            assert_eq!(
+                iter0.next(),
+                Some(CharWithPosition::new('y', Position::new(0, 6, 2, 1)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('z', Position::new(0, 7, 2, 2)))
-        );
+            assert_eq!(
+                iter0.next(),
+                Some(CharWithPosition::new('z', Position::new(0, 7, 2, 2)))
+            );
 
-        assert!(iter.next().is_none());
-    }
+            assert!(iter0.next().is_none());
+        }
 
-    #[test]
-    fn test_chars_with_position_iter2() {
-        let mut chars = "\n\r\n\n".chars();
-        let mut iter = CharsWithPositionIter::new(1, &mut chars);
+        {
+            let mut chars1 = "\n\r\n\n".chars();
+            let mut iter1 = CharsWithPositionIter::new(1, &mut chars1);
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('\n', Position::new(1, 0, 0, 0)))
-        );
+            assert_eq!(
+                iter1.next(),
+                Some(CharWithPosition::new('\n', Position::new(1, 0, 0, 0)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('\r', Position::new(1, 1, 1, 0)))
-        );
+            assert_eq!(
+                iter1.next(),
+                Some(CharWithPosition::new('\r', Position::new(1, 1, 1, 0)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('\n', Position::new(1, 2, 1, 1)))
-        );
+            assert_eq!(
+                iter1.next(),
+                Some(CharWithPosition::new('\n', Position::new(1, 2, 1, 1)))
+            );
 
-        assert_eq!(
-            iter.next(),
-            Some(CharWithPosition::new('\n', Position::new(1, 3, 2, 0)))
-        );
+            assert_eq!(
+                iter1.next(),
+                Some(CharWithPosition::new('\n', Position::new(1, 3, 2, 0)))
+            );
 
-        assert!(iter.next().is_none());
+            assert!(iter1.next().is_none());
+        }
     }
 
     #[test]
@@ -4699,7 +4489,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lex_raw_string_with_hash() {
+    fn test_lex_raw_string_with_hash_symbol() {
         assert_eq!(
             lex_str_to_vec(
                 "r#\"abc\ndef\n    uvw\r\n\t escape: \\r\\n\\t\\\\ unicode: \\u{1234} xyz quote: \"foo\"\"#"

@@ -50,6 +50,39 @@ impl Position {
             column,
         }
     }
+
+    pub fn forward_char(&self) -> Position {
+        Position {
+            index: self.index + 1,
+            column: self.column + 1,
+            ..*self
+        }
+    }
+
+    pub fn forward_new_line(&self) -> Position {
+        Position {
+            index: self.index + 1,
+            line: self.line + 1,
+            column: 0,
+            ..*self
+        }
+    }
+
+    // pub fn forward_chars(&self, amount: usize) -> Position {
+    //     Position {
+    //         index: self.index + amount,
+    //         column: self.column + amount,
+    //         ..*self
+    //     }
+    // }
+
+    // pub fn backward_char(&self) -> Position {
+    //     Position {
+    //         index: self.index - 1,
+    //         column: self.column - 1,
+    //         ..*self
+    //     }
+    // }
 }
 
 impl Range {
@@ -96,7 +129,8 @@ impl Range {
         )
     }
 
-    pub fn combine_range_pair(range_start: &Range, range_end: &Range) -> Self {
+    pub fn from_range_pair(range_start: &Range, range_end: &Range) -> Self {
+        // combine two ranges
         Self::new(
             range_start.unit,
             range_start.index,
@@ -104,5 +138,15 @@ impl Range {
             range_start.column,
             range_end.index - range_start.index + range_end.length,
         )
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    pub fn to_position_start(&self) -> Position {
+        Position::from_range_start(self)
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    pub fn to_position_end(&self) -> Position {
+        Position::from_range_end(self)
     }
 }

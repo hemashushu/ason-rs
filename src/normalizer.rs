@@ -137,7 +137,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
 
                             Some(Ok(TokenWithRange::new(
                                 Token::Comma,
-                                Range::combine_range_pair(
+                                Range::from_range_pair(
                                     &start_range.unwrap(),
                                     &end_range.unwrap(),
                                 ),
@@ -145,7 +145,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                         } else {
                             Some(Ok(TokenWithRange::new(
                                 Token::NewLine,
-                                Range::combine_range_pair(
+                                Range::from_range_pair(
                                     &start_range.unwrap(),
                                     &end_range.unwrap(),
                                 ),
@@ -164,7 +164,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
 
                         Some(Ok(TokenWithRange::new(
                             Token::Comma,
-                            Range::combine_range_pair(&start_range.unwrap(), &end_range.unwrap()),
+                            Range::from_range_pair(&start_range.unwrap(), &end_range.unwrap()),
                         )))
                     }
                     Token::Plus => {
@@ -178,7 +178,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         // combines two token ranges.
                                         Some(Err(Error::MessageWithRange(
                                             "The plus sign cannot be applied to NaN.".to_owned(),
-                                            Range::combine_range_pair(
+                                            Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
@@ -188,7 +188,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         // combines two token ranges.
                                         Some(Err(Error::MessageWithRange(
                                             "The plus sign cannot be applied to NaN.".to_owned(),
-                                            Range::combine_range_pair(
+                                            Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
@@ -198,7 +198,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         // check signed number overflow
                                         Some(Err(Error::MessageWithRange(
                                             format!("The byte integer number {} is overflowed.", v),
-                                            Range::combine_range_pair(
+                                            Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
@@ -211,7 +211,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                                 "The short integer number {} is overflowed.",
                                                 v
                                             ),
-                                            Range::combine_range_pair(
+                                            Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
@@ -221,7 +221,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         // check signed number overflow
                                         Some(Err(Error::MessageWithRange(
                                             format!("The integer number {} is overflowed.", v),
-                                            Range::combine_range_pair(
+                                            Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
@@ -231,7 +231,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         // check signed number overflow
                                         Some(Err(Error::MessageWithRange(
                                             format!("The long integer number {} is overflowed.", v),
-                                            Range::combine_range_pair(
+                                            Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
@@ -241,7 +241,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         // combines two token ranges and constructs new number token.
                                         let ret_val = Some(Ok(TokenWithRange {
                                             token: token.clone(),
-                                            range: Range::combine_range_pair(
+                                            range: Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
                                             ),
@@ -263,7 +263,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                 Some(Err(Error::MessageWithRange(
                                     "The plus sign cannot be applied to data other than numbers."
                                         .to_owned(),
-                                    Range::combine_range_pair(&start_range.unwrap(), current_range),
+                                    Range::from_range_pair(&start_range.unwrap(), current_range),
                                 )))
                             }
                             Some(Err(e)) => Some(Err(e.clone())),
@@ -297,7 +297,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             Some(Err(Error::MessageWithRange(
                                                 "The minus sign cannot be applied to NaN."
                                                     .to_owned(),
-                                                Range::combine_range_pair(
+                                                Range::from_range_pair(
                                                     &start_range.unwrap(),
                                                     current_range,
                                                 ),
@@ -306,7 +306,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             // combines two token ranges and constructs new number token.
                                             let ret_val = Some(Ok(TokenWithRange {
                                                 token: Token::Number(NumberToken::F32(v.neg())),
-                                                range: Range::combine_range_pair(
+                                                range: Range::from_range_pair(
                                                     &start_range.unwrap(),
                                                     current_range,
                                                 ),
@@ -325,7 +325,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             Some(Err(Error::MessageWithRange(
                                                 "The minus sign cannot be applied to NaN."
                                                     .to_owned(),
-                                                Range::combine_range_pair(
+                                                Range::from_range_pair(
                                                     &start_range.unwrap(),
                                                     current_range,
                                                 ),
@@ -334,7 +334,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             // combines two token ranges and constructs new number token.
                                             let ret_val = Some(Ok(TokenWithRange {
                                                 token: Token::Number(NumberToken::F64(v.neg())),
-                                                range: Range::combine_range_pair(
+                                                range: Range::from_range_pair(
                                                     &start_range.unwrap(),
                                                     current_range,
                                                 ),
@@ -348,7 +348,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         }
                                     }
                                     NumberToken::I8(v) => {
-                                        let combined_range = Range::combine_range_pair(
+                                        let combined_range = Range::from_range_pair(
                                             &start_range.unwrap(),
                                             current_range,
                                         );
@@ -380,7 +380,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         }
                                     }
                                     NumberToken::I16(v) => {
-                                        let combined_range = Range::combine_range_pair(
+                                        let combined_range = Range::from_range_pair(
                                             &start_range.unwrap(),
                                             current_range,
                                         );
@@ -410,7 +410,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         }
                                     }
                                     NumberToken::I32(v) => {
-                                        let combined_range = Range::combine_range_pair(
+                                        let combined_range = Range::from_range_pair(
                                             &start_range.unwrap(),
                                             current_range,
                                         );
@@ -440,7 +440,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         }
                                     }
                                     NumberToken::I64(v) => {
-                                        let combined_range = Range::combine_range_pair(
+                                        let combined_range = Range::from_range_pair(
                                             &start_range.unwrap(),
                                             current_range,
                                         );
@@ -475,7 +475,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     | NumberToken::U64(_) => Some(Err(Error::MessageWithRange(
                                         "The minus sign cannot be applied to unsigned numbers."
                                             .to_owned(),
-                                        Range::combine_range_pair(
+                                        Range::from_range_pair(
                                             &start_range.unwrap(),
                                             current_range,
                                         ),
@@ -490,7 +490,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                 Some(Err(Error::MessageWithRange(
                                     "The minus sign cannot be applied to data other than numbers."
                                         .to_owned(),
-                                    Range::combine_range_pair(&start_range.unwrap(), current_range),
+                                    Range::from_range_pair(&start_range.unwrap(), current_range),
                                 )))
                             }
                             Some(Err(e)) => Some(Err(e.clone())),

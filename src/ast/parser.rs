@@ -7,7 +7,7 @@
 use crate::{
     error::Error,
     lexer::{CharsWithPositionIter, NumberToken, Token, TokenIter, TokenWithRange},
-    location::{Position, Range},
+    location::Range,
     normalizer::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter},
     peekableiter::PeekableIter,
 };
@@ -33,7 +33,7 @@ pub fn parse_from(s: &str) -> Result<AsonNode, Error> {
     match parser.next_token()? {
         Some(_) => Err(Error::MessageWithPosition(
             "The ASON document does not end properly.".to_owned(),
-            parser.get_position_from_range_start(),
+            parser.last_range.to_position_start(),
         )),
         None => Ok(root),
     }
@@ -41,21 +41,21 @@ pub fn parse_from(s: &str) -> Result<AsonNode, Error> {
 
 struct Parser<'a> {
     upstream: &'a mut PeekableIter<'a, Result<TokenWithRange, Error>>,
-    current_range: Range,
+    last_range: Range,
 }
 
 impl<'a> Parser<'a> {
     fn new(upstream: &'a mut PeekableIter<'a, Result<TokenWithRange, Error>>) -> Self {
         Self {
             upstream,
-            current_range: Range::new(0, 0, 0, 0, 0),
+            last_range: Range::new(0, 0, 0, 0, 0),
         }
     }
 
     fn next_token(&mut self) -> Result<Option<Token>, Error> {
         match self.upstream.next() {
             Some(Ok(TokenWithRange { token, range })) => {
-                self.current_range = range;
+                self.last_range = range;
                 Ok(Some(token))
             }
             Some(Err(e)) => Err(e),
@@ -71,14 +71,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn get_position_from_range_start(&self) -> Position {
-        Position::from_range_start(&self.current_range)
-    }
-
-    fn get_position_from_range_end(&self) -> Position {
-        Position::from_range_end(&self.current_range)
-    }
-
     fn consume_token(&mut self, expect_token: &Token) -> Result<(), Error> {
         match self.next_token()? {
             Some(token) => {
@@ -90,13 +82,13 @@ impl<'a> Parser<'a> {
                             "Expect token: {:?}, actual token: {:?}",
                             expect_token, token
                         ),
-                        self.get_position_from_range_start(),
+                        self.last_range.to_position_start(),
                     ))
                 }
             }
             None => Err(Error::MessageWithPosition(
                 format!("Missing token: {:?}", expect_token),
-                self.get_position_from_range_end(),
+                self.last_range.to_position_end(),
             )),
         }
     }
@@ -195,7 +187,7 @@ impl<'a> Parser<'a> {
                         _ => {
                             return Err(Error::MessageWithPosition(
                                 "Syntax error, unexpected token.".to_owned(),
-                                self.get_position_from_range_start(),
+                                self.last_range.to_position_start(),
                             ))
                         }
                     };
@@ -246,11 +238,11 @@ impl<'a> Parser<'a> {
             0 => {
                 return Err(Error::MessageWithPosition(
                     "The values of tuple variant can not be empty.".to_owned(),
-                    self.get_position_from_range_start(),
+                    self.last_range.to_position_start(),
                 ));
             }
             1 => Variant::with_value(&type_name, &member_name, items.remove(0)),
-            _ => Variant::with_values(&type_name, &member_name, items),
+            _ => Variant::with_tuple(&type_name, &member_name, items),
         };
 
         Ok(AsonNode::Variant(variant_item))
@@ -300,13 +292,13 @@ impl<'a> Parser<'a> {
                 Some(_) => {
                     return Err(Error::MessageWithPosition(
                         "Expect a key name for the object.".to_owned(),
-                        self.get_position_from_range_start(),
+                        self.last_range.to_position_start(),
                     ));
                 }
                 None => {
                     return Err(Error::MessageWithPosition(
                         "Incomplete object, unexpected to reach the end of document.".to_owned(),
-                        self.get_position_from_range_end(),
+                        self.last_range.to_position_end(),
                     ));
                 }
             };
@@ -383,7 +375,7 @@ impl<'a> Parser<'a> {
         if items.is_empty() {
             Err(Error::MessageWithPosition(
                 "Tuple can not be empty.".to_owned(),
-                self.get_position_from_range_start(),
+                self.last_range.to_position_start(),
             ))
         } else {
             Ok(AsonNode::Tuple(items))
@@ -813,7 +805,7 @@ mod tests {
             "#
             )
             .unwrap(),
-            AsonNode::Variant(Variant::with_values(
+            AsonNode::Variant(Variant::with_tuple(
                 "Color",
                 "RGB",
                 vec![
