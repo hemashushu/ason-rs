@@ -71,23 +71,26 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_token(&mut self, expect_token: &Token) -> Result<(), Error> {
+    fn consume_token(&mut self, expected_token: &Token) -> Result<(), Error> {
         match self.next_token()? {
             Some(token) => {
-                if &token == expect_token {
+                if &token == expected_token {
                     Ok(())
                 } else {
                     Err(Error::MessageWithPosition(
                         format!(
                             "Expect token: {:?}, actual token: {:?}",
-                            expect_token, token
+                            expected_token, token
                         ),
                         self.last_range.to_position_start(),
                     ))
                 }
             }
             None => Err(Error::MessageWithPosition(
-                format!("Missing token: {:?}", expect_token),
+                format!(
+                    "Expect token: \"{:?}\", unexpected to reach the end of document.",
+                    expected_token
+                ),
                 self.last_range.to_position_end(),
             )),
         }
@@ -608,6 +611,20 @@ mod tests {
                     index: 1,
                     line: 0,
                     column: 1
+                }
+            ))
+        ));
+
+        // err: missing ':'
+        assert!(matches!(
+            parse_from(r#"{id}"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 3,
+                    line: 0,
+                    column: 3
                 }
             ))
         ));

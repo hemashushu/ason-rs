@@ -5,7 +5,7 @@
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
 mod ast;
-// mod serde;
+mod serde;
 
 mod error;
 mod lexer;
@@ -18,6 +18,6 @@ pub use ast::printer::print_to;
 
 pub use error::Error;
 
-// pub use serde::de::from_str;
-// pub use serde::ser::to_string;
-// pub use serde::serde_date::Date;
+pub use serde::de::from_str;
+pub use serde::ser::to_string;
+pub use serde::serde_date::Date;
