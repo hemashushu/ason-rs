@@ -5,6 +5,8 @@
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
 mod ast;
+mod chariter;
+mod charposition;
 mod serde;
 
 mod error;
@@ -13,11 +15,10 @@ mod location;
 mod normalizer;
 mod peekableiter;
 
+pub use error::Error;
+pub use serde::serde_date::Date;
+
 pub use ast::parser::parse_from;
 pub use ast::printer::print_to;
-
-pub use error::Error;
-
 pub use serde::de::from_str;
 pub use serde::ser::to_string;
-pub use serde::serde_date::Date;

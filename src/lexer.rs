@@ -9,6 +9,7 @@ use std::fmt::Display;
 use chrono::{DateTime, FixedOffset};
 
 use crate::{
+    charposition::CharWithPosition,
     error::Error,
     location::{Position, Range},
 };
@@ -151,60 +152,6 @@ impl Display for NumberType {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct CharWithPosition {
-    pub character: char,
-    pub position: Position,
-}
-
-impl CharWithPosition {
-    pub fn new(character: char, position: Position) -> Self {
-        Self {
-            character,
-            position,
-        }
-    }
-}
-
-pub struct CharsWithPositionIter<'a> {
-    upstream: &'a mut dyn Iterator<Item = char>,
-    current_position: Position,
-}
-
-impl<'a> CharsWithPositionIter<'a> {
-    pub fn new(unit: usize, upstream: &'a mut dyn Iterator<Item = char>) -> Self {
-        Self {
-            upstream,
-            current_position: Position::new(unit, 0, 0, 0),
-        }
-    }
-}
-
-impl<'a> Iterator for CharsWithPositionIter<'a> {
-    type Item = CharWithPosition;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.upstream.next() {
-            Some(c) => {
-                let last_position = self.current_position; // Copy
-
-                // increase positions
-                self.current_position.index += 1;
-
-                if c == '\n' {
-                    self.current_position.line += 1;
-                    self.current_position.column = 0;
-                } else {
-                    self.current_position.column += 1;
-                }
-
-                Some(CharWithPosition::new(c, last_position))
-            }
-            None => None,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct TokenWithRange {
     pub token: Token,
@@ -225,14 +172,14 @@ impl TokenWithRange {
 }
 
 pub struct TokenIter<'a> {
-    upstream: &'a mut PeekableIter<'a, CharWithPosition>,
+    upstream: &'a mut PeekableIter<'a, Result<CharWithPosition, Error>>,
     last_position: Position,
     last_char: char,
     saved_positions: Vec<Position>,
 }
 
 impl<'a> TokenIter<'a> {
-    pub fn new(upstream: &'a mut PeekableIter<'a, CharWithPosition>) -> Self {
+    pub fn new(upstream: &'a mut PeekableIter<'a, Result<CharWithPosition, Error>>) -> Self {
         Self {
             upstream,
             last_position: Position::new(0, 0, 0, 0),
@@ -241,37 +188,40 @@ impl<'a> TokenIter<'a> {
         }
     }
 
-    fn next_char(&mut self) -> Option<char> {
+    fn next_char(&mut self) -> Result<Option<char>, Error> {
         match self.upstream.next() {
-            Some(CharWithPosition {
+            Some(Ok(CharWithPosition {
                 character,
                 position,
-            }) => {
+            })) => {
                 self.last_position = position;
                 self.last_char = character;
-                Some(character)
+                Ok(Some(character))
             }
-            None => None,
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
         }
     }
 
-    fn peek_char(&self, offset: usize) -> Option<&char> {
+    fn peek_char(&self, offset: usize) -> Result<Option<&char>, Error> {
         match self.upstream.peek(offset) {
-            Some(CharWithPosition { character, .. }) => Some(character),
-            None => None,
+            Some(Ok(CharWithPosition { character, .. })) => Ok(Some(character)),
+            Some(Err(e)) => Err(e.clone()),
+            None => Ok(None),
         }
     }
 
     fn peek_char_and_equals(&self, offset: usize, expected_char: char) -> bool {
         matches!(
             self.upstream.peek(offset),
-            Some(CharWithPosition { character, .. }) if character == &expected_char)
+            Some(Ok(CharWithPosition { character, .. })) if character == &expected_char)
     }
 
-    fn peek_position(&self, offset: usize) -> Option<&Position> {
+    fn peek_position(&self, offset: usize) -> Result<Option<&Position>, Error> {
         match self.upstream.peek(offset) {
-            Some(CharWithPosition { position, .. }) => Some(position),
-            None => None,
+            Some(Ok(CharWithPosition { position, .. })) => Ok(Some(position)),
+            Some(Err(e)) => Err(e.clone()),
+            None => Ok(None),
         }
     }
 
@@ -280,7 +230,8 @@ impl<'a> TokenIter<'a> {
     // }
 
     fn push_peek_position(&mut self) {
-        self.saved_positions.push(*self.peek_position(0).unwrap());
+        self.saved_positions
+            .push(*self.peek_position(0).unwrap().unwrap());
     }
 
     fn pop_saved_position(&mut self) -> Position {
@@ -296,187 +247,202 @@ impl<'a> Iterator for TokenIter<'a> {
     type Item = Result<TokenWithRange, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.lex_next()
+        // skip all whitespaces
+        loop {
+            match self.peek_char(0) {
+                Ok(Some(' ' | '\t')) => {
+                    self.next_char().unwrap();
+                }
+                Ok(Some(_)) => {
+                    break;
+                }
+                Ok(None) => {
+                    return None;
+                }
+                Err(e) => {
+                    return Some(Err(e));
+                }
+            }
+        }
+
+        // lex next token
+        match self.peek_char(0) {
+            Ok(Some(_)) => Some(self.lex_token()),
+            Ok(None) => None,
+            Err(e) => Some(Err(e)),
+        }
     }
 }
 
 impl<'a> TokenIter<'a> {
-    fn lex_next(&mut self) -> Option<Result<TokenWithRange, Error>> {
-        // skip all whitespaces
-        while matches!(self.peek_char(0), Some(' ' | '\t')) {
-            self.next_char();
-        }
+    fn lex_token(&mut self) -> Result<TokenWithRange, Error> {
+        // c....
+        // ^____ current char, not EOF, validated
 
-        if let Some(current_char) = self.peek_char(0) {
-            let result = match current_char {
-                '\r' if self.peek_char_and_equals(1, '\n') => {
-                    self.push_peek_position();
+        match self.peek_char(0).unwrap().unwrap() {
+            '\r' if self.peek_char_and_equals(1, '\n') => {
+                self.push_peek_position();
 
-                    self.next_char(); // consume '\r'
-                    self.next_char(); // consume '\n'
+                self.next_char()?; // consume '\r'
+                self.next_char()?; // consume '\n'
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::NewLine,
-                        &self.pop_saved_position(),
-                        2,
-                    ))
-                }
-                '\n' => {
-                    self.next_char(); // consule '\n'
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::NewLine,
+                    &self.pop_saved_position(),
+                    2,
+                ))
+            }
+            '\n' => {
+                self.next_char()?; // consule '\n'
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::NewLine,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                ',' => {
-                    self.next_char(); // consume ','
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::NewLine,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            ',' => {
+                self.next_char()?; // consume ','
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::Comma,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                ':' => {
-                    self.next_char(); // consule ':'
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::Comma,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            ':' => {
+                self.next_char()?; // consule ':'
 
-                    // note that this is the standalone colon.
-                    // it does not include the seperator "::" which is
-                    // exists in the middle of the variant full name.
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::Colon,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                '{' => {
-                    self.next_char(); // consule '{'
+                // note that this is the standalone colon.
+                // it does not include the seperator "::" which is
+                // exists in the middle of the variant full name.
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::Colon,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            '{' => {
+                self.next_char()?; // consule '{'
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::LeftBrace,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                '}' => {
-                    self.next_char(); // consule '}'
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::LeftBrace,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            '}' => {
+                self.next_char()?; // consule '}'
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::RightBrace,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                '[' => {
-                    self.next_char(); // consule '['
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::RightBrace,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            '[' => {
+                self.next_char()?; // consule '['
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::LeftBracket,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                ']' => {
-                    self.next_char(); // consule ']'
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::LeftBracket,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            ']' => {
+                self.next_char()?; // consule ']'
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::RightBracket,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                '(' => {
-                    self.next_char(); // consule '('
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::RightBracket,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            '(' => {
+                self.next_char()?; // consule '('
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::LeftParen,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                ')' => {
-                    self.next_char(); // consule ')'
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::LeftParen,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            ')' => {
+                self.next_char()?; // consule ')'
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::RightParen,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                '+' => {
-                    self.next_char(); // consule '+'
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::RightParen,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            '+' => {
+                self.next_char()?; // consule '+'
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::Plus,
-                        &self.last_position,
-                        1,
-                    ))
-                }
-                '-' => {
-                    self.next_char(); // consule '-'
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::Plus,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            '-' => {
+                self.next_char()?; // consule '-'
 
-                    Ok(TokenWithRange::from_position_and_length(
-                        Token::Minus,
-                        &self.last_position,
-                        1,
-                    ))
+                Ok(TokenWithRange::from_position_and_length(
+                    Token::Minus,
+                    &self.last_position,
+                    1,
+                ))
+            }
+            '0'..='9' => {
+                // number
+                self.lex_number()
+            }
+            'h' if self.peek_char_and_equals(1, '"') => {
+                // hex byte data
+                self.lex_byte_data_hexadecimal()
+            }
+            'd' if self.peek_char_and_equals(1, '"') => {
+                // date
+                self.lex_datetime()
+            }
+            'r' if self.peek_char_and_equals(1, '"') => {
+                // raw string
+                self.lex_raw_string()
+            }
+            'r' if self.peek_char_and_equals(1, '#') && self.peek_char_and_equals(2, '"') => {
+                // raw string with hash symbol
+                self.lex_raw_string_with_hash_symbol()
+            }
+            '"' => {
+                if self.peek_char_and_equals(1, '"') && self.peek_char_and_equals(2, '"') {
+                    // auto-trimmed string
+                    self.lex_auto_trimmed_string()
+                } else {
+                    // normal string
+                    self.lex_string()
                 }
-                '0'..='9' => {
-                    // number
-                    self.lex_number()
-                }
-                'h' if self.peek_char_and_equals(1, '"') => {
-                    // hex byte data
-                    self.lex_byte_data_hexadecimal()
-                }
-                'd' if self.peek_char_and_equals(1, '"') => {
-                    // date
-                    self.lex_datetime()
-                }
-                'r' if self.peek_char_and_equals(1, '"') => {
-                    // raw string
-                    self.lex_raw_string()
-                }
-                'r' if self.peek_char_and_equals(1, '#') && self.peek_char_and_equals(2, '"') => {
-                    // raw string with hash symbol
-                    self.lex_raw_string_with_hash_symbol()
-                }
-                '"' => {
-                    if self.peek_char_and_equals(1, '"') && self.peek_char_and_equals(2, '"') {
-                        // auto-trimmed string
-                        self.lex_auto_trimmed_string()
-                    } else {
-                        // normal string
-                        self.lex_string()
-                    }
-                }
-                '\'' => {
-                    // char
-                    self.lex_char()
-                }
-                '/' if self.peek_char_and_equals(1, '/') => {
-                    // line comment
-                    self.lex_line_comment()
-                }
-                '/' if self.peek_char_and_equals(1, '*') => {
-                    // block comment
-                    self.lex_block_comment()
-                }
-                'a'..='z' | 'A'..='Z' | '_' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
-                    // identifier (the key name of struct/object) or keyword
-                    self.lex_identifier_or_keyword()
-                }
-                _ => Err(Error::MessageWithPosition(
-                    format!("Syntax error, unexpected char '{}'.", current_char),
-                    *self.peek_position(0).unwrap(),
-                )),
-            };
-
-            Some(result)
-        } else {
-            None
+            }
+            '\'' => {
+                // char
+                self.lex_char()
+            }
+            '/' if self.peek_char_and_equals(1, '/') => {
+                // line comment
+                self.lex_line_comment()
+            }
+            '/' if self.peek_char_and_equals(1, '*') => {
+                // block comment
+                self.lex_block_comment()
+            }
+            'a'..='z' | 'A'..='Z' | '_' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
+                // identifier (the key name of struct/object) or keyword
+                self.lex_identifier_or_keyword()
+            }
+            current_char @ _ => Err(Error::MessageWithPosition(
+                format!("Syntax error, unexpected char '{}'.", current_char),
+                *self.peek_position(0).unwrap().unwrap(),
+            )),
         }
     }
 
@@ -493,17 +459,17 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        while let Some(current_char) = self.peek_char(0) {
+        while let Some(current_char) = self.peek_char(0)? {
             match current_char {
                 '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => {
                     name_string.push(*current_char);
-                    self.next_char(); // consume char
+                    self.next_char()?; // consume char
                 }
                 ':' if self.peek_char_and_equals(1, ':') => {
                     found_double_colon = true;
                     name_string.push_str("::");
-                    self.next_char(); // consume 1st ":"
-                    self.next_char(); // consume 2nd ":"
+                    self.next_char()?; // consume 1st ":"
+                    self.next_char()?; // consume 2nd ":"
                 }
                 '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
                     // A char is a ‘Unicode scalar value’, which is any ‘Unicode code point’ other than a surrogate code point.
@@ -539,7 +505,7 @@ impl<'a> TokenIter<'a> {
                     // https://www.unicode.org/reports/tr31/tr31-37.html
 
                     name_string.push(*current_char);
-                    self.next_char(); // consume char
+                    self.next_char()?; // consume char
                 }
                 ' ' | '\t' | '\r' | '\n' | ',' | ':' | '{' | '}' | '[' | ']' | '(' | ')' | '/'
                 | '\'' | '"' => {
@@ -549,7 +515,7 @@ impl<'a> TokenIter<'a> {
                 _ => {
                     return Err(Error::MessageWithPosition(
                         format!("Invalid char '{}' for identifier.", current_char),
-                        *self.peek_position(0).unwrap(),
+                        *self.peek_position(0).unwrap().unwrap(),
                     ));
                 }
             }
@@ -661,22 +627,22 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        while let Some(current_char) = self.peek_char(0) {
+        while let Some(current_char) = self.peek_char(0)? {
             match current_char {
                 '0'..='9' => {
                     // valid digits for decimal number
                     num_string.push(*current_char);
 
-                    self.next_char(); // consume digit
+                    self.next_char()?; // consume digit
                 }
                 '_' => {
-                    self.next_char(); // consume '_'
+                    self.next_char()?; // consume '_'
                 }
                 '.' if !found_point => {
                     found_point = true;
                     num_string.push(*current_char);
 
-                    self.next_char(); // consume '.'
+                    self.next_char()?; // consume '.'
                 }
                 'e' if !found_e => {
                     found_e = true;
@@ -686,19 +652,19 @@ impl<'a> TokenIter<'a> {
                     // 123e-45
                     if self.peek_char_and_equals(1, '-') {
                         num_string.push_str("e-");
-                        self.next_char(); // consume 'e'
-                        self.next_char(); // consume '-'
+                        self.next_char()?; // consume 'e'
+                        self.next_char()?; // consume '-'
                     } else if self.peek_char_and_equals(1, '+') {
                         num_string.push_str("e+");
-                        self.next_char(); // consume 'e'
-                        self.next_char(); // consume '+'
+                        self.next_char()?; // consume 'e'
+                        self.next_char()?; // consume '+'
                     } else {
                         num_string.push(*current_char);
-                        self.next_char(); // consume 'e'
+                        self.next_char()?; // consume 'e'
                     }
                 }
                 'i' | 'u' | 'f'
-                    if num_type.is_none() && matches!(self.peek_char(1), Some('0'..='9')) =>
+                    if num_type.is_none() && matches!(self.peek_char(1)?, Some('0'..='9')) =>
                 {
                     let nt = self.lex_number_type_suffix()?;
                     num_type.replace(nt);
@@ -712,7 +678,7 @@ impl<'a> TokenIter<'a> {
                 _ => {
                     return Err(Error::MessageWithPosition(
                         format!("Invalid char '{}' for decimal number.", current_char),
-                        *self.peek_position(0).unwrap(),
+                        *self.peek_position(0).unwrap().unwrap(),
                     ));
                 }
             }
@@ -945,19 +911,19 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume char 'i/u/f'
+        self.next_char()?; // consume char 'i/u/f'
 
         let mut type_name = String::new();
         type_name.push(self.last_char);
 
-        while let Some(current_char) = self.peek_char(0) {
+        while let Some(current_char) = self.peek_char(0)? {
             match current_char {
                 '0'..='9' => {
                     // valid char for type name
                     type_name.push(*current_char);
 
                     // consume digit
-                    self.next_char();
+                    self.next_char()?;
                 }
                 _ => {
                     break;
@@ -984,8 +950,8 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume '0'
-        self.next_char(); // consume 'x'
+        self.next_char()?; // consume '0'
+        self.next_char()?; // consume 'x'
 
         let mut num_string = String::new();
         let mut num_type: Option<NumberType> = None; // "_ixx", "_uxx"
@@ -993,11 +959,11 @@ impl<'a> TokenIter<'a> {
         let mut found_point: bool = false; // to indicated whether char '.' is found
         let mut found_p: bool = false; // to indicated whether char 'p' is found
 
-        while let Some(current_char) = self.peek_char(0) {
+        while let Some(current_char) = self.peek_char(0)? {
             match current_char {
                 'f' if num_type.is_none()
                     && found_p
-                    && matches!(self.peek_char(1), Some('0'..='9')) =>
+                    && matches!(self.peek_char(1)?, Some('0'..='9')) =>
                 {
                     // 'f' is allowed only in the hex floating point literal mode, (i.e. the
                     //  character 'p' should be detected first)
@@ -1009,10 +975,10 @@ impl<'a> TokenIter<'a> {
                     // valid digits for hex number
                     num_string.push(*current_char);
 
-                    self.next_char(); // consume digit
+                    self.next_char()?; // consume digit
                 }
                 '_' => {
-                    self.next_char(); // consume '_'
+                    self.next_char()?; // consume '_'
                 }
                 '.' if !found_point && !found_p => {
                     // going to be hex floating point literal mode
@@ -1020,7 +986,7 @@ impl<'a> TokenIter<'a> {
 
                     num_string.push(*current_char);
 
-                    self.next_char(); // consume '.'
+                    self.next_char()?; // consume '.'
                 }
                 'p' | 'P' if !found_p => {
                     // hex floating point literal mode
@@ -1031,22 +997,22 @@ impl<'a> TokenIter<'a> {
                     // 0x0.123p-45
                     if self.peek_char_and_equals(1, '-') {
                         num_string.push_str("p-");
-                        self.next_char(); // consume 'p'
-                        self.next_char(); // consume '-'
+                        self.next_char()?; // consume 'p'
+                        self.next_char()?; // consume '-'
                     } else if self.peek_char_and_equals(1, '+') {
                         num_string.push_str("p+");
-                        self.next_char(); // consume 'p'
-                        self.next_char(); // consume '+'
+                        self.next_char()?; // consume 'p'
+                        self.next_char()?; // consume '+'
                     } else {
                         num_string.push(*current_char);
-                        self.next_char(); // consume 'p'
+                        self.next_char()?; // consume 'p'
                     }
                 }
                 'i' | 'u'
                     if num_type.is_none()
                         && !found_point
                         && !found_p
-                        && matches!(self.peek_char(1), Some('0'..='9')) =>
+                        && matches!(self.peek_char(1)?, Some('0'..='9')) =>
                 {
                     // only 'i' and 'u' are allowed for hexadecimal integer numbers,
                     // and 'f' is a ordinary hex digit.
@@ -1063,7 +1029,7 @@ impl<'a> TokenIter<'a> {
                 _ => {
                     return Err(Error::MessageWithPosition(
                         format!("Invalid char '{}' for hexadecimal number.", current_char),
-                        *self.peek_position(0).unwrap(),
+                        *self.peek_position(0).unwrap().unwrap(),
                     ));
                 }
             }
@@ -1282,25 +1248,27 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume '0'
-        self.next_char(); // consume 'b'
+        self.next_char()?; // consume '0'
+        self.next_char()?; // consume 'b'
 
         let mut num_string = String::new();
         let mut num_type: Option<NumberType> = None;
 
-        while let Some(current_char) = self.peek_char(0) {
+        while let Some(current_char) = self.peek_char(0)? {
             match current_char {
                 '0' | '1' => {
                     // valid digits for binary number
                     num_string.push(*current_char);
 
-                    self.next_char(); // consume digit
+                    self.next_char()?; // consume digit
                 }
                 '_' => {
-                    self.next_char(); // consume '_'
+                    self.next_char()?; // consume '_'
                 }
                 // binary form only supports integer numbers, does not support floating-point numbers
-                'i' | 'u' if num_type.is_none() && matches!(self.peek_char(1), Some('0'..='9')) => {
+                'i' | 'u'
+                    if num_type.is_none() && matches!(self.peek_char(1)?, Some('0'..='9')) =>
+                {
                     let nt = self.lex_number_type_suffix()?;
                     num_type.replace(nt);
                     break;
@@ -1313,7 +1281,7 @@ impl<'a> TokenIter<'a> {
                 _ => {
                     return Err(Error::MessageWithPosition(
                         format!("Invalid char '{}' for binary number.", current_char),
-                        *self.peek_position(0).unwrap(),
+                        *self.peek_position(0).unwrap().unwrap(),
                     ));
                 }
             }
@@ -1466,14 +1434,14 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume "'"
+        self.next_char()?; // consume "'"
 
-        let ch = match self.next_char() {
+        let ch = match self.next_char()? {
             Some(prev_previous_char) => {
                 match prev_previous_char {
                     '\\' => {
                         // escape chars
-                        match self.next_char() {
+                        match self.next_char()? {
                             Some(previous_char) => {
                                 match previous_char {
                                     '\\' => '\\',
@@ -1553,7 +1521,7 @@ impl<'a> TokenIter<'a> {
         };
 
         // consume the right single quote
-        match self.next_char() {
+        match self.next_char()? {
             Some('\'') => {
                 // Ok
             }
@@ -1588,12 +1556,12 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // comsume char '{'
+        self.next_char()?; // comsume char '{'
 
         let mut codepoint_string = String::new();
 
         loop {
-            match self.next_char() {
+            match self.next_char()? {
                 Some(previous_char) => match previous_char {
                     '}' => break,
                     '0'..='9' | 'a'..='f' | 'A'..='F' => codepoint_string.push(previous_char),
@@ -1662,17 +1630,17 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume '"'
+        self.next_char()?; // consume '"'
 
         let mut ss = String::new();
 
         loop {
-            match self.next_char() {
+            match self.next_char()? {
                 Some(prev_previous_char) => {
                     match prev_previous_char {
                         '\\' => {
                             // escape chars
-                            match self.next_char() {
+                            match self.next_char()? {
                                 Some(previous_char) => {
                                     match previous_char {
                                         '\\' => {
@@ -1719,7 +1687,7 @@ impl<'a> TokenIter<'a> {
                                         '\r' if self.peek_char_and_equals(0, '\n') => {
                                             // (single line) long string
 
-                                            self.next_char(); // consume '\n'
+                                            self.next_char()?; // consume '\n'
                                             self.consume_leading_whitespaces(None)?;
                                         }
                                         '\n' => {
@@ -1794,13 +1762,13 @@ impl<'a> TokenIter<'a> {
                 }
             }
 
-            match self.peek_char(0) {
+            match self.peek_char(0)? {
                 Some(current_char) => {
                     match current_char {
                         ' ' | '\t' => {
                             count += 1;
 
-                            self.next_char(); // consume ' ' or '\t'
+                            self.next_char()?; // consume ' ' or '\t'
                         }
                         _ => {
                             break;
@@ -1828,13 +1796,13 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume char 'r'
-        self.next_char(); // consume the '"'
+        self.next_char()?; // consume char 'r'
+        self.next_char()?; // consume the '"'
 
         let mut ss = String::new();
 
         loop {
-            match self.next_char() {
+            match self.next_char()? {
                 Some(previous_char) => {
                     match previous_char {
                         '"' => {
@@ -1878,19 +1846,19 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume 'r'
-        self.next_char(); // consume '#'
-        self.next_char(); // consume '"'
+        self.next_char()?; // consume 'r'
+        self.next_char()?; // consume '#'
+        self.next_char()?; // consume '"'
 
         let mut ss = String::new();
 
         loop {
-            match self.next_char() {
+            match self.next_char()? {
                 Some(previous_char) => {
                     match previous_char {
                         '"' if self.peek_char_and_equals(0, '#') => {
                             // it is the end of the string
-                            self.next_char(); // consume '#'
+                            self.next_char()?; // consume '#'
                             break;
                         }
                         _ => {
@@ -1931,15 +1899,15 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume the 1st '"'
-        self.next_char(); // consume the 2nd '"'
-        self.next_char(); // consume the 3rd '"'
+        self.next_char()?; // consume the 1st '"'
+        self.next_char()?; // consume the 2nd '"'
+        self.next_char()?; // consume the 3rd '"'
 
         if self.peek_char_and_equals(0, '\n') {
-            self.next_char(); // consume '\n'
+            self.next_char()?; // consume '\n'
         } else if self.peek_char_and_equals(0, '\r') && self.peek_char_and_equals(1, '\n') {
-            self.next_char(); // consume '\r'
-            self.next_char(); // consume '\n'
+            self.next_char()?; // consume '\r'
+            self.next_char()?; // consume '\n'
         } else {
             return Err(Error::MessageWithPosition(
                 "The content of auto-trimmed string should start on a new line.".to_owned(),
@@ -1953,7 +1921,7 @@ impl<'a> TokenIter<'a> {
         let mut current_line = String::new();
 
         loop {
-            match self.next_char() {
+            match self.next_char()? {
                 Some(previous_char) => {
                     match previous_char {
                         '\n' => {
@@ -1962,7 +1930,7 @@ impl<'a> TokenIter<'a> {
                             self.consume_leading_whitespaces(Some(leading_whitespace_count))?;
                         }
                         '\r' if self.peek_char_and_equals(0, '\n') => {
-                            self.next_char(); // consume '\n'
+                            self.next_char()?; // consume '\n'
 
                             ss.push_str("\r\n");
                             current_line.clear();
@@ -1973,8 +1941,8 @@ impl<'a> TokenIter<'a> {
                             && self.peek_char_and_equals(1, '"') =>
                         {
                             // it is the end of string
-                            self.next_char(); // consume '"'
-                            self.next_char(); // consume '"'
+                            self.next_char()?; // consume '"'
+                            self.next_char()?; // consume '"'
                             break;
                         }
                         _ => {
@@ -2015,13 +1983,13 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume the char 'd'
-        self.next_char(); // consume left quote
+        self.next_char()?; // consume the char 'd'
+        self.next_char()?; // consume left quote
 
         let mut date_string = String::new();
 
         loop {
-            match self.next_char() {
+            match self.next_char()? {
                 Some(previous_char) => {
                     match previous_char {
                         '"' => {
@@ -2093,28 +2061,28 @@ impl<'a> TokenIter<'a> {
         // ||_______________// validated
         // |________________// current char, validated
 
-        let consume_zero_or_more_whitespaces = |iter: &mut TokenIter| -> usize {
+        let consume_zero_or_more_whitespaces = |iter: &mut TokenIter| -> Result<usize, Error> {
             // exit when encounting non-whitespaces or EOF
             let mut amount: usize = 0;
 
-            while let Some(' ' | '\t' | '\r' | '\n') = iter.peek_char(0) {
+            while let Some(' ' | '\t' | '\r' | '\n') = iter.peek_char(0)? {
                 amount += 1;
-                iter.next_char();
+                iter.next_char()?;
             }
 
-            amount
+            Ok(amount)
         };
 
         let consume_one_or_more_whitespaces = |iter: &mut TokenIter| -> Result<usize, Error> {
             let mut amount: usize = 0;
 
             loop {
-                match iter.peek_char(0) {
+                match iter.peek_char(0)? {
                     Some(current_char) => {
                         match current_char {
                             ' ' | '\t' | '\r' | '\n' => {
                                 // consume whitespace
-                                iter.next_char();
+                                iter.next_char()?;
                                 amount += 1;
                             }
                             _ => {
@@ -2148,13 +2116,13 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume char 'h'
-        self.next_char(); // consume quote '"'
+        self.next_char()?; // consume char 'h'
+        self.next_char()?; // consume quote '"'
 
         let mut bytes: Vec<u8> = Vec::new();
         let mut chars: [char; 2] = ['0', '0'];
 
-        consume_zero_or_more_whitespaces(self);
+        consume_zero_or_more_whitespaces(self)?;
 
         loop {
             if self.peek_char_and_equals(0, '"') {
@@ -2162,7 +2130,7 @@ impl<'a> TokenIter<'a> {
             }
 
             for c in &mut chars {
-                match self.next_char() {
+                match self.next_char()? {
                     Some(previous_char) => {
                         match previous_char {
                             'a'..='f' | 'A'..='F' | '0'..='9' => {
@@ -2204,7 +2172,7 @@ impl<'a> TokenIter<'a> {
             consume_one_or_more_whitespaces(self)?;
         }
 
-        self.next_char(); // consume '"'
+        self.next_char()?; // consume '"'
 
         let bytes_range =
             Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
@@ -2222,12 +2190,12 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume the 1st '/'
-        self.next_char(); // consume the 2nd '/'
+        self.next_char()?; // consume the 1st '/'
+        self.next_char()?; // consume the 2nd '/'
 
         let mut comment_string = String::new();
 
-        while let Some(current_char) = self.peek_char(0) {
+        while let Some(current_char) = self.peek_char(0)? {
             // ignore all chars except '\n' or '\r\n'
             // note that the "line comment token" does not include the trailing new line chars (\n or \r\n),
 
@@ -2241,7 +2209,7 @@ impl<'a> TokenIter<'a> {
                 _ => {
                     comment_string.push(*current_char);
 
-                    self.next_char(); // consume char
+                    self.next_char()?; // consume char
                 }
             }
         }
@@ -2263,27 +2231,27 @@ impl<'a> TokenIter<'a> {
 
         self.push_peek_position();
 
-        self.next_char(); // consume '/'
-        self.next_char(); // consume '*'
+        self.next_char()?; // consume '/'
+        self.next_char()?; // consume '*'
 
         let mut comment_string = String::new();
         let mut depth = 1;
 
         loop {
-            match self.next_char() {
+            match self.next_char()? {
                 Some(previous_char) => {
                     match previous_char {
                         '/' if self.peek_char_and_equals(0, '*') => {
                             // nested block comment
                             comment_string.push_str("/*");
 
-                            self.next_char(); // consume '*'
+                            self.next_char()?; // consume '*'
 
                             // increase depth
                             depth += 1;
                         }
                         '*' if self.peek_char_and_equals(0, '/') => {
-                            self.next_char(); // consume '/'
+                            self.next_char()?; // consume '/'
 
                             // decrease depth
                             depth -= 1;
@@ -2338,8 +2306,10 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
+        chariter::CharIterFromOrdinary,
+        charposition::CharsWithPositionIter,
         error::Error,
-        lexer::{CharWithPosition, CharsWithPositionIter, Comment, NumberToken, TokenWithRange},
+        lexer::{Comment, NumberToken, TokenWithRange},
         location::{Position, Range},
         peekableiter::PeekableIter,
     };
@@ -2362,10 +2332,10 @@ mod tests {
 
     fn lex_str_to_vec_with_range(s: &str) -> Result<Vec<TokenWithRange>, Error> {
         let mut chars = s.chars();
-        let mut char_position_iter = CharsWithPositionIter::new(0, &mut chars);
-        let mut peekable_char_position_iter: PeekableIter<'_, CharWithPosition> =
-            PeekableIter::new(&mut char_position_iter, 3);
-        let token_iter = TokenIter::new(&mut peekable_char_position_iter);
+        let mut char_iter = CharIterFromOrdinary::new(&mut chars);
+        let mut position_iter = CharsWithPositionIter::new(0, &mut char_iter);
+        let mut peekable_position_iter = PeekableIter::new(&mut position_iter, 3);
+        let token_iter = TokenIter::new(&mut peekable_position_iter);
 
         // do not use `iter.collect::<Vec<_>>()` because the `TokenIter` throws
         // exceptions though the function `next() -> Option<Result<...>>`,
@@ -2387,83 +2357,6 @@ mod tests {
             .map(|e| e.token.to_owned())
             .collect::<Vec<Token>>();
         Ok(tokens)
-    }
-
-    #[test]
-    fn test_chars_with_position_iter() {
-        {
-            let mut chars0 = "a\nmn\nxyz".chars();
-            let mut iter0 = CharsWithPositionIter::new(0, &mut chars0);
-
-            assert_eq!(
-                iter0.next(),
-                Some(CharWithPosition::new('a', Position::new(0, 0, 0, 0)))
-            );
-
-            assert_eq!(
-                iter0.next(),
-                Some(CharWithPosition::new('\n', Position::new(0, 1, 0, 1)))
-            );
-
-            assert_eq!(
-                iter0.next(),
-                Some(CharWithPosition::new('m', Position::new(0, 2, 1, 0)))
-            );
-
-            assert_eq!(
-                iter0.next(),
-                Some(CharWithPosition::new('n', Position::new(0, 3, 1, 1)))
-            );
-
-            assert_eq!(
-                iter0.next(),
-                Some(CharWithPosition::new('\n', Position::new(0, 4, 1, 2)))
-            );
-
-            assert_eq!(
-                iter0.next(),
-                Some(CharWithPosition::new('x', Position::new(0, 5, 2, 0)))
-            );
-
-            assert_eq!(
-                iter0.next(),
-                Some(CharWithPosition::new('y', Position::new(0, 6, 2, 1)))
-            );
-
-            assert_eq!(
-                iter0.next(),
-                Some(CharWithPosition::new('z', Position::new(0, 7, 2, 2)))
-            );
-
-            assert!(iter0.next().is_none());
-        }
-
-        {
-            let mut chars1 = "\n\r\n\n".chars();
-            let mut iter1 = CharsWithPositionIter::new(1, &mut chars1);
-
-            assert_eq!(
-                iter1.next(),
-                Some(CharWithPosition::new('\n', Position::new(1, 0, 0, 0)))
-            );
-
-            assert_eq!(
-                iter1.next(),
-                Some(CharWithPosition::new('\r', Position::new(1, 1, 1, 0)))
-            );
-
-            assert_eq!(
-                iter1.next(),
-                Some(CharWithPosition::new('\n', Position::new(1, 2, 1, 1)))
-            );
-
-            assert_eq!(
-                iter1.next(),
-                Some(CharWithPosition::new('\n', Position::new(1, 3, 2, 0)))
-            );
-
-            assert!(iter1.next().is_none());
-        }
     }
 
     #[test]

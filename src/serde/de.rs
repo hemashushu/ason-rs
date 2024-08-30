@@ -7,8 +7,10 @@
 use serde::de::{self, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess};
 
 use crate::{
+    chariter::CharIterFromOrdinary,
+    charposition::CharsWithPositionIter,
     error::Error,
-    lexer::{CharsWithPositionIter, NumberToken, Token, TokenIter, TokenWithRange},
+    lexer::{NumberToken, Token, TokenIter, TokenWithRange},
     location::{Position, Range},
     normalizer::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter},
     peekableiter::PeekableIter,
@@ -21,10 +23,11 @@ where
     T: de::DeserializeOwned,
 {
     let mut chars = s.chars();
-    from_char_iter(&mut chars)
+    let mut char_iter = CharIterFromOrdinary::new(&mut chars);
+    from_char_iter(&mut char_iter)
 }
 
-pub fn from_char_iter<T>(chars: &mut dyn Iterator<Item = char>) -> Result<T>
+pub fn from_char_iter<T>(char_iter: &mut dyn Iterator<Item = Result<char>>) -> Result<T>
 where
     T: de::DeserializeOwned,
 {
@@ -35,9 +38,10 @@ where
     // see:
     // https://serde.rs/lifetimes.html
 
-    let mut char_position_iter = CharsWithPositionIter::new(0, chars);
-    let mut peekable_char_position_iter = PeekableIter::new(&mut char_position_iter, 3);
-    let mut token_iter = TokenIter::new(&mut peekable_char_position_iter);
+    let mut position_iter = CharsWithPositionIter::new(0, char_iter);
+    let mut peekable_position_iter = PeekableIter::new(&mut position_iter, 3);
+    let mut token_iter = TokenIter::new(&mut peekable_position_iter);
+
     let mut clear_iter = ClearTokenIter::new(&mut token_iter);
     let mut peekable_clear_iter = PeekableIter::new(&mut clear_iter, 1);
     let mut normalized_iter = NormalizedTokenIter::new(&mut peekable_clear_iter);

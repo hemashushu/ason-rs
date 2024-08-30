@@ -11,16 +11,17 @@ use ason::{parse_from, print_to};
 fn main() {
     let mut args = std::env::args();
     // args 0 = program executable file itself
-    // args 1 = source file
+    // args 1 = source file, "-" for STDIN
     //
     // run with Cargo:
     // `$ cargo run -- <filename>`
     //
     // e.g.
     // `$ cargo run -- examples/01-primitive.ason`
+    // `$ cargo run -- -`
     //
-    // run stand-alone:
-    // `$ ason filename`
+    // `$ ason examples/01-primitive.ason`
+    // `$ echo '{id: 123}' | ason -`
 
     if args.len() != 2 {
         // https://doc.rust-lang.org/cargo/reference/environment-variables.html
@@ -28,12 +29,18 @@ fn main() {
         eprintln!();
         eprintln!("Usage:");
         eprintln!("    ason <filename>");
-        eprintln!();
+        eprintln!("");
+        eprintln!("    Pass \"-\" to <filename> for STDIN");
+        eprintln!("");
         eprintln!("Example:");
         eprintln!("    ason examples/01-primitive.ason");
+        eprintln!("    echo '{{id: 123}}' | ason -");
         eprintln!();
-        eprintln!("Source Code: https://github.com/hemashushu/ason-rs");
-        eprintln!("Document: https://hemashushu.github.io/works/ason");
+        eprintln!("Source:");
+        eprintln!("    https://github.com/hemashushu/ason-rs");
+        eprintln!();
+        eprintln!("Document:");
+        eprintln!("    https://hemashushu.github.io/works/ason");
         process::exit(1);
     }
 
@@ -54,7 +61,7 @@ fn main() {
         Ok(n) => n,
         Err(e) => {
             eprintln!(
-                "Can not parse the specified file: {}\nMessage: {}",
+                "Fail to parse the specified file: {}\nMessage: {}",
                 &source_file, e
             );
             process::exit(1);
@@ -64,8 +71,9 @@ fn main() {
     let text = print_to(&node);
     println!("{}", text);
 }
-*/
+
+ */
 
 fn main() {
-    //
+    todo!()
 }

@@ -5,8 +5,10 @@
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
 use crate::{
+    chariter::CharIterFromOrdinary,
+    charposition::CharsWithPositionIter,
     error::Error,
-    lexer::{CharsWithPositionIter, NumberToken, Token, TokenIter, TokenWithRange},
+    lexer::{NumberToken, Token, TokenIter, TokenWithRange},
     location::Range,
     normalizer::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter},
     peekableiter::PeekableIter,
@@ -16,9 +18,10 @@ use super::{AsonNode, KeyValuePair, Number, Variant};
 
 pub fn parse_from(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
-    let mut char_position_iter = CharsWithPositionIter::new(0, &mut chars);
-    let mut peekable_char_position_iter = PeekableIter::new(&mut char_position_iter, 3);
-    let mut token_iter = TokenIter::new(&mut peekable_char_position_iter);
+    let mut char_iter = CharIterFromOrdinary::new(&mut chars);
+    let mut position_iter = CharsWithPositionIter::new(0, &mut char_iter);
+    let mut peekable_position_iter = PeekableIter::new(&mut position_iter, 3);
+    let mut token_iter = TokenIter::new(&mut peekable_position_iter);
     let mut clear_iter = ClearTokenIter::new(&mut token_iter);
     let mut peekable_clear_iter = PeekableIter::new(&mut clear_iter, 1);
     let mut normalized_iter = NormalizedTokenIter::new(&mut peekable_clear_iter);
