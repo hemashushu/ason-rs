@@ -4,16 +4,12 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+use std::io::Read;
+
 use serde::de::{self, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess};
 
 use crate::{
-    chariter::CharIterFromOrdinary,
-    charposition::CharsWithPositionIter,
-    error::Error,
-    lexer::{NumberToken, Token, TokenIter, TokenWithRange},
-    location::{Position, Range},
-    normalizer::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter},
-    peekableiter::PeekableIter,
+    charposition::CharsWithPositionIter, charstream::{CharStreamFromCharIter, CharStreamFromReader}, error::Error, lexer::{NumberToken, Token, TokenIter, TokenWithRange}, location::{Position, Range}, normalizer::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter}, peekableiter::PeekableIter
 };
 
 use super::Result;
@@ -23,11 +19,19 @@ where
     T: de::DeserializeOwned,
 {
     let mut chars = s.chars();
-    let mut char_iter = CharIterFromOrdinary::new(&mut chars);
-    from_char_iter(&mut char_iter)
+    let mut char_stream = CharStreamFromCharIter::new(&mut chars);
+    from_char_stream(&mut char_stream)
 }
 
-pub fn from_char_iter<T>(char_iter: &mut dyn Iterator<Item = Result<char>>) -> Result<T>
+pub fn from_reader<T>(r: Box<dyn Read>) -> Result<T>
+where
+    T: de::DeserializeOwned,
+{
+    let mut char_stream = CharStreamFromReader::new(r);
+    from_char_stream(&mut char_stream)
+}
+
+pub fn from_char_stream<T>(char_stream: &mut dyn Iterator<Item = Result<char>>) -> Result<T>
 where
     T: de::DeserializeOwned,
 {
@@ -38,7 +42,7 @@ where
     // see:
     // https://serde.rs/lifetimes.html
 
-    let mut position_iter = CharsWithPositionIter::new(0, char_iter);
+    let mut position_iter = CharsWithPositionIter::new(0, char_stream);
     let mut peekable_position_iter = PeekableIter::new(&mut position_iter, 3);
     let mut token_iter = TokenIter::new(&mut peekable_position_iter);
 

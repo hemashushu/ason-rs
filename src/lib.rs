@@ -5,7 +5,7 @@
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
 mod ast;
-mod chariter;
+mod charstream;
 mod charposition;
 mod serde;
 
@@ -18,7 +18,8 @@ mod peekableiter;
 pub use error::Error;
 pub use serde::serde_date::Date;
 
-pub use ast::parser::parse_from;
-pub use ast::printer::print_to;
+pub use ast::parser::parse_from_str;
+pub use ast::parser::parse_from_reader;
+pub use ast::printer::print_to_string;
 pub use serde::de::from_str;
 pub use serde::ser::to_string;

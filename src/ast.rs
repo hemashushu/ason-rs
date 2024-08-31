@@ -124,7 +124,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::ast::{
-        parser::parse_from, printer::print_to, AsonNode, KeyValuePair, Number, Variant,
+        parser::parse_from_str, printer::print_to_string, AsonNode, KeyValuePair, Number, Variant,
     };
 
     #[test]
@@ -135,7 +135,7 @@ mod tests {
             orders: [11, 13]
         }"#;
 
-        let node = parse_from(text).unwrap();
+        let node = parse_from_str(text).unwrap();
 
         assert_eq!(
             node,
@@ -187,7 +187,7 @@ mod tests {
             ),
         ]);
 
-        let text = print_to(&node);
+        let text = print_to_string(&node);
 
         assert_eq!(
             text,
@@ -229,8 +229,8 @@ mod tests {
     #[test]
     fn test_example_file_01() {
         let s = read_example_file_to_string("01-primitive.ason");
-        let n = parse_from(&s).unwrap();
-        let t = print_to(&n);
+        let n = parse_from_str(&s).unwrap();
+        let t = print_to_string(&n);
 
         // note that the suffix 'a' should be '0.000000000000000001', but
         // in the debug mode, it may be '0.0000000000000000009999999' and
@@ -328,8 +328,8 @@ mod tests {
     #[test]
     fn test_example_file_02() {
         let s = read_example_file_to_string("02-list.ason");
-        let n = parse_from(&s).unwrap();
-        let t = print_to(&n);
+        let n = parse_from_str(&s).unwrap();
+        let t = print_to_string(&n);
 
         assert_eq!(
             t,
@@ -372,8 +372,8 @@ mod tests {
     #[test]
     fn test_example_file_03() {
         let s = read_example_file_to_string("03-tuple.ason");
-        let n = parse_from(&s).unwrap();
-        let t = print_to(&n);
+        let n = parse_from_str(&s).unwrap();
+        let t = print_to_string(&n);
 
         assert_eq!(
             t,
@@ -390,8 +390,8 @@ mod tests {
     #[test]
     fn test_example_file_04() {
         let s = read_example_file_to_string("04-object.ason");
-        let n = parse_from(&s).unwrap();
-        let t = print_to(&n);
+        let n = parse_from_str(&s).unwrap();
+        let t = print_to_string(&n);
 
         assert_eq!(
             t,
@@ -422,8 +422,8 @@ mod tests {
     #[test]
     fn test_example_file_05() {
         let s = read_example_file_to_string("05-variant.ason");
-        let n = parse_from(&s).unwrap();
-        let t = print_to(&n);
+        let n = parse_from_str(&s).unwrap();
+        let t = print_to_string(&n);
 
         assert_eq!(
             t,

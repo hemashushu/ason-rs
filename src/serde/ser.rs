@@ -32,7 +32,7 @@ pub struct Serializer {
     indent_level: usize,
     indent_chars: String,
 
-    flag_is_first_element: bool,
+    is_first_element: bool,
 }
 
 impl Serializer {
@@ -41,7 +41,7 @@ impl Serializer {
             buffer: Vec::new(),
             indent_level: 0,
             indent_chars: indent_chars.to_owned(),
-            flag_is_first_element: false,
+            is_first_element: false,
         }
     }
 
@@ -66,16 +66,16 @@ impl Serializer {
     }
 
     fn set_first_element_flag(&mut self) {
-        self.flag_is_first_element = true;
+        self.is_first_element = true;
     }
 
     fn clear_first_element_flag(&mut self) {
-        self.flag_is_first_element = false;
+        self.is_first_element = false;
     }
 
-    fn is_first_element(&self) -> bool {
-        self.flag_is_first_element
-    }
+    // fn is_first_element(&self) -> bool {
+    //     self.flag_is_first_element
+    // }
 }
 
 impl<'a> ser::Serializer for &'a mut Serializer {
@@ -400,10 +400,10 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     where
         T: ?Sized + Serialize,
     {
-        let is_first_element = self.is_first_element();
+        let last_is_first_element = self.is_first_element;
         self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
-        if !is_first_element {
+        if !last_is_first_element {
             self.append(", ".to_owned())?;
         }
 
@@ -439,10 +439,10 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     where
         T: ?Sized + Serialize,
     {
-        let is_first_element = self.is_first_element();
+        let last_is_first_element = self.is_first_element;
         self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
-        if !is_first_element {
+        if !last_is_first_element {
             self.append(", ".to_owned())?;
         }
 

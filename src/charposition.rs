@@ -64,7 +64,7 @@ impl<'a> Iterator for CharsWithPositionIter<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        chariter::CharIterFromOrdinary,
+        charstream::CharStreamFromCharIter,
         charposition::{CharWithPosition, CharsWithPositionIter},
         location::Position,
     };
@@ -73,7 +73,7 @@ mod tests {
     fn test_chars_with_position_iter() {
         {
             let mut chars = "a\nmn\nxyz".chars();
-            let mut chariter = CharIterFromOrdinary::new(&mut chars);
+            let mut chariter = CharStreamFromCharIter::new(&mut chars);
             let mut positer = CharsWithPositionIter::new(0, &mut chariter);
 
             assert_eq!(
@@ -121,7 +121,7 @@ mod tests {
 
         {
             let mut chars = "\n\r\n\n".chars();
-            let mut chariter = CharIterFromOrdinary::new(&mut chars);
+            let mut chariter = CharStreamFromCharIter::new(&mut chars);
             let mut positer = CharsWithPositionIter::new(1, &mut chariter);
 
             assert_eq!(

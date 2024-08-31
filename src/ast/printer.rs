@@ -207,7 +207,7 @@ fn print_node(node: &AsonNode, level: usize) -> String {
     }
 }
 
-pub fn print_to(node: &AsonNode) -> String {
+pub fn print_to_string(node: &AsonNode) -> String {
     print_node(node, 0)
 }
 
@@ -215,13 +215,13 @@ pub fn print_to(node: &AsonNode) -> String {
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use crate::ast::parser::parse_from;
+    use crate::ast::parser::parse_from_str;
 
-    use super::print_to;
+    use super::print_to_string;
 
     fn format(s: &str) -> String {
-        let node = parse_from(s).unwrap();
-        print_to(&node)
+        let node = parse_from_str(s).unwrap();
+        print_to_string(&node)
     }
 
     #[test]

@@ -4,9 +4,11 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+use std::io::Read;
+
 use crate::{
-    chariter::CharIterFromOrdinary,
     charposition::CharsWithPositionIter,
+    charstream::{CharStreamFromCharIter, CharStreamFromReader},
     error::Error,
     lexer::{NumberToken, Token, TokenIter, TokenWithRange},
     location::Range,
@@ -16,10 +18,21 @@ use crate::{
 
 use super::{AsonNode, KeyValuePair, Number, Variant};
 
-pub fn parse_from(s: &str) -> Result<AsonNode, Error> {
+pub fn parse_from_str(s: &str) -> Result<AsonNode, Error> {
     let mut chars = s.chars();
-    let mut char_iter = CharIterFromOrdinary::new(&mut chars);
-    let mut position_iter = CharsWithPositionIter::new(0, &mut char_iter);
+    let mut char_stream = CharStreamFromCharIter::new(&mut chars);
+    parse_from_char_stream(&mut char_stream)
+}
+
+pub fn parse_from_reader(r: Box<dyn Read>) -> Result<AsonNode, Error> {
+    let mut char_stream = CharStreamFromReader::new(r);
+    parse_from_char_stream(&mut char_stream)
+}
+
+pub fn parse_from_char_stream(
+    char_stream: &mut dyn Iterator<Item = Result<char, Error>>,
+) -> Result<AsonNode, Error> {
+    let mut position_iter = CharsWithPositionIter::new(0, char_stream);
     let mut peekable_position_iter = PeekableIter::new(&mut position_iter, 3);
     let mut token_iter = TokenIter::new(&mut peekable_position_iter);
     let mut clear_iter = ClearTokenIter::new(&mut token_iter);
@@ -412,7 +425,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        ast::{parser::parse_from, KeyValuePair, Number, Variant},
+        ast::{parser::parse_from_str, KeyValuePair, Number, Variant},
         error::Error,
         location::Position,
     };
@@ -422,7 +435,7 @@ mod tests {
     #[test]
     fn test_parse_simple_value() {
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             123
             "#
@@ -432,7 +445,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             true
             "#
@@ -442,7 +455,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             '🍒'
             "#
@@ -452,7 +465,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             "hello"
             "#
@@ -462,7 +475,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             d"2024-03-17 10:01:11+08:00"
             "#
@@ -475,7 +488,7 @@ mod tests {
     #[test]
     fn test_parse_byte_data() {
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             h"11 13 17 19"
             "#
@@ -499,7 +512,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             {id:123,name:"foo"}
             "#
@@ -509,7 +522,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             {
                 id:123
@@ -522,7 +535,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             {
                 id:123,
@@ -535,7 +548,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             {
                 id: 123,
@@ -548,7 +561,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             {
                 id: 123
@@ -587,7 +600,7 @@ mod tests {
 
         // err: incorrect key name (should be without quote)
         assert!(matches!(
-            parse_from(
+            parse_from_str(
                 r#"{
     "id": 123,
     "name": "foo",
@@ -606,7 +619,7 @@ mod tests {
 
         // err: missing key name
         assert!(matches!(
-            parse_from(r#"{123}"#),
+            parse_from_str(r#"{123}"#),
             Err(Error::MessageWithPosition(
                 _,
                 Position {
@@ -620,7 +633,7 @@ mod tests {
 
         // err: missing ':'
         assert!(matches!(
-            parse_from(r#"{id}"#),
+            parse_from_str(r#"{id}"#),
             Err(Error::MessageWithPosition(
                 _,
                 Position {
@@ -634,7 +647,7 @@ mod tests {
 
         // err: missing '}'
         assert!(matches!(
-            parse_from(r#"{id:123"#),
+            parse_from_str(r#"{id:123"#),
             Err(Error::MessageWithPosition(
                 _,
                 Position {
@@ -656,7 +669,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             [123,456,789]
             "#
@@ -666,7 +679,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             [
                 123
@@ -680,7 +693,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             [
                 123,
@@ -694,7 +707,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             [
                 123,
@@ -708,7 +721,7 @@ mod tests {
         );
 
         // err: missing ']'
-        assert!(matches!(parse_from(r#"[123,"#), Err(Error::Message(_))));
+        assert!(matches!(parse_from_str(r#"[123,"#), Err(Error::Message(_))));
     }
 
     #[test]
@@ -720,7 +733,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             (123,"foo",true)
             "#
@@ -730,7 +743,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             (
                 123
@@ -744,7 +757,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             (
                 123,
@@ -758,7 +771,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             (
                 123,
@@ -773,7 +786,7 @@ mod tests {
 
         // err: empty tuple
         assert!(matches!(
-            parse_from(r#"()"#),
+            parse_from_str(r#"()"#),
             Err(Error::MessageWithPosition(
                 _,
                 Position {
@@ -786,14 +799,14 @@ mod tests {
         ));
 
         // err: missing ')'
-        assert!(matches!(parse_from(r#"(123,"#), Err(Error::Message(_))));
+        assert!(matches!(parse_from_str(r#"(123,"#), Err(Error::Message(_))));
     }
 
     #[test]
     fn test_parse_variant() {
         // empty value
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             Option::None
             "#
@@ -804,7 +817,7 @@ mod tests {
 
         // single value
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             Option::Some(123)
             "#
@@ -819,7 +832,7 @@ mod tests {
 
         // multiple values
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             Color::RGB(100,75,0)
             "#
@@ -838,7 +851,7 @@ mod tests {
 
         // object value
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             Shape::Rect{width:123, height:456}
             "#
@@ -856,7 +869,7 @@ mod tests {
 
         // err: missing value(s)
         assert!(matches!(
-            parse_from(r#"Option::Some()"#),
+            parse_from_str(r#"Option::Some()"#),
             Err(Error::MessageWithPosition(
                 _,
                 Position {
@@ -870,13 +883,13 @@ mod tests {
 
         // err: missing ')'
         assert!(matches!(
-            parse_from(r#"Color::RGB(11,13"#),
+            parse_from_str(r#"Color::RGB(11,13"#),
             Err(Error::Message(_))
         ));
 
         // err: missing '}'
         assert!(matches!(
-            parse_from(r#"Color::Rect{width:11"#),
+            parse_from_str(r#"Color::Rect{width:11"#),
             Err(Error::MessageWithPosition(
                 _,
                 Position {
@@ -892,7 +905,7 @@ mod tests {
     #[test]
     fn test_parse_complex() {
         assert_eq!(
-            parse_from(
+            parse_from_str(
                 r#"
             {
                 id:123
@@ -975,7 +988,7 @@ mod tests {
 
         // err: document does not end properly
         assert!(matches!(
-            parse_from(r#"true false"#),
+            parse_from_str(r#"true false"#),
             Err(Error::MessageWithPosition(
                 _,
                 Position {

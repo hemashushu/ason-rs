@@ -3,10 +3,10 @@
 // This Source Code Form is subject to the terms of
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
-/*
+
 use std::process;
 
-use ason::{parse_from, print_to};
+use ason::{parse_from_reader, print_to_string};
 
 fn main() {
     let mut args = std::env::args();
@@ -46,18 +46,19 @@ fn main() {
 
     let source_file = args.nth(1).unwrap();
 
-    let source = match std::fs::read_to_string(&source_file) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!(
-                "Can not read the specified file: {}\nReason: {}",
-                &source_file, e
-            );
-            process::exit(1);
-        }
-    };
+    // let source = match std::fs::read_to_string(&source_file) {
+    //     Ok(s) => s,
+    //     Err(e) => {
+    //         eprintln!(
+    //             "Can not read the specified file: {}\nReason: {}",
+    //             &source_file, e
+    //         );
+    //         process::exit(1);
+    //     }
+    // };
 
-    let node = match parse_from(&source) {
+    let f = std::fs::File::open(source_file.clone()).unwrap();
+    let node = match parse_from_reader(Box::new(f)) {
         Ok(n) => n,
         Err(e) => {
             eprintln!(
@@ -68,12 +69,6 @@ fn main() {
         }
     };
 
-    let text = print_to(&node);
+    let text = print_to_string(&node);
     println!("{}", text);
-}
-
- */
-
-fn main() {
-    todo!()
 }

@@ -596,7 +596,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        chariter::CharIterFromOrdinary,
+        charstream::CharStreamFromCharIter,
         charposition::CharsWithPositionIter,
         error::Error,
         lexer::{NumberToken, Token, TokenIter, TokenWithRange},
@@ -608,7 +608,7 @@ mod tests {
 
     fn lex_str_to_vec_with_range(s: &str) -> Result<Vec<TokenWithRange>, Error> {
         let mut chars = s.chars();
-        let mut char_iter = CharIterFromOrdinary::new(&mut chars);
+        let mut char_iter = CharStreamFromCharIter::new(&mut chars);
         let mut position_iter = CharsWithPositionIter::new(0, &mut char_iter);
         let mut peekable_position_iter = PeekableIter::new(&mut position_iter, 3);
         let mut token_iter = TokenIter::new(&mut peekable_position_iter);
