@@ -439,7 +439,7 @@ impl<'a> TokenIter<'a> {
                 // identifier (the key name of struct/object) or keyword
                 self.lex_identifier_or_keyword()
             }
-            current_char @ _ => Err(Error::MessageWithPosition(
+            current_char => Err(Error::MessageWithPosition(
                 format!("Syntax error, unexpected char '{}'.", current_char),
                 *self.peek_position(0).unwrap().unwrap(),
             )),
@@ -2913,7 +2913,7 @@ mod tests {
 
             assert_eq!(
                 lex_str_to_vec("4_294_967_295_u32").unwrap(),
-                vec![Token::Number(NumberToken::U32(std::u32::MAX))]
+                vec![Token::Number(NumberToken::U32(u32::MAX))]
             );
 
             // err: unsigned overflow
@@ -2943,7 +2943,7 @@ mod tests {
 
             assert_eq!(
                 lex_str_to_vec("18_446_744_073_709_551_615_u64").unwrap(),
-                vec![Token::Number(NumberToken::U64(std::u64::MAX))]
+                vec![Token::Number(NumberToken::U64(u64::MAX))]
             );
 
             // err: unsigned overflow

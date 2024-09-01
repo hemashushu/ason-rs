@@ -4,26 +4,32 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use std::{
-    char,
-    io::{BufRead, BufReader, Read},
-};
+use std::io::{BufReader, Read};
 
 use crate::error::Error;
 
-pub struct CharStreamFromReader {
-    bufreader: Box<dyn BufRead>,
+pub struct CharStreamFromReader<'a, R>
+where
+    R: Read,
+{
+    bufreader: BufReader<&'a mut R>,
 }
 
-impl CharStreamFromReader {
-    pub fn new(reader: Box<dyn Read>) -> Self {
+impl<'a, R> CharStreamFromReader<'a, R>
+where
+    R: Read,
+{
+    pub fn new(reader: &'a mut R) -> Self {
         Self {
-            bufreader: Box::new(BufReader::new(reader)),
+            bufreader: BufReader::new(reader),
         }
     }
 }
 
-impl CharStreamFromReader {
+impl<'a, R> CharStreamFromReader<'a, R>
+where
+    R: Read,
+{
     #[inline]
     fn read_byte(&mut self) -> Option<Result<u8, Error>> {
         let mut buf = [0_u8; 1];
@@ -103,7 +109,7 @@ impl CharStreamFromReader {
                             ))),
                             Some(Err(e)) => Some(Err(e)),
                             Some(Ok(byte)) => {
-                                code |= ((first & 0b111_11) as u32) << 6;
+                                code |= ((first & 0b1_1111) as u32) << 6;
                                 code |= (byte & 0b11_1111) as u32;
                                 let char = unsafe { char::from_u32_unchecked(code) };
                                 Some(Ok(char))
@@ -154,7 +160,10 @@ impl CharStreamFromReader {
     }
 }
 
-impl Iterator for CharStreamFromReader {
+impl<'a, R> Iterator for CharStreamFromReader<'a, R>
+where
+    R: Read,
+{
     type Item = Result<char, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -176,17 +185,12 @@ impl<'a> Iterator for CharStreamFromCharIter<'a> {
     type Item = Result<char, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.upstream.next() {
-            Some(c) => Some(Ok(c)),
-            None => None,
-        }
+        self.upstream.next().map(Ok)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
     use super::{CharStreamFromCharIter, CharStreamFromReader};
 
     use pretty_assertions::assert_eq;
@@ -205,9 +209,8 @@ mod tests {
     #[test]
     fn test_char_stream_from_reader() {
         {
-            let bytes = b"abc";
-            let buf = Cursor::new(bytes.to_vec());
-            let mut charstream = CharStreamFromReader::new(Box::new(buf));
+            let mut bytes = b"abc" as &[u8];
+            let mut charstream = CharStreamFromReader::new(&mut bytes);
 
             assert_eq!(charstream.next(), Some(Ok('a')));
             assert_eq!(charstream.next(), Some(Ok('b')));
@@ -216,13 +219,15 @@ mod tests {
         }
 
         {
-            let bytes = "a文😋".bytes().collect::<Vec<u8>>();
-            let buf = Cursor::new(bytes);
-            let mut charstream = CharStreamFromReader::new(Box::new(buf));
+            let data = "a文b😋c".bytes().collect::<Vec<u8>>();
+            let mut bytes = &data[..];
+            let mut charstream = CharStreamFromReader::new(&mut bytes);
 
             assert_eq!(charstream.next(), Some(Ok('a')));
             assert_eq!(charstream.next(), Some(Ok('文')));
+            assert_eq!(charstream.next(), Some(Ok('b')));
             assert_eq!(charstream.next(), Some(Ok('😋')));
+            assert_eq!(charstream.next(), Some(Ok('c')));
             assert_eq!(charstream.next(), None);
         }
     }

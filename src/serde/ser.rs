@@ -4,6 +4,8 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+use std::io::Write;
+
 use super::Result;
 use crate::error::Error;
 
@@ -15,30 +17,39 @@ pub fn to_string<T>(value: &T) -> Result<String>
 where
     T: Serialize,
 {
-    let mut serializer = Serializer::new(DEFAULT_INDEXT_CHARS);
-
-    value.serialize(&mut serializer)?;
-    Ok(serializer.buffer.join(""))
+    let mut buf:Vec<u8> = vec![];
+    to_writer(value, &mut buf)?;
+    let s = String::from_utf8(buf).unwrap();
+    Ok(s)
 }
 
-pub struct Serializer {
-    // it is possible to generate serialized string by constructing
-    // an AsonNode AST, however, it is not easy to maintain a mutable
-    // tree in Rust, so the "generate string directly" approach is adopted
-    // here.
-    // Note that this method is partially redundant with the 'ason::write'.
-    buffer: Vec<String>,
+pub fn to_writer<T, W: Write>(value: &T, writer: &mut W) -> Result<()>
+where
+    T: Serialize,
+{
+    let mut serializer = Serializer::new(DEFAULT_INDEXT_CHARS, writer);
+    value.serialize(&mut serializer)
+    // Ok(serializer.buffer.join(""))
+}
 
+pub struct Serializer<'a, W>
+where
+    W: Write,
+{
+    writer: &'a mut W,
     indent_level: usize,
     indent_chars: String,
 
     is_first_element: bool,
 }
 
-impl Serializer {
-    fn new(indent_chars: &str) -> Self {
+impl<'a, W> Serializer<'a, W>
+where
+    W: Write,
+{
+    fn new(indent_chars: &str, writer: &'a mut W) -> Self {
         Self {
-            buffer: Vec::new(),
+            writer,
             indent_level: 0,
             indent_chars: indent_chars.to_owned(),
             is_first_element: false,
@@ -47,14 +58,16 @@ impl Serializer {
 
     // insert text content
     fn append(&mut self, s: String) -> Result<()> {
-        self.buffer.push(s);
-        Ok(())
+        match write!(self.writer, "{}", s) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::Message(e.to_string())),
+        }
     }
 
     // insert the leading whitespaces
-    fn insert_indent(&mut self) {
+    fn insert_indent(&mut self) -> Result<()> {
         let s = self.indent_chars.repeat(self.indent_level);
-        self.buffer.push(s);
+        self.append(s)
     }
 
     fn increase_level(&mut self) {
@@ -72,13 +85,12 @@ impl Serializer {
     fn clear_first_element_flag(&mut self) {
         self.is_first_element = false;
     }
-
-    // fn is_first_element(&self) -> bool {
-    //     self.flag_is_first_element
-    // }
 }
 
-impl<'a> ser::Serializer for &'a mut Serializer {
+impl<'a, 'b, W> ser::Serializer for &'a mut Serializer<'b, W>
+where
+    W: Write,
+{
     type Ok = ();
     type Error = Error;
 
@@ -369,7 +381,10 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeSeq for &'a mut Serializer {
+impl<'a, 'b, W> ser::SerializeSeq for &'a mut Serializer<'b, W>
+where
+    W: Write,
+{
     type Ok = ();
     type Error = Error;
 
@@ -380,19 +395,22 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
         self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         self.append("\n".to_owned())?;
-        self.insert_indent();
+        self.insert_indent()?;
         value.serialize(&mut **self)
     }
 
     fn end(self) -> Result<()> {
         self.decrease_level();
         self.append("\n".to_owned())?;
-        self.insert_indent();
+        self.insert_indent()?;
         self.append("]".to_owned())
     }
 }
 
-impl<'a> ser::SerializeTuple for &'a mut Serializer {
+impl<'a, 'b, W> ser::SerializeTuple for &'a mut Serializer<'b, W>
+where
+    W: Write,
+{
     type Ok = ();
     type Error = Error;
 
@@ -415,7 +433,10 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
+impl<'a, 'b, W> ser::SerializeTupleStruct for &'a mut Serializer<'b, W>
+where
+    W: Write,
+{
     type Ok = ();
     type Error = Error;
 
@@ -431,7 +452,10 @@ impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
+impl<'a, 'b, W> ser::SerializeTupleVariant for &'a mut Serializer<'b, W>
+where
+    W: Write,
+{
     type Ok = ();
     type Error = Error;
 
@@ -454,7 +478,10 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeMap for &'a mut Serializer {
+impl<'a, 'b, W> ser::SerializeMap for &'a mut Serializer<'b, W>
+where
+    W: Write,
+{
     type Ok = ();
     type Error = Error;
 
@@ -477,7 +504,10 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeStruct for &'a mut Serializer {
+impl<'a, 'b, W> ser::SerializeStruct for &'a mut Serializer<'b, W>
+where
+    W: Write,
+{
     type Ok = ();
     type Error = Error;
 
@@ -488,7 +518,7 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
         self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         self.append("\n".to_owned())?;
-        self.insert_indent();
+        self.insert_indent()?;
         self.append(format!("{}: ", key))?;
         value.serialize(&mut **self)
     }
@@ -496,12 +526,15 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
     fn end(self) -> Result<()> {
         self.decrease_level();
         self.append("\n".to_owned())?;
-        self.insert_indent();
+        self.insert_indent()?;
         self.append("}".to_owned())
     }
 }
 
-impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
+impl<'a, 'b, W> ser::SerializeStructVariant for &'a mut Serializer<'b, W>
+where
+    W: Write,
+{
     type Ok = ();
     type Error = Error;
 
@@ -512,7 +545,7 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
         self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         self.append("\n".to_owned())?;
-        self.insert_indent();
+        self.insert_indent()?;
         self.append(format!("{}: ", key))?;
         value.serialize(&mut **self)
     }
@@ -520,7 +553,7 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     fn end(self) -> Result<()> {
         self.decrease_level();
         self.append("\n".to_owned())?;
-        self.insert_indent();
+        self.insert_indent()?;
         self.append("}".to_owned())
     }
 }

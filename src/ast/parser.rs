@@ -24,8 +24,8 @@ pub fn parse_from_str(s: &str) -> Result<AsonNode, Error> {
     parse_from_char_stream(&mut char_stream)
 }
 
-pub fn parse_from_reader(r: Box<dyn Read>) -> Result<AsonNode, Error> {
-    let mut char_stream = CharStreamFromReader::new(r);
+pub fn parse_from_reader<R:Read>(mut r: R) -> Result<AsonNode, Error> {
+    let mut char_stream = CharStreamFromReader::new(&mut r);
     parse_from_char_stream(&mut char_stream)
 }
 
@@ -49,7 +49,7 @@ pub fn parse_from_char_stream(
     match parser.next_token()? {
         Some(_) => Err(Error::MessageWithPosition(
             "The ASON document does not end properly.".to_owned(),
-            parser.last_range.to_position_start(),
+            parser.last_range.get_position_start(),
         )),
         None => Ok(root),
     }
@@ -98,7 +98,7 @@ impl<'a> Parser<'a> {
                             "Expect token: {:?}, actual token: {:?}",
                             expected_token, token
                         ),
-                        self.last_range.to_position_start(),
+                        self.last_range.get_position_start(),
                     ))
                 }
             }
@@ -107,7 +107,7 @@ impl<'a> Parser<'a> {
                     "Expect token: \"{:?}\", unexpected to reach the end of document.",
                     expected_token
                 ),
-                self.last_range.to_position_end(),
+                self.last_range.get_position_end(),
             )),
         }
     }
@@ -206,7 +206,7 @@ impl<'a> Parser<'a> {
                         _ => {
                             return Err(Error::MessageWithPosition(
                                 "Syntax error, unexpected token.".to_owned(),
-                                self.last_range.to_position_start(),
+                                self.last_range.get_position_start(),
                             ))
                         }
                     };
@@ -257,7 +257,7 @@ impl<'a> Parser<'a> {
             0 => {
                 return Err(Error::MessageWithPosition(
                     "The values of tuple variant can not be empty.".to_owned(),
-                    self.last_range.to_position_start(),
+                    self.last_range.get_position_start(),
                 ));
             }
             1 => Variant::with_value(&type_name, &member_name, items.remove(0)),
@@ -311,13 +311,13 @@ impl<'a> Parser<'a> {
                 Some(_) => {
                     return Err(Error::MessageWithPosition(
                         "Expect a key name for the object.".to_owned(),
-                        self.last_range.to_position_start(),
+                        self.last_range.get_position_start(),
                     ));
                 }
                 None => {
                     return Err(Error::MessageWithPosition(
                         "Incomplete object, unexpected to reach the end of document.".to_owned(),
-                        self.last_range.to_position_end(),
+                        self.last_range.get_position_end(),
                     ));
                 }
             };
@@ -394,7 +394,7 @@ impl<'a> Parser<'a> {
         if items.is_empty() {
             Err(Error::MessageWithPosition(
                 "Tuple can not be empty.".to_owned(),
-                self.last_range.to_position_start(),
+                self.last_range.get_position_start(),
             ))
         } else {
             Ok(AsonNode::Tuple(items))

@@ -51,16 +51,16 @@ impl Position {
         }
     }
 
-    pub fn forward_char(&self) -> Position {
-        Position {
+    pub fn forward_char(&self) -> Self {
+        Self {
             index: self.index + 1,
             column: self.column + 1,
             ..*self
         }
     }
 
-    pub fn forward_new_line(&self) -> Position {
-        Position {
+    pub fn forward_new_line(&self) -> Self {
+        Self {
             index: self.index + 1,
             line: self.line + 1,
             column: 0,
@@ -68,21 +68,6 @@ impl Position {
         }
     }
 
-    // pub fn forward_chars(&self, amount: usize) -> Position {
-    //     Position {
-    //         index: self.index + amount,
-    //         column: self.column + amount,
-    //         ..*self
-    //     }
-    // }
-
-    // pub fn backward_char(&self) -> Position {
-    //     Position {
-    //         index: self.index - 1,
-    //         column: self.column - 1,
-    //         ..*self
-    //     }
-    // }
 }
 
 impl Range {
@@ -140,13 +125,11 @@ impl Range {
         )
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    pub fn to_position_start(&self) -> Position {
+    pub fn get_position_start(&self) -> Position {
         Position::from_range_start(self)
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    pub fn to_position_end(&self) -> Position {
+    pub fn get_position_end(&self) -> Position {
         Position::from_range_end(self)
     }
 }

@@ -4,61 +4,83 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+use std::io::Write;
+
 use chrono::{DateTime, FixedOffset};
+
+use crate::error::Error;
 
 use super::{AsonNode, KeyValuePair, Number, Variant};
 
 pub const INDENT_SPACES: &str = "    ";
 
-fn print_number(v: &Number) -> String {
+fn print_number(writer: &mut dyn Write, v: &Number) -> Result<(), std::io::Error> {
     match v {
         Number::I8(v) => {
-            format!("{}_i8", v)
+            write!(writer, "{}_i8", v)
         }
         Number::U8(v) => {
-            format!("{}_u8", v)
+            write!(writer, "{}_u8", v)
         }
         Number::I16(v) => {
-            format!("{}_i16", v)
+            write!(writer, "{}_i16", v)
         }
         Number::U16(v) => {
-            format!("{}_u16", v)
+            write!(writer, "{}_u16", v)
         }
         Number::I32(v) => {
             // default integer number type
-            format!("{}", v)
+            write!(writer, "{}", v)
         }
         Number::U32(v) => {
-            format!("{}_u32", v)
+            write!(writer, "{}_u32", v)
         }
         Number::I64(v) => {
-            format!("{}_i64", v)
+            write!(writer, "{}_i64", v)
         }
         Number::U64(v) => {
-            format!("{}_u64", v)
+            write!(writer, "{}_u64", v)
         }
         Number::F32(v) => {
-            format!("{}_f32", v)
+            if v.is_nan() {
+                write!(writer, "NaN_f32")
+            } else if v == &f32::INFINITY {
+                write!(writer, "Inf_f32")
+            } else if v == &f32::NEG_INFINITY {
+                write!(writer, "-Inf_f32")
+            } else {
+                write!(writer, "{}_f32", v)
+            }
         }
         Number::F64(v) => {
             // default floating-point number type
-            let mut s = v.to_string();
-            if !s.contains('.') {
-                s.push_str(".0");
+            if v.is_nan() {
+                write!(writer, "NaN")
+            } else if v == &f64::INFINITY {
+                write!(writer, "Inf")
+            } else if v == &f64::NEG_INFINITY {
+                write!(writer, "-Inf")
+            } else {
+                // a decimal point needs to be appended if there is no decimal point
+                // in the literal.
+                let mut s = v.to_string();
+                if !s.contains('.') {
+                    s.push_str(".0");
+                }
+                write!(writer, "{}", s)
             }
-            s
         }
     }
 }
 
-fn print_boolean(v: &bool) -> String {
+fn print_boolean(writer: &mut dyn Write, v: &bool) -> Result<(), std::io::Error> {
     match v {
-        true => "true".to_owned(),
-        false => "false".to_owned(),
+        true => write!(writer, "true"),
+        false => write!(writer, "false"),
     }
 }
 
-fn print_char(v: &char) -> String {
+fn print_char(writer: &mut dyn Write, v: &char) -> Result<(), std::io::Error> {
     // escape single char
     let s = match v {
         '\\' => "\\\\".to_owned(),
@@ -82,11 +104,12 @@ fn print_char(v: &char) -> String {
         _ => v.to_string(),
     };
 
-    format!("'{}'", s)
+    write!(writer, "'{}'", s)
 }
 
-fn print_string(v: &str) -> String {
-    format!(
+fn print_string(writer: &mut dyn Write, v: &str) -> Result<(), std::io::Error> {
+    write!(
+        writer,
         "\"{}\"",
         v.chars()
             .map(|c| match c {
@@ -105,39 +128,34 @@ fn print_string(v: &str) -> String {
     )
 }
 
-fn print_date(v: &DateTime<FixedOffset>) -> String {
-    format!("d\"{}\"", v.to_rfc3339())
+fn print_date(writer: &mut dyn Write, v: &DateTime<FixedOffset>) -> Result<(), std::io::Error> {
+    write!(writer, "d\"{}\"", v.to_rfc3339())
 }
 
-fn print_variant(v: &Variant, level: usize) -> String {
+fn print_variant(writer: &mut dyn Write, v: &Variant, level: usize) -> Result<(), std::io::Error> {
     let (type_name, member_name, value) = (&v.type_name, &v.member_name, &v.value);
 
     match value {
-        super::VariantValue::Empty => format!("{}::{}", type_name, member_name),
+        super::VariantValue::Empty => write!(writer, "{}::{}", type_name, member_name),
         super::VariantValue::Value(v) => {
-            format!("{}::{}({})", type_name, member_name, print_node(v, level))
+            write!(writer, "{}::{}(", type_name, member_name)?;
+            print_node(writer, v, level)?;
+            write!(writer, ")")
         }
         super::VariantValue::Tuple(v) => {
-            let s = v
-                .iter()
-                .map(|node| print_node(node, level))
-                .collect::<Vec<String>>()
-                .join(", ");
-            format!("{}::{}({})", type_name, member_name, s)
+            write!(writer, "{}::{}", type_name, member_name)?;
+            print_tuple(writer, v, level)
         }
         super::VariantValue::Object(kvps) => {
-            format!(
-                "{}::{}{}",
-                type_name,
-                member_name,
-                print_object(kvps, level)
-            )
+            write!(writer, "{}::{}", type_name, member_name)?;
+            print_object(writer, kvps, level)
         }
     }
 }
 
-fn print_byte_data(v: &[u8]) -> String {
-    format!(
+fn print_byte_data(writer: &mut dyn Write, v: &[u8]) -> Result<(), std::io::Error> {
+    write!(
+        writer,
         "h\"{}\"",
         v.iter()
             .map(|item| format!("{:02x}", item))
@@ -146,69 +164,79 @@ fn print_byte_data(v: &[u8]) -> String {
     )
 }
 
-fn print_list(v: &[AsonNode], level: usize) -> String {
+fn print_list(writer: &mut dyn Write, v: &[AsonNode], level: usize) -> Result<(), std::io::Error> {
     let leading_space = INDENT_SPACES.repeat(level);
     let sub_level = level + 1;
     let element_leading_space = INDENT_SPACES.repeat(sub_level);
-    format!(
-        "[\n{}\n{}]",
-        v.iter()
-            .map(|item| format!("{}{}", element_leading_space, print_node(item, sub_level)))
-            .collect::<Vec<String>>()
-            .join("\n"),
-        leading_space
-    )
+
+    writeln!(writer, "[")?;
+    for e in v {
+        write!(writer, "{}", element_leading_space)?;
+        print_node(writer, e, sub_level)?;
+        writeln!(writer)?;
+    }
+    write!(writer, "{}]", leading_space)
 }
 
-fn print_tuple(v: &[AsonNode], level: usize) -> String {
-    format!(
-        "({})",
-        v.iter()
-            .map(|item| print_node(item, level))
-            .collect::<Vec<String>>()
-            .join(", ")
-    )
+fn print_tuple(writer: &mut dyn Write, v: &[AsonNode], level: usize) -> Result<(), std::io::Error> {
+    write!(writer, "(")?;
+    let mut is_first_element = true;
+
+    for e in v {
+        if is_first_element {
+            is_first_element = false;
+        } else {
+            write!(writer, ", ")?;
+        }
+        print_node(writer, e, level)?;
+    }
+    write!(writer, ")")
 }
 
-fn print_object(v: &[KeyValuePair], level: usize) -> String {
-    let write_name_value_pair = |name_value_pair: &KeyValuePair, current_level: usize| -> String {
-        let leading_space = INDENT_SPACES.repeat(current_level);
-        format!(
-            "{}{}: {}",
-            leading_space,
-            name_value_pair.key,
-            print_node(&name_value_pair.value, current_level)
-        )
-    };
-
+fn print_object(
+    writer: &mut dyn Write,
+    v: &[KeyValuePair],
+    level: usize,
+) -> Result<(), std::io::Error> {
+    let leading_space = INDENT_SPACES.repeat(level);
     let sub_level = level + 1;
-    format!(
-        "{{\n{}\n{}}}",
-        v.iter()
-            .map(|item| write_name_value_pair(item, sub_level))
-            .collect::<Vec<String>>()
-            .join("\n"),
-        INDENT_SPACES.repeat(level),
-    )
+    let element_leading_space = INDENT_SPACES.repeat(sub_level);
+
+    writeln!(writer, "{{")?;
+    for e in v {
+        write!(writer, "{}{}: ", element_leading_space, e.key)?;
+        print_node(writer, &e.value, sub_level)?;
+        writeln!(writer)?;
+    }
+    write!(writer, "{}}}", leading_space)
 }
 
-fn print_node(node: &AsonNode, level: usize) -> String {
+fn print_node(writer: &mut dyn Write, node: &AsonNode, level: usize) -> Result<(), std::io::Error> {
     match node {
-        AsonNode::Number(v) => print_number(v),
-        AsonNode::Boolean(v) => print_boolean(v),
-        AsonNode::Char(v) => print_char(v),
-        AsonNode::String_(v) => print_string(v),
-        AsonNode::DateTime(v) => print_date(v),
-        AsonNode::Variant(v) => print_variant(v, level),
-        AsonNode::ByteData(v) => print_byte_data(v),
-        AsonNode::List(v) => print_list(v, level),
-        AsonNode::Tuple(v) => print_tuple(v, level),
-        AsonNode::Object(v) => print_object(v, level),
+        AsonNode::Number(v) => print_number(writer, v),
+        AsonNode::Boolean(v) => print_boolean(writer, v),
+        AsonNode::Char(v) => print_char(writer, v),
+        AsonNode::String_(v) => print_string(writer, v),
+        AsonNode::DateTime(v) => print_date(writer, v),
+        AsonNode::Variant(v) => print_variant(writer, v, level),
+        AsonNode::ByteData(v) => print_byte_data(writer, v),
+        AsonNode::List(v) => print_list(writer, v, level),
+        AsonNode::Tuple(v) => print_tuple(writer, v, level),
+        AsonNode::Object(v) => print_object(writer, v, level),
+    }
+}
+
+pub fn print_to_writer(writer: &mut dyn Write, node: &AsonNode) -> Result<(), Error> {
+    match print_node(writer, node, 0) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(Error::Message(e.to_string())),
     }
 }
 
 pub fn print_to_string(node: &AsonNode) -> String {
-    print_node(node, 0)
+    let mut buf: Vec<u8> = vec![];
+    print_to_writer(&mut buf, node).unwrap();
+    String::from_utf8(buf).unwrap()
 }
 
 #[cfg(test)]
