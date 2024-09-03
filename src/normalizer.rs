@@ -9,7 +9,7 @@ use std::ops::Neg;
 use crate::{
     error::Error,
     lexer::{NumberToken, Token, TokenWithRange},
-    location::{Position, Range},
+    location::Range,
     peekableiter::PeekableIter,
 };
 
@@ -191,7 +191,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     NumberToken::I8(v) if *v > i8::MAX as u8 => {
                                         // check signed number overflow
                                         Some(Err(Error::MessageWithRange(
-                                            format!("The byte integer number {} is overflowed.", v),
+                                            format!("The i8  number {} is overflowed.", v),
                                             Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
@@ -201,10 +201,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     NumberToken::I16(v) if *v > i16::MAX as u16 => {
                                         // check signed number overflow
                                         Some(Err(Error::MessageWithRange(
-                                            format!(
-                                                "The short integer number {} is overflowed.",
-                                                v
-                                            ),
+                                            format!("The i16 number {} is overflowed.", v),
                                             Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
@@ -214,7 +211,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     NumberToken::I32(v) if *v > i32::MAX as u32 => {
                                         // check signed number overflow
                                         Some(Err(Error::MessageWithRange(
-                                            format!("The integer number {} is overflowed.", v),
+                                            format!("The i32 number {} is overflowed.", v),
                                             Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
@@ -224,7 +221,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     NumberToken::I64(v) if *v > i64::MAX as u64 => {
                                         // check signed number overflow
                                         Some(Err(Error::MessageWithRange(
-                                            format!("The long integer number {} is overflowed.", v),
+                                            format!("The i64 number {} is overflowed.", v),
                                             Range::from_range_pair(
                                                 &start_range.unwrap(),
                                                 current_range,
@@ -255,25 +252,15 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                             })) => {
                                 // combines two token ranges.
                                 Some(Err(Error::MessageWithRange(
-                                    "The plus sign cannot be applied to data other than numbers."
-                                        .to_owned(),
+                                    "The plus sign can only be applied to numbers.".to_owned(),
                                     Range::from_range_pair(&start_range.unwrap(), current_range),
                                 )))
                             }
                             Some(Err(e)) => Some(Err(e.clone())),
                             None => {
                                 // "...+EOF"
-                                Some(Err(Error::MessageWithPosition(
-                                    "Unexpected end of document.".to_owned(),
-                                    {
-                                        let range = start_range.unwrap();
-                                        Position {
-                                            unit: range.unit,
-                                            index: range.index + 1,
-                                            line: range.line,
-                                            column: range.column + 1,
-                                        }
-                                    },
+                                Some(Err(Error::UnexpectedEndOfDocument(
+                                    "Missing the number that follow the plus sign.".to_owned(),
                                 )))
                             }
                         }
@@ -348,12 +335,12 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         );
 
                                         let parse_result =
-                                            format!("-{}", v).parse::<i8>().map_err(|e| {
+                                            format!("-{}", v).parse::<i8>().map_err(|_| {
                                                 Error::MessageWithRange(
                                                     format!(
-                                                "Can not convert \"{}\" to negative i8, reason: {}",
-                                                v, e
-                                            ),
+                                                        "Can not convert \"{}\" to negative i8",
+                                                        v
+                                                    ),
                                                     combined_range,
                                                 )
                                             });
@@ -379,14 +366,16 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             current_range,
                                         );
 
-                                        let parse_result = format!("-{}", v).parse::<i16>().map_err(|e| {
-                                                    Error::MessageWithRange(format!(
-                                                        "Can not convert \"{}\" to negative i16, reason: {}",
-                                                        v, e
+                                        let parse_result =
+                                            format!("-{}", v).parse::<i16>().map_err(|_| {
+                                                Error::MessageWithRange(
+                                                    format!(
+                                                        "Can not convert \"{}\" to negative i16.",
+                                                        v
                                                     ),
-                                                    combined_range
+                                                    combined_range,
                                                 )
-                                                });
+                                            });
 
                                         match parse_result {
                                             Ok(v) => {
@@ -409,14 +398,16 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             current_range,
                                         );
 
-                                        let parse_result = format!("-{}", v).parse::<i32>().map_err(|e| {
-                                                    Error::MessageWithRange(format!(
-                                                        "Can not convert \"{}\" to negative, reason: {}",
-                                                        v, e
+                                        let parse_result =
+                                            format!("-{}", v).parse::<i32>().map_err(|_| {
+                                                Error::MessageWithRange(
+                                                    format!(
+                                                        "Can not convert \"{}\" to negative.",
+                                                        v
                                                     ),
-                                                    combined_range
+                                                    combined_range,
                                                 )
-                                                });
+                                            });
 
                                         match parse_result {
                                             Ok(v) => {
@@ -439,14 +430,16 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             current_range,
                                         );
 
-                                        let parse_result = format!("-{}", v).parse::<i64>().map_err(|e| {
-                                                    Error::MessageWithRange(format!(
-                                                        "Can not convert \"{}\" to negative, reason: {}",
-                                                        v, e
+                                        let parse_result =
+                                            format!("-{}", v).parse::<i64>().map_err(|_| {
+                                                Error::MessageWithRange(
+                                                    format!(
+                                                        "Can not convert \"{}\" to negative.",
+                                                        v
                                                     ),
-                                                    combined_range
+                                                    combined_range,
                                                 )
-                                                });
+                                            });
 
                                         match parse_result {
                                             Ok(v) => {
@@ -482,25 +475,15 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                             })) => {
                                 // combines two token ranges.
                                 Some(Err(Error::MessageWithRange(
-                                    "The minus sign cannot be applied to data other than numbers."
-                                        .to_owned(),
+                                    "The minus sign can only be applied to numbers.".to_owned(),
                                     Range::from_range_pair(&start_range.unwrap(), current_range),
                                 )))
                             }
                             Some(Err(e)) => Some(Err(e.clone())),
                             None => {
                                 // "...-EOF"
-                                Some(Err(Error::MessageWithPosition(
-                                    "Unexpected end of document.".to_owned(),
-                                    {
-                                        let range = start_range.unwrap();
-                                        Position {
-                                            unit: range.unit,
-                                            index: range.index + 1,
-                                            line: range.line,
-                                            column: range.column + 1,
-                                        }
-                                    },
+                                Some(Err(Error::UnexpectedEndOfDocument(
+                                    "Missing the number that follow the plus sign.".to_owned(),
                                 )))
                             }
                         }
@@ -508,28 +491,28 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                     Token::Number(NumberToken::I8(v)) if *v > i8::MAX as u8 => {
                         // check signed number overflow
                         Some(Err(Error::MessageWithRange(
-                            format!("The byte integer number {} is overflowed.", v),
+                            format!("The i8 number {} is overflowed.", v),
                             start_range.unwrap(),
                         )))
                     }
                     Token::Number(NumberToken::I16(v)) if *v > i16::MAX as u16 => {
                         // check signed number overflow
                         Some(Err(Error::MessageWithRange(
-                            format!("The short integer number {} is overflowed.", v),
+                            format!("The i16 number {} is overflowed.", v),
                             start_range.unwrap(),
                         )))
                     }
                     Token::Number(NumberToken::I32(v)) if *v > i32::MAX as u32 => {
                         // check signed number overflow
                         Some(Err(Error::MessageWithRange(
-                            format!("The integer number {} is overflowed.", v),
+                            format!("The i32 number {} is overflowed.", v),
                             start_range.unwrap(),
                         )))
                     }
                     Token::Number(NumberToken::I64(v)) if *v > i64::MAX as u64 => {
                         // check signed number overflow
                         Some(Err(Error::MessageWithRange(
-                            format!("The long integer number {} is overflowed.", v),
+                            format!("The i64 number {} is overflowed.", v),
                             start_range.unwrap(),
                         )))
                     }
@@ -596,8 +579,8 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        charstream::CharStreamFromCharIter,
         charposition::CharsWithPositionIter,
+        charstream::CharStreamFromCharIter,
         error::Error,
         lexer::{NumberToken, Token, TokenIter, TokenWithRange},
         location::{Position, Range},
@@ -1192,28 +1175,28 @@ mod tests {
         // +EOF
         assert!(matches!(
             lex_str_to_vec("abc,+"),
-            Err(Error::MessageWithPosition(
+            Err(Error::UnexpectedEndOfDocument(
                 _,
-                Position {
-                    unit: 0,
-                    index: 5,
-                    line: 0,
-                    column: 5,
-                }
+                // Position {
+                //     unit: 0,
+                //     index: 5,
+                //     line: 0,
+                //     column: 5,
+                // }
             ))
         ));
 
         // -EOF
         assert!(matches!(
             lex_str_to_vec("xyz,-"),
-            Err(Error::MessageWithPosition(
+            Err(Error::UnexpectedEndOfDocument(
                 _,
-                Position {
-                    unit: 0,
-                    index: 5,
-                    line: 0,
-                    column: 5,
-                }
+                // Position {
+                //     unit: 0,
+                //     index: 5,
+                //     line: 0,
+                //     column: 5,
+                // }
             ))
         ));
 

@@ -53,8 +53,8 @@ where
                 if len == 0 {
                     None
                 } else if len < 2 {
-                    Some(Err(Error::Message(
-                        "Unexpected to reach the end of document.".to_owned(),
+                    Some(Err(Error::UnexpectedEndOfDocument(
+                        "Incomplete UTF-8 character steam.".to_owned(),
                     )))
                 } else {
                     Some(Ok(buf))
@@ -72,8 +72,8 @@ where
                 if len == 0 {
                     None
                 } else if len < 3 {
-                    Some(Err(Error::Message(
-                        "Unexpected to reach the end of document.".to_owned(),
+                    Some(Err(Error::UnexpectedEndOfDocument(
+                        "Incomplete UTF-8 character steam.".to_owned(),
                     )))
                 } else {
                     Some(Ok(buf))
@@ -103,9 +103,8 @@ where
                         // 110_ccc_bb, 10_bb_aaaa
                         let more = self.read_byte();
                         match more {
-                            None => Some(Err(Error::Message(
-                                "Incomplete UTF-8 codepoint, unexpected to reach the end of file."
-                                    .to_owned(),
+                            None => Some(Err(Error::UnexpectedEndOfDocument(
+                                "Incomplete UTF-8 char steam.".to_owned(),
                             ))),
                             Some(Err(e)) => Some(Err(e)),
                             Some(Ok(byte)) => {
@@ -120,9 +119,8 @@ where
                         // 1110_dddd, 10_cccc_bb, 10_bb_aaaa
                         let more = self.read_two_bytes();
                         match more {
-                            None => Some(Err(Error::Message(
-                                "Incomplete UTF-8 codepoint, unexpected to reach the end of file."
-                                    .to_owned(),
+                            None => Some(Err(Error::UnexpectedEndOfDocument(
+                                "Incomplete UTF-8 character steam.".to_owned(),
                             ))),
                             Some(Err(e)) => Some(Err(e)),
                             Some(Ok(bytes)) => {
@@ -138,9 +136,8 @@ where
                         // 11110_f_ee, 10_ee_dddd, 10_cccc_bb, 10_bb_aaaa
                         let more = self.read_three_bytes();
                         match more {
-                            None => Some(Err(Error::Message(
-                                "Incomplete UTF-8 codepoint, unexpected to reach the end of file."
-                                    .to_owned(),
+                            None => Some(Err(Error::UnexpectedEndOfDocument(
+                                "Incomplete UTF-8 character steam.".to_owned(),
                             ))),
                             Some(Err(e)) => Some(Err(e)),
                             Some(Ok(bytes)) => {
@@ -153,7 +150,9 @@ where
                             }
                         }
                     }
-                    _ => Some(Err(Error::Message("Invalid UTF-8 char.".to_owned()))),
+                    _ => Some(Err(Error::UnexpectedEndOfDocument(
+                        "Invalid UTF-8 character stream detected.".to_owned(),
+                    ))),
                 }
             }
         }

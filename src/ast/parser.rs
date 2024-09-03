@@ -24,7 +24,7 @@ pub fn parse_from_str(s: &str) -> Result<AsonNode, Error> {
     parse_from_char_stream(&mut char_stream)
 }
 
-pub fn parse_from_reader<R:Read>(mut r: R) -> Result<AsonNode, Error> {
+pub fn parse_from_reader<R: Read>(mut r: R) -> Result<AsonNode, Error> {
     let mut char_stream = CharStreamFromReader::new(&mut r);
     parse_from_char_stream(&mut char_stream)
 }
@@ -48,7 +48,7 @@ pub fn parse_from_char_stream(
     // check trailing token
     match parser.next_token()? {
         Some(_) => Err(Error::MessageWithPosition(
-            "The ASON document does not end properly.".to_owned(),
+            "Document has more than one node.".to_owned(),
             parser.last_range.get_position_start(),
         )),
         None => Ok(root),
@@ -94,21 +94,15 @@ impl<'a> Parser<'a> {
                     Ok(())
                 } else {
                     Err(Error::MessageWithPosition(
-                        format!(
-                            "Expect token: {:?}, actual token: {:?}",
-                            expected_token, token
-                        ),
+                        format!("Expect token: {}.", expected_token.get_description()),
                         self.last_range.get_position_start(),
                     ))
                 }
             }
-            None => Err(Error::MessageWithPosition(
-                format!(
-                    "Expect token: \"{:?}\", unexpected to reach the end of document.",
-                    expected_token
-                ),
-                self.last_range.get_position_end(),
-            )),
+            None => Err(Error::UnexpectedEndOfDocument(format!(
+                "Expect token: {}.",
+                expected_token.get_description()
+            ))),
         }
     }
 
@@ -214,8 +208,8 @@ impl<'a> Parser<'a> {
                     return Ok(node);
                 }
                 None => {
-                    return Err(Error::Message(
-                        "Incomplete document, unexpected to reach the end of document.".to_owned(),
+                    return Err(Error::UnexpectedEndOfDocument(
+                        "Incomplete document.".to_owned(),
                     ));
                 }
             }
@@ -310,14 +304,13 @@ impl<'a> Parser<'a> {
                 Some(Token::Identifier(n)) => n,
                 Some(_) => {
                     return Err(Error::MessageWithPosition(
-                        "Expect a key name for the object.".to_owned(),
+                        "Expect a key name for object.".to_owned(),
                         self.last_range.get_position_start(),
                     ));
                 }
                 None => {
-                    return Err(Error::MessageWithPosition(
-                        "Incomplete object, unexpected to reach the end of document.".to_owned(),
-                        self.last_range.get_position_end(),
+                    return Err(Error::UnexpectedEndOfDocument(
+                        "Expect a key name for object.".to_owned(),
                     ));
                 }
             };
@@ -598,7 +591,7 @@ mod tests {
             ])
         );
 
-        // err: incorrect key name (should be without quote)
+        // err: incorrect key name (should be enclosed with quotes)
         assert!(matches!(
             parse_from_str(
                 r#"{
@@ -648,14 +641,14 @@ mod tests {
         // err: missing '}'
         assert!(matches!(
             parse_from_str(r#"{id:123"#),
-            Err(Error::MessageWithPosition(
+            Err(Error::UnexpectedEndOfDocument(
                 _,
-                Position {
-                    unit: 0,
-                    index: 7,
-                    line: 0,
-                    column: 7
-                }
+                // Position {
+                //     unit: 0,
+                //     index: 7,
+                //     line: 0,
+                //     column: 7
+                // }
             ))
         ));
     }
@@ -721,7 +714,10 @@ mod tests {
         );
 
         // err: missing ']'
-        assert!(matches!(parse_from_str(r#"[123,"#), Err(Error::Message(_))));
+        assert!(matches!(
+            parse_from_str(r#"[123,"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
     }
 
     #[test]
@@ -799,7 +795,10 @@ mod tests {
         ));
 
         // err: missing ')'
-        assert!(matches!(parse_from_str(r#"(123,"#), Err(Error::Message(_))));
+        assert!(matches!(
+            parse_from_str(r#"(123,"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
     }
 
     #[test]
@@ -884,26 +883,26 @@ mod tests {
         // err: missing ')'
         assert!(matches!(
             parse_from_str(r#"Color::RGB(11,13"#),
-            Err(Error::Message(_))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing '}'
         assert!(matches!(
             parse_from_str(r#"Color::Rect{width:11"#),
-            Err(Error::MessageWithPosition(
+            Err(Error::UnexpectedEndOfDocument(
                 _,
-                Position {
-                    unit: 0,
-                    index: 20,
-                    line: 0,
-                    column: 20
-                }
+                // Position {
+                //     unit: 0,
+                //     index: 20,
+                //     line: 0,
+                //     column: 20
+                // }
             ))
         ));
     }
 
     #[test]
-    fn test_parse_complex() {
+    fn test_parse_mixed() {
         assert_eq!(
             parse_from_str(
                 r#"

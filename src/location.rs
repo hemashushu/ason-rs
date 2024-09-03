@@ -67,7 +67,6 @@ impl Position {
             ..*self
         }
     }
-
 }
 
 impl Range {

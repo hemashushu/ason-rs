@@ -64,8 +64,8 @@ impl<'a> Iterator for CharsWithPositionIter<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        charstream::CharStreamFromCharIter,
         charposition::{CharWithPosition, CharsWithPositionIter},
+        charstream::CharStreamFromCharIter,
         location::Position,
     };
 

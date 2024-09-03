@@ -64,7 +64,7 @@ where
 
     match deserializer.upstream.peek(0) {
         Some(Ok(TokenWithRange { range, .. })) => Err(Error::MessageWithPosition(
-            "Syntax error, the ASON document contains more than one node.".to_owned(),
+            "Document has more than one node.".to_owned(),
             Position::from_range_start(range),
         )),
         Some(Err(e)) => Err(e.clone()),
@@ -130,21 +130,15 @@ impl<'de> Deserializer<'de> {
                     Ok(())
                 } else {
                     Err(Error::MessageWithPosition(
-                        format!(
-                            "Expect token: {:?}, actual token: {:?}",
-                            expected_token, token
-                        ),
+                        format!("Expect token: {}.", expected_token.get_description()),
                         self.last_range.get_position_start(),
                     ))
                 }
             }
-            None => Err(Error::MessageWithPosition(
-                format!(
-                    "Expect token: \"{:?}\", unexpected to reach the end of document.",
-                    expected_token
-                ),
-                self.last_range.get_position_end(),
-            )),
+            None => Err(Error::UnexpectedEndOfDocument(format!(
+                "Expect token: \"{}\".",
+                expected_token.get_description()
+            ))),
         }
     }
 
@@ -198,9 +192,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"Boolean\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"Boolean\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"Boolean\" value.".to_owned(),
             )),
         }
     }
@@ -215,9 +208,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"i8\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"i8\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"i8\" value.".to_owned(),
             )),
         }
     }
@@ -232,9 +224,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"i16\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"i16\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"i16\" value.".to_owned(),
             )),
         }
     }
@@ -249,9 +240,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"i32\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"i32\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"i32\" value.".to_owned(),
             )),
         }
     }
@@ -266,9 +256,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"i64\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"i64\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"i64\" value.".to_owned(),
             )),
         }
     }
@@ -283,9 +272,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"u8\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"u8\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"u8\" value.".to_owned(),
             )),
         }
     }
@@ -300,9 +288,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"u16\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"u16\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"u16\" value.".to_owned(),
             )),
         }
     }
@@ -317,9 +304,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"u32\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"u32\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"u32\" value.".to_owned(),
             )),
         }
     }
@@ -334,9 +320,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"u64\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"u64\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"u64\" value.".to_owned(),
             )),
         }
     }
@@ -351,9 +336,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"f32\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"f32\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"f32\" value.".to_owned(),
             )),
         }
     }
@@ -368,9 +352,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"f64\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"f64\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"f64\" value.".to_owned(),
             )),
         }
     }
@@ -385,9 +368,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"Char\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"Char\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"Char\" value.".to_owned(),
             )),
         }
     }
@@ -402,9 +384,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"String\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"String\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"String\" value.".to_owned(),
             )),
         }
     }
@@ -419,9 +400,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"String\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"String\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"String\" value.".to_owned(),
             )),
         }
     }
@@ -436,9 +416,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"Bytes\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"Bytes\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"Bytes\" value.".to_owned(),
             )),
         }
     }
@@ -453,9 +432,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"Bytes\" value.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"Bytes\" value, unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"Bytes\" value.".to_owned(),
             )),
         }
     }
@@ -478,19 +456,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                         v
                     } else {
                         Err(Error::MessageWithRange(
-                            format!(
-                                "Unexpected member \"{}\" of variant \"Option\".",
-                                member_name
-                            ),
+                            "Invalid member of variant \"Option\".".to_owned(),
                             *self.peek_range(0)?.unwrap(),
                         ))
                     }
                 } else {
                     Err(Error::MessageWithRange(
-                        format!(
-                            "Expect \"Option\" type of variant, actual: \"{}\".",
-                            type_name
-                        ),
+                        "Expect the \"Option\" type of variant.".to_owned(),
                         self.last_range,
                     ))
                 }
@@ -499,9 +471,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect variant \"Option\".".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect variant \"Option\", unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect the variant \"Option\".".to_owned(),
             )),
         }
     }
@@ -512,7 +483,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         // The type of `()` in Rust.
         // It represents an anonymous value containing no data.
-        Err(Error::Message("ASON does not support \"Unit\".".to_owned()))
+        Err(Error::Message("Does not support Unit.".to_owned()))
     }
 
     fn deserialize_unit_struct<V>(self, _name: &'static str, _visitor: V) -> Result<V::Value>
@@ -522,7 +493,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         // For example `struct Unit` or `PhantomData<T>`.
         // It represents a named value containing no data.
         Err(Error::Message(
-            "ASON does not support \"Unit Struct\".".to_owned(),
+            "Does not support \"Unit\" style Struct.".to_owned(),
         ))
     }
 
@@ -532,7 +503,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         // For example `struct Millimeters(u8)`.
         Err(Error::Message(
-            "ASON does not support \"New Type Struct\".".to_owned(),
+            "Does not support \"New-Type\" style Struct.".to_owned(),
         ))
     }
 
@@ -555,9 +526,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"List\".".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"List\", unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"List\".".to_owned(),
             )),
         }
     }
@@ -580,9 +550,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"Tuple\".".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"Tuple\", unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"Tuple\".".to_owned(),
             )),
         }
     }
@@ -598,7 +567,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         // A named tuple, for example `struct Rgb(u8, u8, u8)`.
         Err(Error::Message(
-            "ASON does not support \"Tuple Struct\".".to_owned(),
+            "Does not support \"Tuple\" style Struct.".to_owned(),
         ))
     }
 
@@ -611,7 +580,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         // When serializing, the length may or may not be known before
         // iterating through all the entries. When deserializing,
         // the length is determined by looking at the serialized data.
-        Err(Error::Message("ASON does not support Map.".to_owned()))
+        Err(Error::Message("Does not support Map.".to_owned()))
     }
 
     fn deserialize_struct<V>(
@@ -639,9 +608,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an \"Object\".".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an \"Object\", unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an \"Object\".".to_owned(),
             )),
         }
     }
@@ -673,10 +641,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                     }
                 } else {
                     Err(Error::MessageWithRange(
-                        format!(
-                            "Expect type: \"{}\" of variant, actual: \"{}\".",
-                            name, type_name
-                        ),
+                        format!("Expect the type \"{}\" of variant.", name,),
                         self.last_range,
                     ))
                 }
@@ -685,9 +650,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect a \"Variant\".".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect a \"Variant\", unexpected to reach the end of document.".to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect a \"Variant\".".to_owned(),
             )),
         }
     }
@@ -705,10 +669,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 "Expect an identifier for object.".to_owned(),
                 self.last_range.get_position_start(),
             )),
-            None => Err(Error::MessageWithPosition(
-                "Expect an identifier for object, unexpected to reach the end of document."
-                    .to_owned(),
-                self.last_range.get_position_end(),
+            None => Err(Error::UnexpectedEndOfDocument(
+                "Expect an identifier for object.".to_owned(),
             )),
         }
     }
@@ -1293,7 +1255,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mix_list_and_object() {
+    fn test_mixed_list_and_object() {
         #[derive(Deserialize, Debug, PartialEq)]
         struct Object {
             id: i32,
@@ -1353,7 +1315,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mix_tuple_and_object() {
+    fn test_mixed_tuple_and_object() {
         #[derive(Deserialize, Debug, PartialEq)]
         struct Object {
             id: i32,
@@ -1399,7 +1361,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mix_variant_object() {
+    fn test_mixed_variant_object() {
         #[derive(Deserialize, Debug, PartialEq)]
         struct Simple {
             id: i32,

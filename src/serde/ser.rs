@@ -17,7 +17,7 @@ pub fn to_string<T>(value: &T) -> Result<String>
 where
     T: Serialize,
 {
-    let mut buf:Vec<u8> = vec![];
+    let mut buf: Vec<u8> = vec![];
     to_writer(value, &mut buf)?;
     let s = String::from_utf8(buf).unwrap();
     Ok(s)
@@ -56,7 +56,7 @@ where
         }
     }
 
-    // insert text content
+    // append the text content
     fn append(&mut self, s: String) -> Result<()> {
         match write!(self.writer, "{}", s) {
             Ok(_) => Ok(()),
@@ -64,8 +64,8 @@ where
         }
     }
 
-    // insert the leading whitespaces
-    fn insert_indent(&mut self) -> Result<()> {
+    // append the leading whitespaces
+    fn append_indent(&mut self) -> Result<()> {
         let s = self.indent_chars.repeat(self.indent_level);
         self.append(s)
     }
@@ -256,14 +256,14 @@ where
     fn serialize_unit(self) -> Result<()> {
         // The type of `()` in Rust.
         // It represents an anonymous value containing no data.
-        Err(Error::Message("ASON does not support \"Unit\".".to_owned()))
+        Err(Error::Message("Does not support Unit.".to_owned()))
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<()> {
         // For example `struct Unit` or `PhantomData<T>`.
         // It represents a named value containing no data.
         Err(Error::Message(
-            "ASON does not support \"Unit Struct\".".to_owned(),
+            "Does not support \"Unit\" style Struct.".to_owned(),
         ))
     }
 
@@ -283,7 +283,7 @@ where
     {
         // For example `struct Millimeters(u8)`.
         Err(Error::Message(
-            "ASON does not support \"New Type Struct\".".to_owned(),
+            "Does not support \"New-Type\" style Struct.".to_owned(),
         ))
     }
 
@@ -329,7 +329,7 @@ where
     ) -> Result<Self::SerializeTupleStruct> {
         // A named tuple, for example `struct Rgb(u8, u8, u8)`.
         Err(Error::Message(
-            "ASON does not support \"Tuple Struct\".".to_owned(),
+            "Does not support \"Tuple\" style Struct.".to_owned(),
         ))
     }
 
@@ -354,7 +354,7 @@ where
         // When serializing, the length may or may not be known before
         // iterating through all the entries. When deserializing,
         // the length is determined by looking at the serialized data.
-        Err(Error::Message("ASON does not support \"Map\".".to_owned()))
+        Err(Error::Message("Does not support Map.".to_owned()))
     }
 
     fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
@@ -395,14 +395,14 @@ where
         self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         self.append("\n".to_owned())?;
-        self.insert_indent()?;
+        self.append_indent()?;
         value.serialize(&mut **self)
     }
 
     fn end(self) -> Result<()> {
         self.decrease_level();
         self.append("\n".to_owned())?;
-        self.insert_indent()?;
+        self.append_indent()?;
         self.append("]".to_owned())
     }
 }
@@ -518,7 +518,7 @@ where
         self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         self.append("\n".to_owned())?;
-        self.insert_indent()?;
+        self.append_indent()?;
         self.append(format!("{}: ", key))?;
         value.serialize(&mut **self)
     }
@@ -526,7 +526,7 @@ where
     fn end(self) -> Result<()> {
         self.decrease_level();
         self.append("\n".to_owned())?;
-        self.insert_indent()?;
+        self.append_indent()?;
         self.append("}".to_owned())
     }
 }
@@ -545,7 +545,7 @@ where
         self.clear_first_element_flag(); // turn off the 'is_first_element' flag
 
         self.append("\n".to_owned())?;
-        self.insert_indent()?;
+        self.append_indent()?;
         self.append(format!("{}: ", key))?;
         value.serialize(&mut **self)
     }
@@ -553,7 +553,7 @@ where
     fn end(self) -> Result<()> {
         self.decrease_level();
         self.append("\n".to_owned())?;
-        self.insert_indent()?;
+        self.append_indent()?;
         self.append("}".to_owned())
     }
 }
