@@ -77,14 +77,6 @@ where
     fn decrease_level(&mut self) {
         self.indent_level -= 1;
     }
-
-    fn set_first_element_flag(&mut self) {
-        self.is_first_element = true;
-    }
-
-    fn clear_first_element_flag(&mut self) {
-        self.is_first_element = false;
-    }
 }
 
 impl<'a, 'b, W> ser::Serializer for &'a mut Serializer<'b, W>
@@ -305,7 +297,7 @@ where
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
         self.append("[".to_owned())?;
-        self.set_first_element_flag();
+        self.is_first_element = true;
         self.increase_level();
         Ok(self)
     }
@@ -318,7 +310,7 @@ where
         // per: https://serde.rs/data-model.html
 
         self.append("(".to_owned())?;
-        self.set_first_element_flag();
+        self.is_first_element = true;
         Ok(self)
     }
 
@@ -344,7 +336,7 @@ where
 
         self.append(format!("{}::{}", name, variant))?;
         self.append("(".to_owned())?;
-        self.set_first_element_flag();
+        self.is_first_element = true;
         Ok(self)
     }
 
@@ -359,7 +351,7 @@ where
 
     fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
         self.append("{".to_owned())?;
-        self.set_first_element_flag();
+        self.is_first_element = true;
         self.increase_level();
         Ok(self)
     }
@@ -375,7 +367,7 @@ where
 
         self.append(format!("{}::{}", name, variant))?;
         self.append("{".to_owned())?;
-        self.set_first_element_flag();
+        self.is_first_element = true;
         self.increase_level();
         Ok(self)
     }
@@ -392,7 +384,7 @@ where
     where
         T: ?Sized + Serialize,
     {
-        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
+        self.is_first_element = false;
 
         self.append("\n".to_owned())?;
         self.append_indent()?;
@@ -418,10 +410,9 @@ where
     where
         T: ?Sized + Serialize,
     {
-        let last_is_first_element = self.is_first_element;
-        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
-
-        if !last_is_first_element {
+        if self.is_first_element {
+            self.is_first_element = false;
+        } else {
             self.append(", ".to_owned())?;
         }
 
@@ -463,10 +454,9 @@ where
     where
         T: ?Sized + Serialize,
     {
-        let last_is_first_element = self.is_first_element;
-        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
-
-        if !last_is_first_element {
+        if self.is_first_element {
+            self.is_first_element = false;
+        } else {
             self.append(", ".to_owned())?;
         }
 
@@ -515,7 +505,7 @@ where
     where
         T: ?Sized + Serialize,
     {
-        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
+        self.is_first_element = false;
 
         self.append("\n".to_owned())?;
         self.append_indent()?;
@@ -542,7 +532,7 @@ where
     where
         T: ?Sized + Serialize,
     {
-        self.clear_first_element_flag(); // turn off the 'is_first_element' flag
+        self.is_first_element = false;
 
         self.append("\n".to_owned())?;
         self.append_indent()?;

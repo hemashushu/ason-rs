@@ -75,12 +75,12 @@ impl<'a> Iterator for NormalizedTokenIter<'a> {
 
 // - combine multiple continuous newlines into one newline.
 //   rules:
+//     + blanks -> blank
 //     + comma + blanks -> comma
 //     + blanks + comma -> comma
 //     + blanks + comma + blanks -> comma
 //     + comma + comment + comma -> comma + comma
 //     + blanks + comment + blanks -> blank
-//     + blanks -> blank
 // - remove the '+' tokens in front of numbers (includes `Inf`).
 // - apple the '-' tokens to numbers (includes `Inf`).
 // - checks if the signed number is overflowed
@@ -402,7 +402,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             format!("-{}", v).parse::<i32>().map_err(|_| {
                                                 Error::MessageWithRange(
                                                     format!(
-                                                        "Can not convert \"{}\" to negative.",
+                                                        "Can not convert \"{}\" to negative i32.",
                                                         v
                                                     ),
                                                     combined_range,
@@ -434,7 +434,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             format!("-{}", v).parse::<i64>().map_err(|_| {
                                                 Error::MessageWithRange(
                                                     format!(
-                                                        "Can not convert \"{}\" to negative.",
+                                                        "Can not convert \"{}\" to negative i64.",
                                                         v
                                                     ),
                                                     combined_range,
@@ -483,7 +483,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                             None => {
                                 // "...-EOF"
                                 Some(Err(Error::UnexpectedEndOfDocument(
-                                    "Missing the number that follow the plus sign.".to_owned(),
+                                    "Missing the number that follow the minus sign.".to_owned(),
                                 )))
                             }
                         }
@@ -1175,29 +1175,13 @@ mod tests {
         // +EOF
         assert!(matches!(
             lex_str_to_vec("abc,+"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 5,
-                //     line: 0,
-                //     column: 5,
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_,))
         ));
 
         // -EOF
         assert!(matches!(
             lex_str_to_vec("xyz,-"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 5,
-                //     line: 0,
-                //     column: 5,
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_,))
         ));
 
         // err: plus sign is added to non-numbers

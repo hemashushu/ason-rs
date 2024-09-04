@@ -11,43 +11,54 @@ use ason::{parse_from_str, print_to_string};
 fn main() {
     let mut args = std::env::args();
 
-    // args 0 = program executable file itself
-    // args 1 = source file, "-" for STDIN
+    // run with Cargo
+    // --------------
     //
-    // run with Cargo:
     // `$ cargo run -- <filename>`
     //
     // e.g.
     // `$ cargo run -- examples/01-primitive.ason`
-    // `$ cargo run -- -`
+    // `$ cargo run -- -v examples/06-error.ason`
+    //
+    // run standalone
+    // --------------
     //
     // `$ ason examples/01-primitive.ason`
     // `$ echo '{id: 123}' | ason -`
 
-    if args.len() != 2 {
+    if args.len() < 2 || args.len() > 3 {
         // https://doc.rust-lang.org/cargo/reference/environment-variables.html
         eprintln!("ASON Utility {}", env!("CARGO_PKG_VERSION"));
         eprintln!();
-        eprintln!("USAGE:");
-        eprintln!("    ason <filename>");
+        eprintln!("Usage:");
+        eprintln!("    ason [OPTION] <filename>");
+        eprintln!();
+        eprintln!("Options:");
+        eprintln!("    -v, --verify     verify document only");
         eprintln!();
         eprintln!("    Pass \"-\" to <filename> for STDIN");
         eprintln!();
-        eprintln!("EXAMPLES:");
-        eprintln!("    ason examples/01-primitive.ason");
-        eprintln!("    echo '{{id: 123}}' | ason -");
+        eprintln!("Examples:");
+        eprintln!("    - ason examples/01-primitive.ason");
+        eprintln!("    - ason -v examples/06-error.ason");
+        eprintln!("    - echo '{{id: 123}}' | ason -");
         eprintln!();
-        eprintln!("SOURCE:");
+        eprintln!("Source:");
         eprintln!("    https://github.com/hemashushu/ason-rs");
         eprintln!();
-        eprintln!("DOCUMENT:");
+        eprintln!("Document:");
         eprintln!("    https://hemashushu.github.io/works/ason");
         process::exit(1);
     }
 
-    let filepath = args.nth(1).unwrap();
+    // args 0 = program executable file itself
+    let (is_verify, filepath) = if args.len() == 2 {
+        (false, args.nth(1).unwrap())
+    } else {
+        (true, args.nth(2).unwrap())
+    };
 
-    let text = if filepath == "-" {
+    let source = if filepath == "-" {
         let mut buf = String::new();
         match std::io::stdin().lock().read_to_string(&mut buf) {
             Ok(_) => buf,
@@ -69,23 +80,17 @@ fn main() {
         }
     };
 
-    let node = match parse_from_str(&text) {
+    let node = match parse_from_str(&source) {
         Ok(n) => n,
         Err(e) => {
-            let msg = if filepath == "-" {
-                format!("Fail to parse the input text, message: {}", e)
-            } else {
-                format!(
-                    "Fail to parse the specified file: {}, message: {}",
-                    &filepath, e
-                )
-            };
-            eprintln!("{}", msg);
+            eprintln!("{}", e.with_source(&source));
             process::exit(1);
         }
     };
 
-    let text = print_to_string(&node);
-
-    println!("{}", text);
+    if is_verify {
+        println!("Document validation passed.")
+    } else {
+        println!("{}", print_to_string(&node));
+    }
 }

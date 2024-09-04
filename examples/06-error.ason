@@ -1,0 +1,7 @@
+{
+    id: 123
+    name: "hello"
+    // the following number is incorrect
+    number: 512_u8
+    checked: true
+}

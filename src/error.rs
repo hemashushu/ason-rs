@@ -76,23 +76,22 @@ fn calculate_snippet_range(
     const LEADING_LENGTH: usize = 15;
     const SNIPPET_LENGTH: usize = 40;
 
-    let (prefix, selection_start, offset) = if source_total_length < SNIPPET_LENGTH {
-        (false, 0, original_selection_start)
-    } else if original_selection_start < LEADING_LENGTH {
-        (false, 0, original_selection_start)
-    } else if original_selection_start + SNIPPET_LENGTH > source_total_length {
-        (
-            true,
-            source_total_length - SNIPPET_LENGTH,
-            original_selection_start - (source_total_length - SNIPPET_LENGTH),
-        )
-    } else {
-        (
-            true,
-            original_selection_start - LEADING_LENGTH,
-            LEADING_LENGTH,
-        )
-    };
+    let (prefix, selection_start, offset) =
+        if source_total_length < SNIPPET_LENGTH || original_selection_start < LEADING_LENGTH {
+            (false, 0, original_selection_start)
+        } else if original_selection_start + SNIPPET_LENGTH > source_total_length {
+            (
+                true,
+                source_total_length - SNIPPET_LENGTH,
+                original_selection_start - (source_total_length - SNIPPET_LENGTH),
+            )
+        } else {
+            (
+                true,
+                original_selection_start - LEADING_LENGTH,
+                LEADING_LENGTH,
+            )
+        };
 
     let (suffix, selection_length) = if selection_start + SNIPPET_LENGTH >= source_total_length {
         (false, source_total_length - selection_start)
@@ -132,7 +131,8 @@ fn generate_snippet_and_indented_detail(
         .take(snippet_range.selection_length);
     let selection_string = selection_chars
         .map(|c| match c {
-            '\n' | '\t' => ' ',
+            '\n' => '/',
+            '\t' => ' ',
             _ => c,
         })
         .collect::<String>();
@@ -227,8 +227,8 @@ mod tests {
         let source2 = "012345678_b12345678_c12345678_d12345678_e123456789"; // 50 chars
         let msg = "abcde";
 
-        assert_eq!(Error::Message(msg.to_owned()).with_source(&source1), msg);
-        assert_eq!(Error::Message(msg.to_owned()).with_source(&source2), msg);
+        assert_eq!(Error::Message(msg.to_owned()).with_source(source1), msg);
+        assert_eq!(Error::Message(msg.to_owned()).with_source(source2), msg);
     }
 
     #[test]
@@ -238,14 +238,14 @@ mod tests {
         let msg = "abcde";
 
         assert_eq!(
-            Error::UnexpectedEndOfDocument(msg.to_owned()).with_source(&source1),
+            Error::UnexpectedEndOfDocument(msg.to_owned()).with_source(source1),
             r#"Unexpected to reach the end of document.
 | 0123456789
 |           ^____ abcde"#
         );
 
         assert_eq!(
-            Error::UnexpectedEndOfDocument(msg.to_owned()).with_source(&source2),
+            Error::UnexpectedEndOfDocument(msg.to_owned()).with_source(source2),
             r#"Unexpected to reach the end of document.
 | ...b12345678_c12345678_d12345678_e123456789
 |                                            ^____ abcde"#
@@ -262,7 +262,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 0, 11, 13))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
 | ^____ abcde"#
@@ -270,7 +270,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 0, 11, 13))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 12, column: 14
 | 012345678_b12345678_c12345678_d12345678_...
 | ^____ abcde"#
@@ -280,7 +280,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 2, 11, 13))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
 |   ^____ abcde"#
@@ -288,7 +288,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 15, 11, 13))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 12, column: 14
 | ...b12345678_c12345678_d12345678_e123456789
 |         ^____ abcde"#
@@ -298,7 +298,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 5, 11, 13))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
 |      ^____ abcde"#
@@ -306,7 +306,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 25, 11, 13))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 12, column: 14
 | ...b12345678_c12345678_d12345678_e123456789
 |                   ^____ abcde"#
@@ -316,7 +316,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 8, 11, 13))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
 |         ^____ abcde"#
@@ -324,7 +324,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 45, 11, 13))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 12, column: 14
 | ...b12345678_c12345678_d12345678_e123456789
 |                                       ^____ abcde"#
@@ -334,7 +334,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 10, 11, 13))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
 |           ^____ abcde"#
@@ -342,7 +342,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithPosition(msg.to_owned(), Position::new(0, 50, 11, 13))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 12, column: 14
 | ...b12345678_c12345678_d12345678_e123456789
 |                                            ^____ abcde"#
@@ -359,7 +359,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 0, 17, 19, 4))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
 | ^^^^ abcde"#
@@ -367,7 +367,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 0, 17, 19, 8))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 18, column: 20
 | 012345678_b12345678_c12345678_d12345678_...
 | ^^^^^^^^ abcde"#
@@ -377,7 +377,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 2, 17, 19, 4))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
 |   ^^^^ abcde"#
@@ -385,7 +385,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 15, 17, 19, 8))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 18, column: 20
 | ...b12345678_c12345678_d12345678_e123456789
 |         ^^^^^^^^ abcde"#
@@ -395,7 +395,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 5, 17, 19, 4))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
 |      ^^^^ abcde"#
@@ -403,7 +403,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 25, 17, 19, 8))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 18, column: 20
 | ...b12345678_c12345678_d12345678_e123456789
 |                   ^^^^^^^^ abcde"#
@@ -413,7 +413,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 8, 17, 19, 4))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
 |         ^^ abcde"#
@@ -421,7 +421,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 45, 17, 19, 8))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 18, column: 20
 | ...b12345678_c12345678_d12345678_e123456789
 |                                       ^^^^^ abcde"#
@@ -431,7 +431,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 10, 17, 19, 4))
-                .with_source(&source1),
+                .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
 |           ^____ abcde"#
@@ -439,7 +439,7 @@ mod tests {
 
         assert_eq!(
             Error::MessageWithRange(msg.to_owned(), Range::new(0, 50, 17, 19, 8))
-                .with_source(&source2),
+                .with_source(source2),
             r#"Error at line: 18, column: 20
 | ...b12345678_c12345678_d12345678_e123456789
 |                                            ^____ abcde"#

@@ -162,13 +162,28 @@ impl<'de> Deserializer<'de> {
         self.consume_token(&Token::RightBrace)
     }
 
-    // consume '\n' or ',' if they exist.
-    fn consume_new_line_or_comma_if_exist(&mut self) -> Result<()> {
-        if matches!(self.peek_token(0)?, Some(Token::NewLine | Token::Comma)) {
-            self.next_token()?;
+    // consume '\n' if it exists.
+    fn consume_new_line_if_exist(&mut self) -> Result<Option<bool>> {
+        match self.peek_token(0)? {
+            Some(Token::NewLine) => {
+                self.next_token()?;
+                Ok(Some(true))
+            }
+            Some(_) => Ok(Some(false)),
+            None => Ok(None),
         }
+    }
 
-        Ok(())
+    // consume '\n' or ',' if they exist.
+    fn consume_new_line_or_comma_if_exist(&mut self) -> Result<Option<bool>> {
+        match self.peek_token(0)? {
+            Some(Token::NewLine | Token::Comma) => {
+                self.next_token()?;
+                Ok(Some(true))
+            }
+            Some(_) => Ok(Some(false)),
+            None => Ok(None),
+        }
     }
 }
 
@@ -468,11 +483,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 }
             }
             Some(_) => Err(Error::MessageWithPosition(
-                "Expect variant \"Option\".".to_owned(),
+                "Expect the \"Option\" type of variant.".to_owned(),
                 self.last_range.get_position_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
-                "Expect the variant \"Option\".".to_owned(),
+                "Expect the \"Option\" type of variant.".to_owned(),
             )),
         }
     }
@@ -518,7 +533,6 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 let value = visitor.visit_seq(ArrayAccessor::new(self))?;
 
                 self.consume_right_bracket()?; // consume ']'
-                self.consume_new_line_or_comma_if_exist()?; // consume trailing newlines
 
                 Ok(value)
             }
@@ -540,9 +554,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             Some(Token::LeftParen) => {
                 let value = visitor.visit_seq(TupleAccessor::new(self))?;
 
-                self.consume_new_line_or_comma_if_exist()?; // consume additional newlines
+                // consume additional newlines or comma
+                // because the deserializer knows the number of members of the
+                // target tuple, so it will jump out early and leave the comma.
+                self.consume_new_line_or_comma_if_exist()?;
                 self.consume_right_paren()?; // consume ')'
-                self.consume_new_line_or_comma_if_exist()?; // consume trailing newlines
 
                 Ok(value)
             }
@@ -597,10 +613,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         match self.next_token()? {
             Some(Token::LeftBrace) => {
                 let value = visitor.visit_map(ObjectAccessor::new(self))?;
-
-                self.consume_new_line_or_comma_if_exist()?; // consume additional newlines
                 self.consume_right_brace()?; // consume '}'
-                self.consume_new_line_or_comma_if_exist()?; // consume trailing newlines
 
                 Ok(value)
             }
@@ -685,11 +698,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
 
 struct ArrayAccessor<'a, 'de: 'a> {
     de: &'a mut Deserializer<'de>,
+    is_first_element: bool,
 }
 
 impl<'a, 'de> ArrayAccessor<'a, 'de> {
     fn new(de: &'a mut Deserializer<'de>) -> Self {
-        Self { de }
+        Self {
+            de,
+            is_first_element: true,
+        }
     }
 }
 
@@ -700,12 +717,31 @@ impl<'de, 'a> SeqAccess<'de> for ArrayAccessor<'a, 'de> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        self.de.consume_new_line_or_comma_if_exist()?;
+        let exists_separator = if self.is_first_element {
+            self.de.consume_new_line_if_exist()?
+        } else {
+            self.de.consume_new_line_or_comma_if_exist()?
+        };
 
         if self.de.peek_token_and_equals(0, &Token::RightBracket) {
             // exits the procedure when the end marker ']' is encountered.
             return Ok(None);
         }
+
+        if !self.is_first_element && !matches!(exists_separator, Some(true)) {
+            if let Some(false) = exists_separator {
+                return Err(Error::MessageWithPosition(
+                    "Expect a comma or new-line.".to_owned(),
+                    self.de.peek_range(0)?.unwrap().get_position_start(),
+                ));
+            } else {
+                return Err(Error::UnexpectedEndOfDocument(
+                    "Incomplete List.".to_owned(),
+                ));
+            }
+        }
+
+        self.is_first_element = false;
 
         seed.deserialize(&mut *self.de).map(Some)
     }
@@ -713,11 +749,15 @@ impl<'de, 'a> SeqAccess<'de> for ArrayAccessor<'a, 'de> {
 
 struct TupleAccessor<'a, 'de: 'a> {
     de: &'a mut Deserializer<'de>,
+    is_first_element: bool,
 }
 
 impl<'a, 'de> TupleAccessor<'a, 'de> {
     fn new(de: &'a mut Deserializer<'de>) -> Self {
-        Self { de }
+        Self {
+            de,
+            is_first_element: true,
+        }
     }
 }
 
@@ -728,12 +768,32 @@ impl<'de, 'a> SeqAccess<'de> for TupleAccessor<'a, 'de> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        self.de.consume_new_line_or_comma_if_exist()?;
-        seed.deserialize(&mut *self.de).map(Some)
+        let exists_separator = if self.is_first_element {
+            self.de.consume_new_line_if_exist()?
+        } else {
+            self.de.consume_new_line_or_comma_if_exist()?
+        };
 
         // the deserializer knows the number of members of the
         // target tuple, so it doesn't need to check the
         // ending marker ')'.
+
+        if !self.is_first_element && !matches!(exists_separator, Some(true)) {
+            if let Some(false) = exists_separator {
+                return Err(Error::MessageWithPosition(
+                    "Expect a comma or new-line.".to_owned(),
+                    self.de.peek_range(0)?.unwrap().get_position_start(),
+                ));
+            } else {
+                return Err(Error::UnexpectedEndOfDocument(
+                    "Incomplete Tuple.".to_owned(),
+                ));
+            }
+        }
+
+        self.is_first_element = false;
+
+        seed.deserialize(&mut *self.de).map(Some)
     }
 }
 
@@ -787,13 +847,12 @@ impl<'de, 'a> VariantAccess<'de> for VariantAccessor<'a, 'de> {
         T: de::DeserializeSeed<'de>,
     {
         self.de.next_token()?; // consume '('
-        self.de.consume_new_line_or_comma_if_exist()?;
+        self.de.consume_new_line_if_exist()?;
 
         let v = seed.deserialize(&mut *self.de);
-        self.de.consume_new_line_or_comma_if_exist()?;
+        self.de.consume_new_line_if_exist()?;
 
         self.de.next_token()?; // consume ')'
-        self.de.consume_new_line_or_comma_if_exist()?;
         v
     }
 
@@ -814,11 +873,15 @@ impl<'de, 'a> VariantAccess<'de> for VariantAccessor<'a, 'de> {
 
 struct ObjectAccessor<'a, 'de: 'a> {
     de: &'a mut Deserializer<'de>,
+    is_first_element: bool,
 }
 
 impl<'a, 'de> ObjectAccessor<'a, 'de> {
     fn new(de: &'a mut Deserializer<'de>) -> Self {
-        Self { de }
+        Self {
+            de,
+            is_first_element: true,
+        }
     }
 }
 
@@ -829,13 +892,32 @@ impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
     where
         K: de::DeserializeSeed<'de>,
     {
-        self.de.consume_new_line_or_comma_if_exist()?;
+        let exists_separator = if self.is_first_element {
+            self.de.consume_new_line_if_exist()?
+        } else {
+            self.de.consume_new_line_or_comma_if_exist()?
+        };
 
         // it seems the struct/object accessor wouldn't stop automatically when
         // it encounters the last field.
         if self.de.peek_token_and_equals(0, &Token::RightBrace) {
             return Ok(None);
         }
+
+        if !self.is_first_element && !matches!(exists_separator, Some(true)) {
+            if let Some(false) = exists_separator {
+                return Err(Error::MessageWithPosition(
+                    "Expect a comma or new-line.".to_owned(),
+                    self.de.peek_range(0)?.unwrap().get_position_start(),
+                ));
+            } else {
+                return Err(Error::UnexpectedEndOfDocument(
+                    "Incomplete Object.".to_owned(),
+                ));
+            }
+        }
+
+        self.is_first_element = false;
 
         // Deserialize a field key.
         seed.deserialize(&mut *self.de).map(Some)
@@ -848,9 +930,9 @@ impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
     where
         V: de::DeserializeSeed<'de>,
     {
-        self.de.consume_new_line_or_comma_if_exist()?;
+        self.de.consume_new_line_if_exist()?;
         self.de.consume_colon()?;
-        self.de.consume_new_line_or_comma_if_exist()?;
+        self.de.consume_new_line_if_exist()?;
 
         // Deserialize a field value.
         seed.deserialize(&mut *self.de)
@@ -859,7 +941,7 @@ impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
 
 #[cfg(test)]
 mod tests {
-    use crate::serde::de::from_str;
+    use crate::{error::Error, location::Position, serde::de::from_str};
 
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
@@ -1014,6 +1096,50 @@ mod tests {
         );
 
         assert_eq!(
+            from_str::<Vec<i32>>(r#"[11,13,17,19,]"#).unwrap(),
+            vec![11, 13, 17, 19]
+        );
+
+        assert_eq!(
+            from_str::<Vec<i32>>(
+                r#"[
+    11
+    13
+    17
+    19
+]"#
+            )
+            .unwrap(),
+            vec![11, 13, 17, 19]
+        );
+
+        assert_eq!(
+            from_str::<Vec<i32>>(
+                r#"[
+    11,
+    13,
+    17,
+    19
+]"#
+            )
+            .unwrap(),
+            vec![11, 13, 17, 19]
+        );
+
+        assert_eq!(
+            from_str::<Vec<i32>>(
+                r#"[
+    11,
+    13,
+    17,
+    19,
+]"#
+            )
+            .unwrap(),
+            vec![11, 13, 17, 19]
+        );
+
+        assert_eq!(
             from_str::<Vec<u8>>(
                 r#"[
     97_u8
@@ -1049,12 +1175,76 @@ mod tests {
             .unwrap(),
             vec![vec![11, 13], vec![17, 19], vec![23, 29]]
         );
+
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            from_str::<Vec<i32>>(r#"[11 13]"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 4,
+                    line: 0,
+                    column: 4
+                }
+            ))
+        ));
+
+        // err: missing ']', EOF
+        assert!(matches!(
+            from_str::<Vec<i32>>(r#"[11,13"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
     }
 
     #[test]
     fn test_tuple() {
         assert_eq!(
             from_str::<(i32, i32, i32, i32)>(r#"(11, 13, 17, 19)"#).unwrap(),
+            (11, 13, 17, 19)
+        );
+
+        assert_eq!(
+            from_str::<(i32, i32, i32, i32)>(r#"(11, 13, 17, 19,)"#).unwrap(),
+            (11, 13, 17, 19)
+        );
+
+        assert_eq!(
+            from_str::<(i32, i32, i32, i32)>(
+                r#"(
+    11
+    13
+    17
+    19
+)"#
+            )
+            .unwrap(),
+            (11, 13, 17, 19)
+        );
+
+        assert_eq!(
+            from_str::<(i32, i32, i32, i32)>(
+                r#"(
+    11,
+    13,
+    17,
+    19
+)"#
+            )
+            .unwrap(),
+            (11, 13, 17, 19)
+        );
+
+        assert_eq!(
+            from_str::<(i32, i32, i32, i32)>(
+                r#"(
+    11,
+    13,
+    17,
+    19,
+)"#
+            )
+            .unwrap(),
             (11, 13, 17, 19)
         );
 
@@ -1086,6 +1276,26 @@ mod tests {
                 .unwrap(),
             ((11, 13), (17, 19), (23, 29))
         );
+
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            from_str::<(i32, i32, i32, i32)>(r#"(11 13)"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 4,
+                    line: 0,
+                    column: 4
+                }
+            ))
+        ));
+
+        // err: missing ')', EOF
+        assert!(matches!(
+            from_str::<(i32, i32, i32, i32)>(r#"(11, 13"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
     }
 
     #[test]
@@ -1099,6 +1309,54 @@ mod tests {
 
         assert_eq!(
             from_str::<Object>(r#"{id: 123, name: "foo", checked: true}"#).unwrap(),
+            Object {
+                id: 123,
+                name: "foo".to_owned(),
+                checked: true
+            }
+        );
+
+        assert_eq!(
+            from_str::<Object>(
+                r#"{
+    id: 123
+    name: "foo"
+    checked: true
+}"#
+            )
+            .unwrap(),
+            Object {
+                id: 123,
+                name: "foo".to_owned(),
+                checked: true
+            }
+        );
+
+        assert_eq!(
+            from_str::<Object>(
+                r#"{
+    id: 123,
+    name: "foo",
+    checked: true
+}"#
+            )
+            .unwrap(),
+            Object {
+                id: 123,
+                name: "foo".to_owned(),
+                checked: true
+            }
+        );
+
+        assert_eq!(
+            from_str::<Object>(
+                r#"{
+    id: 123,
+    name: "foo",
+    checked: true,
+}"#
+            )
+            .unwrap(),
             Object {
                 id: 123,
                 name: "foo".to_owned(),
@@ -1140,7 +1398,41 @@ mod tests {
                     city: "sz".to_owned()
                 })
             }
-        )
+        );
+
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            from_str::<Object>(r#"{id: 123 name: "foo"}"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 9,
+                    line: 0,
+                    column: 9
+                }
+            ))
+        ));
+
+        // err: missing '}', EOF
+        assert!(matches!(
+            from_str::<Object>(r#"{id: 123"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
+    }
+
+    #[test]
+    fn test_variant() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Color {
+            Red,
+            Green,
+            Blue,
+        }
+
+        assert_eq!(from_str::<Color>(r#"Color::Red"#).unwrap(), Color::Red);
+        assert_eq!(from_str::<Color>(r#"Color::Green"#).unwrap(), Color::Green);
+        assert_eq!(from_str::<Color>(r#"Color::Blue"#).unwrap(), Color::Blue);
     }
 
     #[test]
@@ -1154,7 +1446,6 @@ mod tests {
         }
 
         assert_eq!(from_str::<Color>(r#"Color::Red"#).unwrap(), Color::Red);
-        assert_eq!(from_str::<Color>(r#"Color::Green"#).unwrap(), Color::Green);
         assert_eq!(
             from_str::<Color>(r#"Color::Grey(11_u8)"#).unwrap(),
             Color::Grey(11)
@@ -1184,27 +1475,131 @@ mod tests {
     }
 
     #[test]
-    fn test_variant_with_tuple_values() {
+    fn test_variant_with_list_and_object_values() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Object {
+            id: i32,
+            name: String,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        enum Item {
+            Empty,
+            List(Vec<i32>),
+            Object(Object),
+        }
+
+        assert_eq!(
+            from_str::<Vec<Item>>(
+                r#"[
+    Item::Empty
+    Item::List([11,13])
+    Item::Object({
+        id: 13
+        name: "foo"
+    })
+]"#
+            )
+            .unwrap(),
+            vec![
+                Item::Empty,
+                Item::List(vec![11, 13]),
+                Item::Object(Object {
+                    id: 13,
+                    name: "foo".to_owned()
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_variant_with_tuple_style_member() {
         #[allow(clippy::upper_case_acronyms)]
         #[derive(Deserialize, Debug, PartialEq)]
         enum Color {
-            RGB(u8, u8, u8),
             Grey(u8),
+            RGB(u8, u8, u8),
         }
+
+        assert_eq!(
+            from_str::<Color>(r#"Color::Grey(127_u8)"#).unwrap(),
+            Color::Grey(127)
+        );
 
         assert_eq!(
             from_str::<Color>(r#"Color::RGB(255_u8,127_u8,63_u8)"#).unwrap(),
             Color::RGB(255, 127, 63)
         );
+
+        assert_eq!(
+            from_str::<Color>(
+                r#"Color::RGB(
+    255_u8
+    127_u8
+    63_u8
+)"#
+            )
+            .unwrap(),
+            Color::RGB(255, 127, 63)
+        );
+
+        assert_eq!(
+            from_str::<Color>(
+                r#"Color::RGB(
+    255_u8,
+    127_u8,
+    63_u8
+)"#
+            )
+            .unwrap(),
+            Color::RGB(255, 127, 63)
+        );
+
+        assert_eq!(
+            from_str::<Color>(
+                r#"Color::RGB(
+    255_u8,
+    127_u8,
+    63_u8,
+)"#
+            )
+            .unwrap(),
+            Color::RGB(255, 127, 63)
+        );
+
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            from_str::<Color>(r#"Color::RGB(255_u8 127_u8 63_u8)"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 18,
+                    line: 0,
+                    column: 18
+                }
+            ))
+        ));
+
+        // err: missing ')', EOF
+        assert!(matches!(
+            from_str::<Color>(r#"Color::RGB(255_u8"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
     }
 
     #[test]
-    fn test_variant_with_object_values() {
+    fn test_variant_with_object_style_member() {
         #[derive(Deserialize, Debug, PartialEq)]
         enum Shape {
             Circle(i32),
             Rect { width: i32, height: i32 },
         }
+
+        assert_eq!(
+            from_str::<Shape>(r#"Shape::Circle(127)"#).unwrap(),
+            Shape::Circle(127)
+        );
 
         assert_eq!(
             from_str::<Shape>(
@@ -1221,9 +1616,60 @@ mod tests {
         );
 
         assert_eq!(
-            from_str::<Shape>(r#"Shape::Circle(127)"#).unwrap(),
-            Shape::Circle(127)
+            from_str::<Shape>(r#"Shape::Rect{width: 200, height: 100}"#).unwrap(),
+            Shape::Rect {
+                width: 200,
+                height: 100
+            }
         );
+
+        assert_eq!(
+            from_str::<Shape>(
+                r#"Shape::Rect{
+    width: 200,
+    height: 100
+}"#
+            )
+            .unwrap(),
+            Shape::Rect {
+                width: 200,
+                height: 100
+            }
+        );
+
+        assert_eq!(
+            from_str::<Shape>(
+                r#"Shape::Rect{
+    width: 200,
+    height: 100,
+}"#
+            )
+            .unwrap(),
+            Shape::Rect {
+                width: 200,
+                height: 100
+            }
+        );
+
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            from_str::<Shape>(r#"Shape::Rect{width: 200 height: 100}"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 23,
+                    line: 0,
+                    column: 23
+                }
+            ))
+        ));
+
+        // err: missing '}', EOF
+        assert!(matches!(
+            from_str::<Shape>(r#"Shape::Rect{width: 200"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
     }
 
     #[test]
@@ -1322,12 +1768,6 @@ mod tests {
             name: String,
         }
 
-        #[derive(Deserialize, Debug, PartialEq)]
-        struct ObjectDetail {
-            id: i32,
-            address: (i32, String),
-        }
-
         assert_eq!(
             from_str::<(i32, Object)>(
                 r#"(123, {
@@ -1345,6 +1785,12 @@ mod tests {
             )
         );
 
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct ObjectDetail {
+            id: i32,
+            address: (i32, String),
+        }
+
         assert_eq!(
             from_str::<ObjectDetail>(
                 r#"{
@@ -1357,62 +1803,6 @@ mod tests {
                 id: 456,
                 address: (11, "sz".to_owned())
             }
-        );
-    }
-
-    #[test]
-    fn test_mixed_variant_object() {
-        #[derive(Deserialize, Debug, PartialEq)]
-        struct Simple {
-            id: i32,
-            name: String,
-        }
-
-        #[derive(Deserialize, Debug, PartialEq)]
-        struct Complex {
-            id: i32,
-            checked: bool,
-            fullname: String,
-        }
-
-        #[derive(Deserialize, Debug, PartialEq)]
-        enum Item {
-            Empty,
-            Minimal(i32),
-            Simple(Simple),
-            Complex(Complex),
-        }
-
-        assert_eq!(
-            from_str::<Vec<Item>>(
-                r#"[
-    Item::Empty
-    Item::Minimal(11)
-    Item::Simple({
-        id: 13
-        name: "foo"
-    })
-    Item::Complex({
-        id: 17
-        checked: true
-        fullname: "foobar"
-    })
-]"#
-            )
-            .unwrap(),
-            vec![
-                Item::Empty,
-                Item::Minimal(11),
-                Item::Simple(Simple {
-                    id: 13,
-                    name: "foo".to_owned()
-                }),
-                Item::Complex(Complex {
-                    id: 17,
-                    checked: true,
-                    fullname: "foobar".to_owned()
-                })
-            ]
         );
     }
 }

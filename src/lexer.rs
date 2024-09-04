@@ -482,7 +482,7 @@ impl<'a> TokenIter<'a> {
                 self.lex_identifier_or_keyword()
             }
             current_char => Err(Error::MessageWithPosition(
-                format!("Syntax error, unexpected char '{}'.", current_char),
+                format!("Unexpected char '{}'.", current_char),
                 *self.peek_position(0).unwrap().unwrap(),
             )),
         }
@@ -729,20 +729,14 @@ impl<'a> TokenIter<'a> {
         // check syntax
         if num_string.ends_with('.') {
             return Err(Error::MessageWithPosition(
-                format!(
-                    "Decimal number can not ends with \".\": \"{}\".",
-                    num_string
-                ),
+                "Decimal number can not ends with \".\".".to_owned(),
                 self.last_position,
             ));
         }
 
         if num_string.ends_with('e') {
             return Err(Error::MessageWithPosition(
-                format!(
-                    "Decimal number can not ends with \"e\": \"{}\".",
-                    num_string
-                ),
+                "Decimal number can not ends with \"e\".".to_owned(),
                 self.last_position,
             ));
         }
@@ -1434,8 +1428,9 @@ impl<'a> TokenIter<'a> {
                                             self.unescape_unicode()?
                                         } else {
                                             return Err(Error::MessageWithPosition(
-                                                "Missing the open brace for unicode escape sequence.".to_owned(),
-                                                self.last_position.forward_char()
+                                                "Missing the brace for unicode escape sequence."
+                                                    .to_owned(),
+                                                self.last_position.forward_char(),
                                             ));
                                         }
                                     }
@@ -1487,7 +1482,7 @@ impl<'a> TokenIter<'a> {
             Some(_) => {
                 // `'a?`
                 return Err(Error::MessageWithPosition(
-                    "Expected the closed quote for char".to_owned(),
+                    "Expected a quote for char".to_owned(),
                     self.last_position,
                 ));
             }
@@ -1631,7 +1626,7 @@ impl<'a> TokenIter<'a> {
                                                 ss.push(ch);
                                             } else {
                                                 return Err(Error::MessageWithPosition(
-                                                    "Missing the open brace for unicode escape sequence.".to_owned(),
+                                                    "Missing the brace for unicode escape sequence.".to_owned(),
                                                     self.last_position.forward_char()
                                                 ));
                                             }
@@ -1974,7 +1969,10 @@ impl<'a> TokenIter<'a> {
 
         let rfc3339 = DateTime::parse_from_rfc3339(&date_string).map_err(|_| {
             Error::MessageWithRange(
-                format!("Unable parse the string \"{}\" to datetime.", date_string),
+                format!(
+                    "Can not convert the string \"{}\" to datetime.",
+                    date_string
+                ),
                 date_range,
             )
         })?;
@@ -2017,7 +2015,7 @@ impl<'a> TokenIter<'a> {
                                     break;
                                 } else {
                                     return Err(Error::MessageWithPosition(
-                                        "Expect whitespace between the hexadecimal byte data digits."
+                                        "Expect a whitespace between the hexadecimal byte data digits."
                                             .to_owned(),
                                         iter.last_position.forward_char()
                                     ));
@@ -3673,29 +3671,13 @@ mod tests {
         // err: empty char, missing the char
         assert!(matches!(
             lex_str_to_vec("'"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 1,
-                //     line: 0,
-                //     column: 1
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete char, missing the right quote, encounter EOF
         assert!(matches!(
             lex_str_to_vec("'a"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 2,
-                //     line: 0,
-                //     column: 2
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: invalid char, expect the right quote, encounter another char
@@ -3836,15 +3818,7 @@ mod tests {
         // err: incomplete unicode escape sequence, encounter EOF
         assert!(matches!(
             lex_str_to_vec("'\\u{1234"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 8,
-                //     line: 0,
-                //     column: 8
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing left brace for unicode escape sequence
@@ -3949,43 +3923,19 @@ mod tests {
         // err: incomplete string, missing the closed quote
         assert!(matches!(
             lex_str_to_vec("\"abc"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 4,
-                //     line: 0,
-                //     column: 4
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the closed quote, ends with \n
         assert!(matches!(
             lex_str_to_vec("\"abc\n"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 5,
-                //     line: 1,
-                //     column: 0
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the closed quote, ends with whitespaces/other chars
         assert!(matches!(
             lex_str_to_vec("\"abc\n   "),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 8,
-                //     line: 1,
-                //     column: 3
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: unsupported escape char \v
@@ -4098,15 +4048,7 @@ mod tests {
         // err: incomplete unicode escape sequence, encounter EOF
         assert!(matches!(
             lex_str_to_vec(r#""abc\u{1234"#),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 11,
-                //     line: 0,
-                //     column: 11
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing left brace for unicode escape sequence
@@ -4202,29 +4144,13 @@ mod tests {
         // err: incomplete string, missing the right quote, ends with \n
         assert!(matches!(
             lex_str_to_vec("\"abc\\\n"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 6,
-                //     line: 0,
-                //     column: 6
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the right quote, ends with whitespaces/other chars
         assert!(matches!(
             lex_str_to_vec("\"abc\\\n    "),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 10,
-                //     line: 1,
-                //     column: 4
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 
@@ -4261,43 +4187,19 @@ mod tests {
         // err: incomplete string, missing the right quote
         assert!(matches!(
             lex_str_to_vec("r\"abc    "),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 9,
-                //     line: 0,
-                //     column: 9
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the right quote, ends with \n
         assert!(matches!(
             lex_str_to_vec("r\"abc\n"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 6,
-                //     line: 1,
-                //     column: 0
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the right quote, ends with whitespaces/other chars
         assert!(matches!(
             lex_str_to_vec("r\"abc\n   "),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 9,
-                //     line: 1,
-                //     column: 3
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 
@@ -4333,43 +4235,19 @@ mod tests {
         // err: incomplete string, missing the closed hash
         assert!(matches!(
             lex_str_to_vec("r#\"abc    \""),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 11,
-                //     line: 0,
-                //     column: 11
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the closed quote, ends with \n
         assert!(matches!(
             lex_str_to_vec("r#\"abc\n"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 7,
-                //     line: 1,
-                //     column: 0
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the closed quote, ends with whitespace/other chars
         assert!(matches!(
             lex_str_to_vec("r#\"abc\nxyz"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 10,
-                //     line: 1,
-                //     column: 3
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 
@@ -4537,15 +4415,7 @@ mod tests {
 hello"""
 "#
             ),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 14,
-                //     line: 3,
-                //     column: 0
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing the ending marker
@@ -4556,15 +4426,7 @@ hello"""
 hello
 world"#
             ),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 16,
-                //     line: 3,
-                //     column: 5
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing the ending marker, ends with \n
@@ -4575,15 +4437,7 @@ world"#
 hello
 "#
             ),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 11,
-                //     line: 3,
-                //     column: 0
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 
@@ -4723,43 +4577,19 @@ hello
         // err: missing the close quote
         assert!(matches!(
             lex_str_to_vec("h\"11 13"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 7,
-                //     line: 0,
-                //     column: 7
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing the close quote, ends with \n
         assert!(matches!(
             lex_str_to_vec("h\"11 13\n"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 8,
-                //     line: 1,
-                //     column: 0
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing the close quote, ends with whitespaces/other chars
         assert!(matches!(
             lex_str_to_vec("h\"11 13\n    "),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 12,
-                //     line: 1,
-                //     column: 4
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 
@@ -4936,57 +4766,25 @@ hello
         // err: incomplete, missing "*/"
         assert!(matches!(
             lex_str_to_vec("7 /* 11"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 7,
-                //     line: 0,
-                //     column: 7
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete, missing "*/", ends with \n
         assert!(matches!(
             lex_str_to_vec("7 /* 11\n"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 8,
-                //     line: 1,
-                //     column: 0
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete, unpaired, missing "*/"
         assert!(matches!(
             lex_str_to_vec("a /* b /* c */"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 14,
-                //     line: 0,
-                //     column: 14
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete, unpaired, missing "*/", ends with \n
         assert!(matches!(
             lex_str_to_vec("a /* b /* c */\n"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 15,
-                //     line: 1,
-                //     column: 0
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 
@@ -5096,15 +4894,7 @@ hello
         // err: incomplete date string
         assert!(matches!(
             lex_str_to_vec("d\"2024-08-08"),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 12,
-                //     line: 0,
-                //     column: 12
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 

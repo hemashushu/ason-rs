@@ -87,6 +87,14 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn peek_range(&self, offset: usize) -> Result<Option<&Range>, Error> {
+        match self.upstream.peek(offset) {
+            Some(Ok(TokenWithRange { range, .. })) => Ok(Some(range)),
+            Some(Err(e)) => Err(e.clone()),
+            None => Ok(None),
+        }
+    }
+
     fn consume_token(&mut self, expected_token: &Token) -> Result<(), Error> {
         match self.next_token()? {
             Some(token) => {
@@ -111,111 +119,115 @@ impl<'a> Parser<'a> {
         self.consume_token(&Token::Colon)
     }
 
-    // consume '\n' or ',' if they exist.
-    fn consume_new_line_or_comma_if_exist(&mut self) -> Result<(), Error> {
-        if matches!(self.peek_token(0)?, Some(Token::NewLine | Token::Comma)) {
-            self.next_token()?;
+    // consume '\n' if it exists.
+    fn consume_new_line_if_exist(&mut self) -> Result<Option<bool>, Error> {
+        match self.peek_token(0)? {
+            Some(Token::NewLine) => {
+                self.next_token()?;
+                Ok(Some(true))
+            }
+            Some(_) => Ok(Some(false)),
+            None => Ok(None),
         }
+    }
 
-        Ok(())
+    // consume '\n' or ',' if they exist.
+    fn consume_new_line_or_comma_if_exist(&mut self) -> Result<Option<bool>, Error> {
+        match self.peek_token(0)? {
+            Some(Token::NewLine | Token::Comma) => {
+                self.next_token()?;
+                Ok(Some(true))
+            }
+            Some(_) => Ok(Some(false)),
+            None => Ok(None),
+        }
     }
 }
 
 impl<'a> Parser<'a> {
     fn parse_node(&mut self) -> Result<AsonNode, Error> {
-        loop {
-            match self.peek_token(0)? {
-                Some(current_token) => {
-                    let node = match current_token {
-                        Token::NewLine => {
-                            // it is possible to exist a newline token after the ']', '}' and ')' punctuations.
-                            self.next_token()?;
-                            continue;
-                        }
-                        Token::Comma if !matches!(self.peek_token(1)?, Some(Token::Comma)) => {
-                            // it is possible to exist a comma token after the ']', '}' and ')' punctuations.
-                            self.next_token()?;
-                            continue;
-                        }
-                        Token::Number(n) => {
-                            let v = convert_number_token(*n);
-                            self.next_token()?;
-                            v
-                        }
-                        Token::Boolean(b) => {
-                            let v = AsonNode::Boolean(*b);
-                            self.next_token()?;
-                            v
-                        }
-                        Token::Char(c) => {
-                            let v = AsonNode::Char(*c);
-                            self.next_token()?;
-                            v
-                        }
-                        Token::String_(s) => {
-                            let v = AsonNode::String_(s.to_owned());
-                            self.next_token()?;
-                            v
-                        }
-                        Token::Date(d) => {
-                            let v = AsonNode::DateTime(*d);
-                            self.next_token()?;
-                            v
-                        }
-                        Token::Variant(type_name, member_name) => {
-                            match self.peek_token(1)? {
-                                Some(Token::LeftParen) => {
-                                    // tuple variant or the new type variant (i.e. single value variant)
-                                    self.parse_tuple_variant()?
-                                }
-                                Some(Token::LeftBrace) => {
-                                    // struct variant
-                                    self.parse_struct_variant()?
-                                }
-                                _ => {
-                                    // unit variant
-                                    let v = AsonNode::Variant(Variant::new(type_name, member_name));
-                                    self.next_token()?;
-                                    v
-                                }
+        match self.peek_token(0)? {
+            Some(current_token) => {
+                let node = match current_token {
+                    Token::Number(n) => {
+                        let v = convert_number_token(*n);
+                        self.next_token()?;
+                        v
+                    }
+                    Token::Boolean(b) => {
+                        let v = AsonNode::Boolean(*b);
+                        self.next_token()?;
+                        v
+                    }
+                    Token::Char(c) => {
+                        let v = AsonNode::Char(*c);
+                        self.next_token()?;
+                        v
+                    }
+                    Token::String_(s) => {
+                        let v = AsonNode::String_(s.to_owned());
+                        self.next_token()?;
+                        v
+                    }
+                    Token::Date(d) => {
+                        let v = AsonNode::DateTime(*d);
+                        self.next_token()?;
+                        v
+                    }
+                    Token::Variant(type_name, member_name) => {
+                        match self.peek_token(1)? {
+                            Some(Token::LeftParen) => {
+                                // tuple variant or the new type variant (i.e. single value variant)
+                                self.parse_tuple_variant()?
+                            }
+                            Some(Token::LeftBrace) => {
+                                // struct variant
+                                self.parse_struct_variant()?
+                            }
+                            _ => {
+                                // unit variant
+                                let v = AsonNode::Variant(Variant::new(type_name, member_name));
+                                self.next_token()?;
+                                v
                             }
                         }
-                        Token::ByteData(b) => {
-                            let v = AsonNode::ByteData(b.to_owned());
-                            self.next_token()?;
-                            v
-                        }
-                        Token::LeftBrace => {
-                            // object: {...}
-                            self.parse_object()?
-                        }
-                        Token::LeftBracket => {
-                            // array: [...]
-                            self.parse_array()?
-                        }
-                        Token::LeftParen => {
-                            // tuple: (...)
-                            self.parse_tuple()?
-                        }
-                        _ => {
-                            return Err(Error::MessageWithPosition(
-                                "Syntax error, unexpected token.".to_owned(),
-                                self.last_range.get_position_start(),
-                            ))
-                        }
-                    };
+                    }
+                    Token::ByteData(b) => {
+                        let v = AsonNode::ByteData(b.to_owned());
+                        self.next_token()?;
+                        v
+                    }
+                    Token::LeftBrace => {
+                        // object: {...}
+                        self.parse_object()?
+                    }
+                    Token::LeftBracket => {
+                        // array: [...]
+                        self.parse_list()?
+                    }
+                    Token::LeftParen => {
+                        // tuple: (...)
+                        self.parse_tuple()?
+                    }
+                    _ => {
+                        return Err(Error::MessageWithPosition(
+                            "Unexpected token.".to_owned(),
+                            self.peek_range(0)?.unwrap().get_position_start(),
+                        ))
+                    }
+                };
 
-                    return Ok(node);
-                }
-                None => {
-                    return Err(Error::UnexpectedEndOfDocument(
-                        "Incomplete document.".to_owned(),
-                    ));
-                }
+                Ok(node)
+            }
+            None => {
+                Err(Error::UnexpectedEndOfDocument(
+                    "Incomplete document.".to_owned(),
+                ))
             }
         }
     }
 
+    // includes tuple style and new-type style variant
     fn parse_tuple_variant(&mut self) -> Result<AsonNode, Error> {
         // type::member(...)?  //
         // ^           ^    ^__// to here
@@ -234,12 +246,34 @@ impl<'a> Parser<'a> {
 
         let mut items = vec![];
 
+        // to indicate it is parsing the first element of List, Tuple or Object
+        let mut is_first_element = true;
+
         loop {
-            self.consume_new_line_or_comma_if_exist()?;
+            let exists_separator = if is_first_element {
+                self.consume_new_line_if_exist()?
+            } else {
+                self.consume_new_line_or_comma_if_exist()?
+            };
 
             if matches!(self.peek_token(0)?, Some(Token::RightParen)) {
                 break;
             }
+
+            if !is_first_element && !matches!(exists_separator, Some(true)) {
+                if let Some(false) = exists_separator {
+                    return Err(Error::MessageWithPosition(
+                        "Expect a comma or new-line.".to_owned(),
+                        self.peek_range(0)?.unwrap().get_position_start(),
+                    ));
+                } else {
+                    return Err(Error::UnexpectedEndOfDocument(
+                        "Incomplete \"Tuple\" style Variant.".to_owned(),
+                    ));
+                }
+            }
+
+            is_first_element = false;
 
             let value = self.parse_node()?;
             items.push(value);
@@ -250,7 +284,7 @@ impl<'a> Parser<'a> {
         let variant_item = match items.len() {
             0 => {
                 return Err(Error::MessageWithPosition(
-                    "The values of tuple variant can not be empty.".to_owned(),
+                    "The value of tuple style variant can not be empty.".to_owned(),
                     self.last_range.get_position_start(),
                 ));
             }
@@ -293,12 +327,34 @@ impl<'a> Parser<'a> {
 
         let mut kvps: Vec<KeyValuePair> = vec![];
 
+        // to indicate it is parsing the first element of List, Tuple or Object
+        let mut is_first_element = true;
+
         loop {
-            self.consume_new_line_or_comma_if_exist()?;
+            let exists_separator = if is_first_element {
+                self.consume_new_line_if_exist()?
+            } else {
+                self.consume_new_line_or_comma_if_exist()?
+            };
 
             if matches!(self.peek_token(0)?, Some(Token::RightBrace)) {
                 break;
             }
+
+            if !is_first_element && !matches!(exists_separator, Some(true)) {
+                if let Some(false) = exists_separator {
+                    return Err(Error::MessageWithPosition(
+                        "Expect a comma or new-line.".to_owned(),
+                        self.peek_range(0)?.unwrap().get_position_start(),
+                    ));
+                } else {
+                    return Err(Error::UnexpectedEndOfDocument(
+                        "Incomplete Object.".to_owned(),
+                    ));
+                }
+            }
+
+            is_first_element = false;
 
             let name = match self.next_token()? {
                 Some(Token::Identifier(n)) => n,
@@ -315,9 +371,9 @@ impl<'a> Parser<'a> {
                 }
             };
 
-            self.consume_new_line_or_comma_if_exist()?;
+            self.consume_new_line_if_exist()?;
             self.consume_colon()?;
-            self.consume_new_line_or_comma_if_exist()?;
+            self.consume_new_line_if_exist()?;
 
             let value = self.parse_node()?;
             let name_value_pair = KeyValuePair {
@@ -337,7 +393,7 @@ impl<'a> Parser<'a> {
         Ok(AsonNode::Object(kvps))
     }
 
-    fn parse_array(&mut self) -> Result<AsonNode, Error> {
+    fn parse_list(&mut self) -> Result<AsonNode, Error> {
         // [...]?  //
         // ^    ^__// to here
         // |-------// current token, validated
@@ -346,12 +402,34 @@ impl<'a> Parser<'a> {
 
         let mut items: Vec<AsonNode> = vec![];
 
+        // to indicate it is parsing the first element of List, Tuple or Object
+        let mut is_first_element = true;
+
         loop {
-            self.consume_new_line_or_comma_if_exist()?;
+            let exists_separator = if is_first_element {
+                self.consume_new_line_if_exist()?
+            } else {
+                self.consume_new_line_or_comma_if_exist()?
+            };
 
             if matches!(self.peek_token(0)?, Some(Token::RightBracket)) {
                 break;
             }
+
+            if !is_first_element && !matches!(exists_separator, Some(true)) {
+                if let Some(false) = exists_separator {
+                    return Err(Error::MessageWithPosition(
+                        "Expect a comma or new-line.".to_owned(),
+                        self.peek_range(0)?.unwrap().get_position_start(),
+                    ));
+                } else {
+                    return Err(Error::UnexpectedEndOfDocument(
+                        "Incomplete List.".to_owned(),
+                    ));
+                }
+            }
+
+            is_first_element = false;
 
             let value = self.parse_node()?;
             items.push(value);
@@ -371,12 +449,34 @@ impl<'a> Parser<'a> {
 
         let mut items: Vec<AsonNode> = vec![];
 
+        // to indicate it is parsing the first element of List, Tuple or Object
+        let mut is_first_element = true;
+
         loop {
-            self.consume_new_line_or_comma_if_exist()?;
+            let exists_separator = if is_first_element {
+                self.consume_new_line_if_exist()?
+            } else {
+                self.consume_new_line_or_comma_if_exist()?
+            };
 
             if matches!(self.peek_token(0)?, Some(Token::RightParen)) {
                 break;
             }
+
+            if !is_first_element && !matches!(exists_separator, Some(true)) {
+                if let Some(false) = exists_separator {
+                    return Err(Error::MessageWithPosition(
+                        "Expect a comma or new-line.".to_owned(),
+                        self.peek_range(0)?.unwrap().get_position_start(),
+                    ));
+                } else {
+                    return Err(Error::UnexpectedEndOfDocument(
+                        "Incomplete Tuple.".to_owned(),
+                    ));
+                }
+            }
+
+            is_first_element = false;
 
             let value = self.parse_node()?;
             items.push(value);
@@ -591,26 +691,21 @@ mod tests {
             ])
         );
 
-        // err: incorrect key name (should be enclosed with quotes)
+        // err: invalid key name (should be enclosed with quotes)
         assert!(matches!(
-            parse_from_str(
-                r#"{
-    "id": 123,
-    "name": "foo",
-}"#
-            ),
+            parse_from_str(r#"{"id": 123}"#),
             Err(Error::MessageWithPosition(
                 _,
                 Position {
                     unit: 0,
-                    index: 6,
-                    line: 1,
-                    column: 4
+                    index: 1,
+                    line: 0,
+                    column: 1
                 }
             ))
         ));
 
-        // err: missing key name
+        // err: invalid key name
         assert!(matches!(
             parse_from_str(r#"{123}"#),
             Err(Error::MessageWithPosition(
@@ -638,18 +733,50 @@ mod tests {
             ))
         ));
 
-        // err: missing '}'
+        // err: missing value, the '}' is not the expected token
+        assert!(matches!(
+            parse_from_str(r#"{id:}"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 4,
+                    line: 0,
+                    column: 4
+                }
+            ))
+        ));
+
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            parse_from_str(r#"{id: 123 name: "foo"}"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 9,
+                    line: 0,
+                    column: 9
+                }
+            ))
+        ));
+
+        // err: missing :, EOF
+        assert!(matches!(
+            parse_from_str(r#"{id"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
+
+        // err: missing value, EOF
+        assert!(matches!(
+            parse_from_str(r#"{id:"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
+
+        // err: missing '}', EOF
         assert!(matches!(
             parse_from_str(r#"{id:123"#),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 7,
-                //     line: 0,
-                //     column: 7
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 
@@ -713,9 +840,35 @@ mod tests {
             expect_list1
         );
 
-        // err: missing ']'
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            parse_from_str(r#"[123 456]"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 5,
+                    line: 0,
+                    column: 5
+                }
+            ))
+        ));
+
+        // err: missing ']', EOF
+        assert!(matches!(
+            parse_from_str(r#"[123"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
+
+        // err: missing ']', EOF
         assert!(matches!(
             parse_from_str(r#"[123,"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
+
+        // err: missing ']', EOF
+        assert!(matches!(
+            parse_from_str(r#"[123,456"#),
             Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
@@ -794,9 +947,35 @@ mod tests {
             ))
         ));
 
-        // err: missing ')'
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            parse_from_str(r#"(123 456)"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 5,
+                    line: 0,
+                    column: 5
+                }
+            ))
+        ));
+
+        // err: missing ')', EOF
+        assert!(matches!(
+            parse_from_str(r#"(123"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
+
+        // err: missing ')', EOF
         assert!(matches!(
             parse_from_str(r#"(123,"#),
+            Err(Error::UnexpectedEndOfDocument(_))
+        ));
+
+        // err: missing ')', EOF
+        assert!(matches!(
+            parse_from_str(r#"(123,456"#),
             Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
@@ -829,7 +1008,7 @@ mod tests {
             ))
         );
 
-        // multiple values
+        // tuple value
         assert_eq!(
             parse_from_str(
                 r#"
@@ -880,24 +1059,72 @@ mod tests {
             ))
         ));
 
-        // err: missing ')'
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            parse_from_str(r#"Color::RGB(11 13 17)"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 14,
+                    line: 0,
+                    column: 14
+                }
+            ))
+        ));
+
+        // err: missing ')', EOF
         assert!(matches!(
             parse_from_str(r#"Color::RGB(11,13"#),
             Err(Error::UnexpectedEndOfDocument(_))
         ));
 
-        // err: missing '}'
+        // err: missing ':'
+        assert!(matches!(
+            parse_from_str(r#"Color::Rect{width}"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 17,
+                    line: 0,
+                    column: 17
+                }
+            ))
+        ));
+
+        // err: missing value
+        assert!(matches!(
+            parse_from_str(r#"Color::Rect{width:}"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 18,
+                    line: 0,
+                    column: 18
+                }
+            ))
+        ));
+
+        // err: missing a separator (comma or new-line)
+        assert!(matches!(
+            parse_from_str(r#"Color::Rect{width:11 height:13}"#),
+            Err(Error::MessageWithPosition(
+                _,
+                Position {
+                    unit: 0,
+                    index: 21,
+                    line: 0,
+                    column: 21
+                }
+            ))
+        ));
+
+        // err: missing '}', EOF
         assert!(matches!(
             parse_from_str(r#"Color::Rect{width:11"#),
-            Err(Error::UnexpectedEndOfDocument(
-                _,
-                // Position {
-                //     unit: 0,
-                //     index: 20,
-                //     line: 0,
-                //     column: 20
-                // }
-            ))
+            Err(Error::UnexpectedEndOfDocument(_))
         ));
     }
 
