@@ -4,23 +4,28 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-mod ast;
 mod charposition;
 mod charstream;
-mod serde;
-
 mod error;
+mod errorprinter;
 mod lexer;
 mod location;
 mod normalizer;
+mod parser;
 mod peekableiter;
+mod printer;
+mod serde;
+mod token;
 
+pub mod ast;
+
+pub use error::Error;
 pub use serde::serde_date::Date;
 
-pub use ast::parser::parse_from_reader;
-pub use ast::parser::parse_from_str;
-pub use ast::printer::print_to_string;
-pub use ast::printer::print_to_writer;
+pub use parser::parse_from_reader;
+pub use parser::parse_from_str;
+pub use printer::print_to_string;
+pub use printer::print_to_writer;
 
 pub use serde::de::from_reader;
 pub use serde::de::from_str;

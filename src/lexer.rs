@@ -4,228 +4,27 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use std::fmt::Display;
-
-use chrono::{DateTime, FixedOffset};
+use chrono::DateTime;
 
 use crate::{
     charposition::CharWithPosition,
     error::Error,
-    location::{Position, Range},
+    location::Location,
+    peekableiter::PeekableIter,
+    token::{Comment, NumberToken, NumberType, Token, TokenWithRange},
 };
-
-use super::peekableiter::PeekableIter;
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Token {
-    // includes `\n` and `\r\n`
-    NewLine,
-
-    // `,`
-    Comma,
-    // `:`
-    Colon,
-
-    // {
-    LeftBrace,
-    // }
-    RightBrace,
-    // [
-    LeftBracket,
-    // ]
-    RightBracket,
-    // (
-    LeftParen,
-    // )
-    RightParen,
-
-    // `+`
-    Plus,
-    // `-`
-    Minus,
-
-    // [a-zA-Z0-9_] and '\u{a0}' - '\u{d7ff}' and '\u{e000}' - '\u{10ffff}'
-    // used for object field/key name
-    Identifier(String),
-
-    // ASON has a few keywords: `true`, `false`, `Inf (Inf_f32, Inf_f64)` and `NaN (NaN_f32, NaN_f64)`,
-    // but for simplicity, `true` and `false` will be converted
-    // directly to `Token::Boolean`, while `NaN` and `Inf` will
-    // be converted to `NumberLiteral::Float`
-    // and `NumberLiternal::Double`.
-    Boolean(bool),
-
-    // includes the variant type name and member name, e.g.
-    // `Option::None`
-    // the "Option" is type name, and "None" is member name.
-    Variant(String, String),
-
-    Number(NumberToken),
-    Char(char),
-    String_(String),
-    Date(DateTime<FixedOffset>),
-    ByteData(Vec<u8>),
-
-    Comment(Comment),
-}
-
-impl Token {
-    // for printing
-    pub fn get_description(&self) -> String {
-        match self {
-            Token::NewLine => "new line".to_owned(),
-            Token::Comma => "comma \",\"".to_owned(),
-            Token::Colon => "colon \":\"".to_owned(),
-            Token::LeftBrace => "brace \"{\"".to_owned(),
-            Token::RightBrace => "brace \"}\"".to_owned(),
-            Token::LeftBracket => "bracket \"[\"".to_owned(),
-            Token::RightBracket => "bracket \"]\"".to_owned(),
-            Token::LeftParen => "bracket \"(\"".to_owned(),
-            Token::RightParen => "bracket \")\"".to_owned(),
-            Token::Plus => "plus sign \"+\"".to_owned(),
-            Token::Minus => "minus sign \"-\"".to_owned(),
-            Token::Identifier(id) => format!("identifier \"{}\"", id),
-            Token::Boolean(b) => format!("boolean \"{}\"", b),
-            Token::Variant(t, m) => format!("variant \"{}::{}\"", t, m),
-            Token::Number(n) => format!(
-                "number \"{}\"",
-                match n {
-                    NumberToken::U8(v) => v.to_string(),
-                    NumberToken::I8(v) => v.to_string(),
-                    NumberToken::I16(v) => v.to_string(),
-                    NumberToken::U16(v) => v.to_string(),
-                    NumberToken::I32(v) => v.to_string(),
-                    NumberToken::U32(v) => v.to_string(),
-                    NumberToken::I64(v) => v.to_string(),
-                    NumberToken::U64(v) => v.to_string(),
-                    NumberToken::F32(v) => v.to_string(),
-                    NumberToken::F64(v) => v.to_string(),
-                }
-            ),
-            Token::Char(c) => format!("char \"{}\"", c),
-            Token::String_(_) => "string".to_owned(),
-            Token::Date(_) => "date".to_owned(),
-            Token::ByteData(_) => "byte data".to_owned(),
-            Token::Comment(_) => "comment".to_owned(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum NumberToken {
-    // it is possible for literal to overflow for signed numbers,
-    // such as `-128`, which consists of a negative/minus sign
-    // and the number `128`.
-    // minus token is not part of the number token,
-    // and the number value 128 is out of range for `i8`,
-    // so define the `i8` literal using `u8`.
-    I8(u8),
-    U8(u8),
-    I16(u16),
-    U16(u16),
-    I32(u32),
-    U32(u32),
-    I64(u64),
-    U64(u64),
-    F32(f32),
-    F64(f64),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Comment {
-    // `//...`
-    // note that the trailing '\n' or '\r\n' does not belong to line comment
-    Line(String),
-
-    // `/*...*/`
-    Block(String),
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum NumberType {
-    I8,
-    I16,
-    I32,
-    I64,
-    U8,
-    U16,
-    U32,
-    U64,
-    F32,
-    F64,
-}
-
-impl NumberType {
-    fn from_str(s: &str) -> Result<Self, String> {
-        let t = match s {
-            "i8" => NumberType::I8,
-            "i16" => NumberType::I16,
-            "i32" => NumberType::I32,
-            "i64" => NumberType::I64,
-            "u8" => NumberType::U8,
-            "u16" => NumberType::U16,
-            "u32" => NumberType::U32,
-            "u64" => NumberType::U64,
-            "f32" => NumberType::F32,
-            "f64" => NumberType::F64,
-            _ => {
-                return Err(format!("Invalid number type \"{}\".", s));
-            }
-        };
-
-        Ok(t)
-    }
-}
-
-impl Display for NumberType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NumberType::I8 => write!(f, "i8"),
-            NumberType::I16 => write!(f, "i16"),
-            NumberType::I32 => write!(f, "i32"),
-            NumberType::I64 => write!(f, "i64"),
-            NumberType::U8 => write!(f, "u8"),
-            NumberType::U16 => write!(f, "u16"),
-            NumberType::U32 => write!(f, "u32"),
-            NumberType::U64 => write!(f, "u64"),
-            NumberType::F32 => write!(f, "f32"),
-            NumberType::F64 => write!(f, "f64"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct TokenWithRange {
-    pub token: Token,
-    pub range: Range,
-}
-
-impl TokenWithRange {
-    pub fn new(token: Token, range: Range) -> Self {
-        Self { token, range }
-    }
-
-    pub fn from_position_and_length(token: Token, position: &Position, length: usize) -> Self {
-        Self {
-            token,
-            range: Range::from_position_and_length(position, length),
-        }
-    }
-}
 
 pub struct TokenIter<'a> {
     upstream: &'a mut PeekableIter<'a, Result<CharWithPosition, Error>>,
-    last_position: Position,
-    // last_char: char,
-    saved_positions: Vec<Position>,
+    last_position: Location,
+    saved_positions: Vec<Location>,
 }
 
 impl<'a> TokenIter<'a> {
     pub fn new(upstream: &'a mut PeekableIter<'a, Result<CharWithPosition, Error>>) -> Self {
         Self {
             upstream,
-            last_position: Position::new(0, 0, 0, 0),
-            // last_char: '\0',
+            last_position: Location::new_position(0, 0, 0, 0),
             saved_positions: vec![],
         }
     }
@@ -237,7 +36,6 @@ impl<'a> TokenIter<'a> {
                 position,
             })) => {
                 self.last_position = position;
-                // self.last_char = character;
                 Ok(Some(character))
             }
             Some(Err(e)) => Err(e),
@@ -259,7 +57,7 @@ impl<'a> TokenIter<'a> {
             Some(Ok(CharWithPosition { character, .. })) if character == &expected_char)
     }
 
-    fn peek_position(&self, offset: usize) -> Result<Option<&Position>, Error> {
+    fn peek_position(&self, offset: usize) -> Result<Option<&Location>, Error> {
         match self.upstream.peek(offset) {
             Some(Ok(CharWithPosition { position, .. })) => Ok(Some(position)),
             Some(Err(e)) => Err(e.clone()),
@@ -267,22 +65,14 @@ impl<'a> TokenIter<'a> {
         }
     }
 
-    // fn push_last_position(&mut self) {
-    //     self.saved_positions.push(self.last_position);
-    // }
-
     fn push_peek_position(&mut self) {
         self.saved_positions
             .push(*self.peek_position(0).unwrap().unwrap());
     }
 
-    fn pop_saved_position(&mut self) -> Position {
+    fn pop_saved_position(&mut self) -> Location {
         self.saved_positions.pop().unwrap()
     }
-
-    // fn peek_saved_position(&self) -> &Position {
-    //     self.saved_positions.last().unwrap()
-    // }
 }
 
 impl<'a> Iterator for TokenIter<'a> {
@@ -459,7 +249,7 @@ impl<'a> TokenIter<'a> {
             '"' => {
                 if self.peek_char_and_equals(1, '"') && self.peek_char_and_equals(2, '"') {
                     // auto-trimmed string
-                    self.lex_auto_trimmed_string()
+                    self.lex_indented_string()
                 } else {
                     // normal string
                     self.lex_string()
@@ -481,7 +271,7 @@ impl<'a> TokenIter<'a> {
                 // identifier (the key name of struct/object) or keyword
                 self.lex_identifier_or_keyword()
             }
-            current_char => Err(Error::MessageWithPosition(
+            current_char => Err(Error::MessageWithLocation(
                 format!("Unexpected char '{}'.", current_char),
                 *self.peek_position(0).unwrap().unwrap(),
             )),
@@ -555,7 +345,7 @@ impl<'a> TokenIter<'a> {
                     break;
                 }
                 _ => {
-                    return Err(Error::MessageWithPosition(
+                    return Err(Error::MessageWithLocation(
                         format!("Invalid char '{}' for identifier.", current_char),
                         *self.peek_position(0).unwrap().unwrap(),
                     ));
@@ -578,8 +368,10 @@ impl<'a> TokenIter<'a> {
             }
         };
 
-        let name_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let name_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         Ok(TokenWithRange::new(token, name_range))
     }
@@ -718,7 +510,7 @@ impl<'a> TokenIter<'a> {
                     break;
                 }
                 _ => {
-                    return Err(Error::MessageWithPosition(
+                    return Err(Error::MessageWithLocation(
                         format!("Invalid char '{}' for decimal number.", current_char),
                         *self.peek_position(0).unwrap().unwrap(),
                     ));
@@ -728,28 +520,30 @@ impl<'a> TokenIter<'a> {
 
         // check syntax
         if num_string.ends_with('.') {
-            return Err(Error::MessageWithPosition(
+            return Err(Error::MessageWithLocation(
                 "Decimal number can not ends with \".\".".to_owned(),
                 self.last_position,
             ));
         }
 
         if num_string.ends_with('e') {
-            return Err(Error::MessageWithPosition(
+            return Err(Error::MessageWithLocation(
                 "Decimal number can not ends with \"e\".".to_owned(),
                 self.last_position,
             ));
         }
 
-        let num_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let num_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         let num_token: NumberToken = if let Some(nt) = num_type {
             // numbers with explicit type
             match nt {
                 NumberType::I8 => {
                     let v = num_string.parse::<u8>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i8 integer number.", num_string),
                             num_range,
                         )
@@ -759,7 +553,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U8 => {
                     let v = num_string.parse::<u8>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u8 integer number.", num_string),
                             num_range,
                         )
@@ -769,7 +563,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I16 => {
                     let v = num_string.parse::<u16>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i16 integer number.", num_string),
                             num_range,
                         )
@@ -779,7 +573,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U16 => {
                     let v = num_string.parse::<u16>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u16 integer number.", num_string),
                             num_range,
                         )
@@ -789,7 +583,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I32 => {
                     let v = num_string.parse::<u32>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i32 integer number.", num_string),
                             num_range,
                         )
@@ -799,7 +593,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U32 => {
                     let v = num_string.parse::<u32>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u32 integer number.", num_string),
                             num_range,
                         )
@@ -809,7 +603,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I64 => {
                     let v = num_string.parse::<u64>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i64 integer number.", num_string),
                             num_range,
                         )
@@ -819,7 +613,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U64 => {
                     let v = num_string.parse::<u64>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u64 integer number.", num_string),
                             num_range,
                         )
@@ -829,7 +623,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::F32 => {
                     let v = num_string.parse::<f32>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!(
                                 "Can not convert \"{}\" to f32 floating-point number.",
                                 num_string
@@ -840,7 +634,7 @@ impl<'a> TokenIter<'a> {
 
                     // overflow when parsing from string
                     if v.is_infinite() {
-                        return Err(Error::MessageWithRange(
+                        return Err(Error::MessageWithLocation(
                             format!("F32 floating point number \"{}\" is overflow.", num_string),
                             num_range,
                         ));
@@ -850,7 +644,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::F64 => {
                     let v = num_string.parse::<f64>().map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!(
                                 "Can not convert \"{}\" to f64 floating-point number.",
                                 num_string
@@ -861,7 +655,7 @@ impl<'a> TokenIter<'a> {
 
                     // overflow when parsing from string
                     if v.is_infinite() {
-                        return Err(Error::MessageWithRange(
+                        return Err(Error::MessageWithLocation(
                             format!("F64 floating point number \"{}\" is overflow.", num_string),
                             num_range,
                         ));
@@ -874,7 +668,7 @@ impl<'a> TokenIter<'a> {
             // the default floating-point number type is f64
 
             let v = num_string.parse::<f64>().map_err(|_| {
-                Error::MessageWithRange(
+                Error::MessageWithLocation(
                     format!(
                         "Can not convert \"{}\" to f64 floating-point number.",
                         num_string
@@ -885,7 +679,7 @@ impl<'a> TokenIter<'a> {
 
             // overflow when parsing from string
             if v.is_infinite() {
-                return Err(Error::MessageWithRange(
+                return Err(Error::MessageWithLocation(
                     format!("F64 floating point number \"{}\" is overflow.", num_string),
                     num_range,
                 ));
@@ -896,7 +690,7 @@ impl<'a> TokenIter<'a> {
             // the default integer number type is i32
 
             let v = num_string.parse::<u32>().map_err(|_| {
-                Error::MessageWithRange(
+                Error::MessageWithLocation(
                     format!("Can not convert \"{}\" to i32 integer number.", num_string,),
                     num_range,
                 )
@@ -940,11 +734,13 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let type_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let type_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         let nt = NumberType::from_str(&type_name)
-            .map_err(|msg| Error::MessageWithRange(msg, type_range))?;
+            .map_err(|msg| Error::MessageWithLocation(msg, type_range))?;
 
         Ok(nt)
     }
@@ -1036,7 +832,7 @@ impl<'a> TokenIter<'a> {
                     break;
                 }
                 _ => {
-                    return Err(Error::MessageWithPosition(
+                    return Err(Error::MessageWithLocation(
                         format!("Invalid char '{}' for hexadecimal number.", current_char),
                         *self.peek_position(0).unwrap().unwrap(),
                     ));
@@ -1044,18 +840,20 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let num_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let num_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         if num_string.is_empty() {
-            return Err(Error::MessageWithRange(
+            return Err(Error::MessageWithLocation(
                 "Empty hexadecimal number".to_owned(),
                 num_range,
             ));
         }
 
         if found_point && !found_p {
-            return Err(Error::MessageWithRange(
+            return Err(Error::MessageWithLocation(
                 format!(
                     "Hexadecimal floating point number \"{}\" is missing the exponent.",
                     num_string
@@ -1077,7 +875,7 @@ impl<'a> TokenIter<'a> {
                         to_f64 = true;
                     }
                     _ => {
-                        return Err(Error::MessageWithRange(format!(
+                        return Err(Error::MessageWithLocation(format!(
                                 "Invalid type \"{}\" for hexadecimal floating-point numbers, only type \"f32\" and \"f64\" are allowed.",
                                 nt
                             ),
@@ -1092,7 +890,7 @@ impl<'a> TokenIter<'a> {
             if to_f64 {
                 let v = hexfloat2::parse::<f64>(&num_string).map_err(|_| {
                     // there is no detail message provided by `hexfloat2::parse`.
-                    Error::MessageWithRange(
+                    Error::MessageWithLocation(
                         format!(
                             "Can not convert \"{}\" to f64 floating-point number.",
                             num_string
@@ -1105,7 +903,7 @@ impl<'a> TokenIter<'a> {
             } else {
                 let v = hexfloat2::parse::<f32>(&num_string).map_err(|_| {
                     // there is no detail message provided by `hexfloat2::parse`.
-                    Error::MessageWithRange(
+                    Error::MessageWithLocation(
                         format!(
                             "Can not convert \"{}\" to f32 floating-point number.",
                             num_string
@@ -1120,7 +918,7 @@ impl<'a> TokenIter<'a> {
             match nt {
                 NumberType::I8 => {
                     let v = u8::from_str_radix(&num_string, 16).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i8 integer number.", num_string),
                             num_range,
                         )
@@ -1130,7 +928,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U8 => {
                     let v = u8::from_str_radix(&num_string, 16).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u8 integer number.", num_string),
                             num_range,
                         )
@@ -1140,7 +938,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I16 => {
                     let v = u16::from_str_radix(&num_string, 16).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i16 integer number.", num_string),
                             num_range,
                         )
@@ -1150,7 +948,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U16 => {
                     let v = u16::from_str_radix(&num_string, 16).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u16 integer number.", num_string),
                             num_range,
                         )
@@ -1160,7 +958,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I32 => {
                     let v = u32::from_str_radix(&num_string, 16).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i32 integer number.", num_string),
                             num_range,
                         )
@@ -1170,7 +968,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U32 => {
                     let v = u32::from_str_radix(&num_string, 16).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u32 integer number.", num_string),
                             num_range,
                         )
@@ -1180,7 +978,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I64 => {
                     let v = u64::from_str_radix(&num_string, 16).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i64 integer number.", num_string),
                             num_range,
                         )
@@ -1190,7 +988,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U64 => {
                     let v = u64::from_str_radix(&num_string, 16).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u64 integer number.", num_string),
                             num_range,
                         )
@@ -1208,7 +1006,7 @@ impl<'a> TokenIter<'a> {
             // default
             // convert to i32
             let v = u32::from_str_radix(&num_string, 16).map_err(|_| {
-                Error::MessageWithRange(
+                Error::MessageWithLocation(
                     format!("Can not convert \"{}\" to i32 integer number.", num_string),
                     num_range,
                 )
@@ -1261,7 +1059,7 @@ impl<'a> TokenIter<'a> {
                     break;
                 }
                 _ => {
-                    return Err(Error::MessageWithPosition(
+                    return Err(Error::MessageWithLocation(
                         format!("Invalid char '{}' for binary number.", current_char),
                         *self.peek_position(0).unwrap().unwrap(),
                     ));
@@ -1269,11 +1067,13 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let num_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let num_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         if num_string.is_empty() {
-            return Err(Error::MessageWithRange(
+            return Err(Error::MessageWithLocation(
                 "Empty binary number.".to_owned(),
                 num_range,
             ));
@@ -1283,7 +1083,7 @@ impl<'a> TokenIter<'a> {
             match nt {
                 NumberType::I8 => {
                     let v = u8::from_str_radix(&num_string, 2).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i8 integer number.", num_string,),
                             num_range,
                         )
@@ -1293,7 +1093,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U8 => {
                     let v = u8::from_str_radix(&num_string, 2).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u8 integer number.", num_string,),
                             num_range,
                         )
@@ -1303,7 +1103,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I16 => {
                     let v = u16::from_str_radix(&num_string, 2).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i16 integer number.", num_string,),
                             num_range,
                         )
@@ -1313,7 +1113,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U16 => {
                     let v = u16::from_str_radix(&num_string, 2).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u16 integer number.", num_string,),
                             num_range,
                         )
@@ -1323,7 +1123,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I32 => {
                     let v = u32::from_str_radix(&num_string, 2).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i32 integer number.", num_string),
                             num_range,
                         )
@@ -1333,7 +1133,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U32 => {
                     let v = u32::from_str_radix(&num_string, 2).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u32 integer number.", num_string),
                             num_range,
                         )
@@ -1343,7 +1143,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::I64 => {
                     let v = u64::from_str_radix(&num_string, 2).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to i64 integer number.", num_string),
                             num_range,
                         )
@@ -1353,7 +1153,7 @@ impl<'a> TokenIter<'a> {
                 }
                 NumberType::U64 => {
                     let v = u64::from_str_radix(&num_string, 2).map_err(|_| {
-                        Error::MessageWithRange(
+                        Error::MessageWithLocation(
                             format!("Can not convert \"{}\" to u64 integer number.", num_string),
                             num_range,
                         )
@@ -1370,7 +1170,7 @@ impl<'a> TokenIter<'a> {
             // convert to i32
 
             let v = u32::from_str_radix(&num_string, 2).map_err(|_| {
-                Error::MessageWithRange(
+                Error::MessageWithLocation(
                     format!("Can not convert \"{}\" to i32 integer number.", num_string),
                     num_range,
                 )
@@ -1427,17 +1227,20 @@ impl<'a> TokenIter<'a> {
                                             // unicode code point, e.g. '\u{2d}', '\u{6587}'
                                             self.unescape_unicode()?
                                         } else {
-                                            return Err(Error::MessageWithPosition(
+                                            return Err(Error::MessageWithLocation(
                                                 "Missing the brace for unicode escape sequence."
                                                     .to_owned(),
-                                                self.last_position.forward_char(),
+                                                self.last_position.move_position_forward(),
                                             ));
                                         }
                                     }
                                     _ => {
-                                        return Err(Error::MessageWithPosition(
-                                            format!("Unexpected escape char '{}'.", previous_char),
-                                            self.last_position,
+                                        return Err(Error::MessageWithLocation(
+                                            format!("Unsupported escape char '{}'.", previous_char),
+                                            Location::from_position_and_length(
+                                                &self.last_position.move_position_backward(),
+                                                2,
+                                            ),
                                         ));
                                     }
                                 }
@@ -1452,9 +1255,9 @@ impl<'a> TokenIter<'a> {
                     }
                     '\'' => {
                         // `''`
-                        return Err(Error::MessageWithRange(
+                        return Err(Error::MessageWithLocation(
                             "Empty char.".to_owned(),
-                            Range::from_position_pair_include(
+                            Location::from_position_pair_with_end_included(
                                 &self.pop_saved_position(),
                                 &self.last_position,
                             ),
@@ -1481,7 +1284,7 @@ impl<'a> TokenIter<'a> {
             }
             Some(_) => {
                 // `'a?`
-                return Err(Error::MessageWithPosition(
+                return Err(Error::MessageWithLocation(
                     "Expected a quote for char".to_owned(),
                     self.last_position,
                 ));
@@ -1494,8 +1297,10 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let ch_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let ch_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
         Ok(TokenWithRange::new(Token::Char(ch), ch_range))
     }
 
@@ -1516,7 +1321,7 @@ impl<'a> TokenIter<'a> {
                     '}' => break,
                     '0'..='9' | 'a'..='f' | 'A'..='F' => codepoint_string.push(previous_char),
                     _ => {
-                        return Err(Error::MessageWithPosition(
+                        return Err(Error::MessageWithLocation(
                             format!(
                                 "Invalid character '{}' for unicode escape sequence.",
                                 previous_char
@@ -1538,18 +1343,20 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let codepoint_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let codepoint_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         if codepoint_string.len() > 6 {
-            return Err(Error::MessageWithRange(
+            return Err(Error::MessageWithLocation(
                 "Unicode point code exceeds six digits.".to_owned(),
                 codepoint_range,
             ));
         }
 
         if codepoint_string.is_empty() {
-            return Err(Error::MessageWithRange(
+            return Err(Error::MessageWithLocation(
                 "Empty unicode code point.".to_owned(),
                 codepoint_range,
             ));
@@ -1565,7 +1372,7 @@ impl<'a> TokenIter<'a> {
             // https://doc.rust-lang.org/std/primitive.char.html
             Ok(ch)
         } else {
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 "Invalid unicode code point.".to_owned(),
                 codepoint_range,
             ))
@@ -1625,9 +1432,9 @@ impl<'a> TokenIter<'a> {
                                                 let ch = self.unescape_unicode()?;
                                                 ss.push(ch);
                                             } else {
-                                                return Err(Error::MessageWithPosition(
+                                                return Err(Error::MessageWithLocation(
                                                     "Missing the brace for unicode escape sequence.".to_owned(),
-                                                    self.last_position.forward_char()
+                                                    self.last_position.move_position_forward()
                                                 ));
                                             }
                                         }
@@ -1635,19 +1442,22 @@ impl<'a> TokenIter<'a> {
                                             // (single line) long string
 
                                             self.next_char()?; // consume '\n'
-                                            self.consume_leading_whitespaces(None)?;
+                                            self.consume_all_leading_whitespaces()?;
                                         }
                                         '\n' => {
                                             // (single line) long string
-                                            self.consume_leading_whitespaces(None)?;
+                                            self.consume_all_leading_whitespaces()?;
                                         }
                                         _ => {
-                                            return Err(Error::MessageWithPosition(
+                                            return Err(Error::MessageWithLocation(
                                                 format!(
                                                     "Unsupported escape char '{}'.",
                                                     previous_char
                                                 ),
-                                                self.last_position,
+                                                Location::from_position_and_length(
+                                                    &self.last_position.move_position_backward(),
+                                                    2,
+                                                ),
                                             ));
                                         }
                                     }
@@ -1679,36 +1489,67 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let ss_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let ss_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
-        Ok(TokenWithRange::new(Token::String_(ss), ss_range))
+        Ok(TokenWithRange::new(Token::String(ss), ss_range))
     }
 
-    /// return the amount of leading whitespaces
-    fn consume_leading_whitespaces(
-        &mut self,
-        expect_whitespace_numbers: Option<usize>,
-    ) -> Result<usize, Error> {
+    //     /// return the amount of leading whitespaces
+    //     fn consume_leading_whitespaces(
+    //         &mut self,
+    //         expect_whitespace_numbers: Option<usize>,
+    //     ) -> Result<usize, Error> {
+    //         // \nssssS  //
+    //         //   ^   ^__// to here ('s' = whitespace, 'S' = not whitespace)
+    //         //   |______// current char, UNVALIDATED
+    //
+    //         let mut count = 0;
+    //
+    //         loop {
+    //             if let Some(max) = expect_whitespace_numbers {
+    //                 if count >= max {
+    //                     break;
+    //                 }
+    //             }
+    //
+    //             match self.peek_char(0)? {
+    //                 Some(current_char) => {
+    //                     match current_char {
+    //                         ' ' | '\t' => {
+    //                             count += 1;
+    //
+    //                             self.next_char()?; // consume ' ' or '\t'
+    //                         }
+    //                         _ => {
+    //                             break;
+    //                         }
+    //                     }
+    //                 }
+    //                 None => {
+    //                     // EOF
+    //                     return Err(Error::UnexpectedEndOfDocument(
+    //                         "Incomplete string.".to_owned(),
+    //                     ));
+    //                 }
+    //             }
+    //         }
+    //
+    //         Ok(count)
+    //     }
+
+    fn consume_all_leading_whitespaces(&mut self) -> Result<(), Error> {
         // \nssssS  //
         //   ^   ^__// to here ('s' = whitespace, 'S' = not whitespace)
         //   |______// current char, UNVALIDATED
 
-        let mut count = 0;
-
         loop {
-            if let Some(max) = expect_whitespace_numbers {
-                if count >= max {
-                    break;
-                }
-            }
-
             match self.peek_char(0)? {
                 Some(current_char) => {
                     match current_char {
                         ' ' | '\t' => {
-                            count += 1;
-
                             self.next_char()?; // consume ' ' or '\t'
                         }
                         _ => {
@@ -1725,7 +1566,7 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        Ok(count)
+        Ok(())
     }
 
     fn lex_raw_string(&mut self) -> Result<TokenWithRange, Error> {
@@ -1764,10 +1605,12 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let ss_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let ss_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
-        Ok(TokenWithRange::new(Token::String_(ss), ss_range))
+        Ok(TokenWithRange::new(Token::String(ss), ss_range))
     }
 
     fn lex_raw_string_with_hash_symbol(&mut self) -> Result<TokenWithRange, Error> {
@@ -1811,13 +1654,15 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let ss_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let ss_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
-        Ok(TokenWithRange::new(Token::String_(ss), ss_range))
+        Ok(TokenWithRange::new(Token::String(ss), ss_range))
     }
 
-    fn lex_auto_trimmed_string(&mut self) -> Result<TokenWithRange, Error> {
+    fn lex_indented_string(&mut self) -> Result<TokenWithRange, Error> {
         // """\n                    //
         // ^^^  auto-trimmed string //
         // |||  ...\n               //
@@ -1826,6 +1671,10 @@ impl<'a> TokenIter<'a> {
         // |||______________________// validated
         // ||_______________________// validated
         // |________________________// current char, validated
+
+        // note:
+        // - the '\n' of the first line is necessary.
+        // - the closed `"""` must be started with a new line.
 
         self.push_peek_position();
 
@@ -1839,34 +1688,35 @@ impl<'a> TokenIter<'a> {
             self.next_char()?; // consume '\r'
             self.next_char()?; // consume '\n'
         } else {
-            return Err(Error::MessageWithPosition(
+            return Err(Error::MessageWithLocation(
                 "The content of auto-trimmed string should start on a new line.".to_owned(),
-                self.last_position.forward_char(),
+                self.last_position.move_position_forward(),
             ));
         }
 
-        let leading_whitespace_count = self.consume_leading_whitespaces(None)?;
-
-        let mut ss = String::new();
-        let mut current_line = String::new();
+        let mut lines = vec![]; // String::new();
+        let mut current_line = vec![]; //String::new();
 
         loop {
             match self.next_char()? {
                 Some(previous_char) => {
                     match previous_char {
                         '\n' => {
-                            ss.push('\n');
-                            current_line.clear();
-                            self.consume_leading_whitespaces(Some(leading_whitespace_count))?;
+                            current_line.push('\n');
+                            lines.push(current_line);
+
+                            current_line = vec![];
                         }
                         '\r' if self.peek_char_and_equals(0, '\n') => {
                             self.next_char()?; // consume '\n'
 
-                            ss.push_str("\r\n");
-                            current_line.clear();
-                            self.consume_leading_whitespaces(Some(leading_whitespace_count))?;
+                            current_line.push('\r');
+                            current_line.push('\n');
+                            lines.push(current_line);
+
+                            current_line = vec![];
                         }
-                        '"' if current_line.trim().is_empty()
+                        '"' if current_line.iter().all(|&c| c == ' ' || c == '\t')
                             && self.peek_char_and_equals(0, '"')
                             && self.peek_char_and_equals(1, '"') =>
                         {
@@ -1877,7 +1727,6 @@ impl<'a> TokenIter<'a> {
                         }
                         _ => {
                             // ordinary char
-                            ss.push(previous_char);
                             current_line.push(previous_char);
                         }
                     }
@@ -1891,13 +1740,68 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let ss_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
-        Ok(TokenWithRange::new(
-            Token::String_(ss.trim_end().to_owned()),
-            ss_range,
-        ))
+        if lines.is_empty() {
+            return Ok(TokenWithRange::new(Token::String(String::new()), range));
+        }
+
+        // calculate leading spaces of each line
+        //
+        // the empty lines would be excluded
+        let spaces: Vec<usize> = lines
+            .iter()
+            .filter(|line| {
+                let is_empty = (line.len() == 1 && line[0] == '\n')
+                    || (line.len() == 2 && line[0] == '\r' && line[1] == '\n');
+                !is_empty
+            })
+            .map(|line| {
+                let mut count = 0;
+                while count < line.len() {
+                    if !(line[count] == ' ' || line[count] == '\t') {
+                        break;
+                    }
+                    count += 1;
+                }
+                count
+            })
+            .collect();
+
+        let min = *spaces.iter().min().unwrap_or(&0);
+
+        // trim leading spaces
+        lines
+            .iter_mut()
+            .filter(|line| {
+                let is_empty = (line.len() == 1 && line[0] == '\n')
+                    || (line.len() == 2 && line[0] == '\r' && line[1] == '\n');
+                !is_empty
+            })
+            .for_each(|line| {
+                line.drain(0..min);
+            });
+
+        // trim the ending '\n' or "\r\n"
+        let last_index = lines.len() - 1;
+        let last_line = &mut lines[last_index];
+        if matches!(last_line.last(), Some('\n')) {
+            last_line.pop();
+        }
+        if matches!(last_line.last(), Some('\r')) {
+            last_line.pop();
+        }
+
+        let content = lines
+            .iter()
+            .map(|line| line.iter().collect::<String>())
+            .collect::<Vec<String>>()
+            .join("");
+
+        Ok(TokenWithRange::new(Token::String(content), range))
     }
 
     fn lex_datetime(&mut self) -> Result<TokenWithRange, Error> {
@@ -1926,7 +1830,7 @@ impl<'a> TokenIter<'a> {
                             date_string.push(previous_char);
                         }
                         _ => {
-                            return Err(Error::MessageWithPosition(
+                            return Err(Error::MessageWithLocation(
                                 format!("Invalid char '{}' for datetime.", previous_char),
                                 self.last_position,
                             ));
@@ -1942,8 +1846,10 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let date_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let date_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         let len = date_string.len();
 
@@ -1958,7 +1864,7 @@ impl<'a> TokenIter<'a> {
             // YYYY-MM-DDTHH:mm:ssZ
             // YYYY-MM-DDTHH:mm:ss+08:00
         } else {
-            return Err(Error::MessageWithRange(
+            return Err(Error::MessageWithLocation(
                 format!(
                     "Invalid date time string: {}, the required format is: \"YYYY-MM-DD HH:mm:ss\"",
                     date_string
@@ -1968,7 +1874,7 @@ impl<'a> TokenIter<'a> {
         }
 
         let rfc3339 = DateTime::parse_from_rfc3339(&date_string).map_err(|_| {
-            Error::MessageWithRange(
+            Error::MessageWithLocation(
                 format!(
                     "Can not convert the string \"{}\" to datetime.",
                     date_string
@@ -2014,10 +1920,10 @@ impl<'a> TokenIter<'a> {
                                 if amount > 0 {
                                     break;
                                 } else {
-                                    return Err(Error::MessageWithPosition(
+                                    return Err(Error::MessageWithLocation(
                                         "Expect a whitespace between the hexadecimal byte data digits."
                                             .to_owned(),
-                                        iter.last_position.forward_char()
+                                        iter.last_position.move_position_forward()
                                     ));
                                 }
                             }
@@ -2057,7 +1963,7 @@ impl<'a> TokenIter<'a> {
                             *c = previous_char;
                         }
                         _ => {
-                            return Err(Error::MessageWithPosition(
+                            return Err(Error::MessageWithLocation(
                                 format!(
                                     "Invalid digit '{}' for hexadecimal byte data.",
                                     previous_char
@@ -2088,8 +1994,10 @@ impl<'a> TokenIter<'a> {
 
         self.next_char()?; // consume '"'
 
-        let bytes_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let bytes_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         Ok(TokenWithRange::new(Token::ByteData(bytes), bytes_range))
     }
@@ -2128,8 +2036,10 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let comment_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let comment_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         Ok(TokenWithRange::new(
             Token::Comment(Comment::Line(comment_string)),
@@ -2196,8 +2106,10 @@ impl<'a> TokenIter<'a> {
             }
         }
 
-        let comment_range =
-            Range::from_position_pair_include(&self.pop_saved_position(), &self.last_position);
+        let comment_range = Location::from_position_pair_with_end_included(
+            &self.pop_saved_position(),
+            &self.last_position,
+        );
 
         Ok(TokenWithRange::new(
             Token::Comment(Comment::Block(comment_string)),
@@ -2216,25 +2128,11 @@ mod tests {
         charstream::CharStreamFromCharIter,
         error::Error,
         lexer::{Comment, NumberToken, TokenWithRange},
-        location::{Position, Range},
+        location::Location,
         peekableiter::PeekableIter,
     };
 
     use super::{Token, TokenIter};
-
-    impl Token {
-        fn new_variant(type_name: &str, member_name: &str) -> Self {
-            Token::Variant(type_name.to_owned(), member_name.to_owned())
-        }
-
-        fn new_identifier(s: &str) -> Self {
-            Token::Identifier(s.to_owned())
-        }
-
-        fn new_string(s: &str) -> Self {
-            Token::String_(s.to_owned())
-        }
-    }
 
     fn lex_str_to_vec_with_range(s: &str) -> Result<Vec<TokenWithRange>, Error> {
         let mut chars = s.chars();
@@ -2259,8 +2157,8 @@ mod tests {
 
     fn lex_str_to_vec(s: &str) -> Result<Vec<Token>, Error> {
         let tokens = lex_str_to_vec_with_range(s)?
-            .iter()
-            .map(|e| e.token.to_owned())
+            .into_iter()
+            .map(|e| e.token)
             .collect::<Vec<Token>>();
         Ok(tokens)
     }
@@ -2297,16 +2195,16 @@ mod tests {
         assert_eq!(
             lex_str_to_vec_with_range("()").unwrap(),
             vec![
-                TokenWithRange::new(Token::LeftParen, Range::new(0, 0, 0, 0, 1)),
-                TokenWithRange::new(Token::RightParen, Range::new(0, 1, 0, 1, 1)),
+                TokenWithRange::new(Token::LeftParen, Location::new_range(0, 0, 0, 0, 1)),
+                TokenWithRange::new(Token::RightParen, Location::new_range(0, 1, 0, 1, 1)),
             ]
         );
 
         assert_eq!(
             lex_str_to_vec_with_range("(  )").unwrap(),
             vec![
-                TokenWithRange::new(Token::LeftParen, Range::new(0, 0, 0, 0, 1)),
-                TokenWithRange::new(Token::RightParen, Range::new(0, 3, 0, 3, 1)),
+                TokenWithRange::new(Token::LeftParen, Location::new_range(0, 0, 0, 0, 1)),
+                TokenWithRange::new(Token::RightParen, Location::new_range(0, 3, 0, 3, 1)),
             ]
         );
 
@@ -2320,11 +2218,11 @@ mod tests {
         assert_eq!(
             lex_str_to_vec_with_range("(\t\r\n\n\n)").unwrap(),
             vec![
-                TokenWithRange::new(Token::LeftParen, Range::new(0, 0, 0, 0, 1)),
-                TokenWithRange::new(Token::NewLine, Range::new(0, 2, 0, 2, 2,)),
-                TokenWithRange::new(Token::NewLine, Range::new(0, 4, 1, 0, 1,)),
-                TokenWithRange::new(Token::NewLine, Range::new(0, 5, 2, 0, 1,)),
-                TokenWithRange::new(Token::RightParen, Range::new(0, 6, 3, 0, 1)),
+                TokenWithRange::new(Token::LeftParen, Location::new_range(0, 0, 0, 0, 1)),
+                TokenWithRange::new(Token::NewLine, Location::new_range(0, 2, 0, 2, 2,)),
+                TokenWithRange::new(Token::NewLine, Location::new_range(0, 4, 1, 0, 1,)),
+                TokenWithRange::new(Token::NewLine, Location::new_range(0, 5, 2, 0, 1,)),
+                TokenWithRange::new(Token::RightParen, Location::new_range(0, 6, 3, 0, 1)),
             ]
         );
     }
@@ -2399,12 +2297,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_identifier("hello"),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     5
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_identifier("ASON"),
-                    &Position::new(0, 6, 0, 6),
+                    &Location::new_position(0, 6, 0, 6),
                     4
                 )
             ]
@@ -2413,13 +2311,14 @@ mod tests {
         // err: invalid char
         assert!(matches!(
             lex_str_to_vec("abc&xyz"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 3,
                     line: 0,
-                    column: 3
+                    column: 3,
+                    length: 0
                 }
             ))
         ));
@@ -2476,37 +2375,37 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::LeftBracket,
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Position::new(0, 1, 0, 1),
+                    &Location::new_position(0, 1, 0, 1),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Boolean(true),
-                    &Position::new(0, 6, 1, 4),
+                    &Location::new_position(0, 6, 1, 4),
                     4
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Position::new(0, 10, 1, 8),
+                    &Location::new_position(0, 10, 1, 8),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Boolean(false),
-                    &Position::new(0, 15, 2, 4),
+                    &Location::new_position(0, 15, 2, 4),
                     5
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Position::new(0, 20, 2, 9),
+                    &Location::new_position(0, 20, 2, 9),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::RightBracket,
-                    &Position::new(0, 21, 3, 0),
+                    &Location::new_position(0, 21, 3, 0),
                     1
                 ),
             ]
@@ -2559,22 +2458,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(223)),
-                    &Position {
-                        unit: 0,
-                        index: 0,
-                        line: 0,
-                        column: 0,
-                    },
+                    &Location::new_position(0, 0, 0, 0,),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(211)),
-                    &Position {
-                        unit: 0,
-                        index: 4,
-                        line: 0,
-                        column: 4,
-                    },
+                    &Location::new_position(0, 4, 0, 4,),
                     3
                 ),
             ]
@@ -2583,13 +2472,14 @@ mod tests {
         // err: invalid char for decimal number
         assert!(matches!(
             lex_str_to_vec("12x34"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 2,
                     line: 0,
-                    column: 2
+                    column: 2,
+                    length: 0
                 }
             ))
         ));
@@ -2597,9 +2487,9 @@ mod tests {
         // err: integer number overflow
         assert!(matches!(
             lex_str_to_vec("4_294_967_296"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -2646,13 +2536,14 @@ mod tests {
         // err: incomplete floating point number since ends with '.'
         assert!(matches!(
             lex_str_to_vec("123."),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 3,
                     line: 0,
-                    column: 3
+                    column: 3,
+                    length: 0
                 }
             ))
         ));
@@ -2660,13 +2551,14 @@ mod tests {
         // err: incomplete floating point number since ends with 'e'
         assert!(matches!(
             lex_str_to_vec("123e"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 3,
                     line: 0,
-                    column: 3
+                    column: 3,
+                    length: 0
                 }
             ))
         ));
@@ -2674,13 +2566,14 @@ mod tests {
         // err: multiple '.' (point)
         assert!(matches!(
             lex_str_to_vec("1.23.456"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 4,
                     line: 0,
-                    column: 4
+                    column: 4,
+                    length: 0
                 }
             ))
         ));
@@ -2688,13 +2581,14 @@ mod tests {
         // err: multiple 'e' (exponent)
         assert!(matches!(
             lex_str_to_vec("1e23e456"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 4,
                     line: 0,
-                    column: 4
+                    column: 4,
+                    length: 0
                 }
             ))
         ));
@@ -2702,13 +2596,14 @@ mod tests {
         // err: unsupports start with dot
         assert!(matches!(
             lex_str_to_vec(".123"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
-                    column: 0
+                    column: 0,
+                    length: 0
                 }
             ))
         ));
@@ -2742,12 +2637,12 @@ mod tests {
                 vec![
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I16(101)),
-                        &Position::new(0, 0, 0, 0),
+                        &Location::new_position(0, 0, 0, 0),
                         7
                     ),
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::U32(103)),
-                        &Position::new(0, 8, 0, 8),
+                        &Location::new_position(0, 8, 0, 8),
                         7
                     ),
                 ]
@@ -2769,9 +2664,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("256_u8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2797,9 +2692,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("65536_u16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2825,9 +2720,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("4_294_967_296_u32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2855,9 +2750,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("18_446_744_073_709_551_616_u64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2883,9 +2778,9 @@ mod tests {
             // err: overflow
             assert!(matches!(
                 lex_str_to_vec("3.4e39_f32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2913,9 +2808,9 @@ mod tests {
             // err: overflow
             assert!(matches!(
                 lex_str_to_vec("1.8e309_f64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2951,22 +2846,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(0xab)),
-                    &Position {
-                        unit: 0,
-                        index: 0,
-                        line: 0,
-                        column: 0,
-                    },
+                    &Location::new_position(0, 0, 0, 0),
                     4
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(0xdef)),
-                    &Position {
-                        unit: 0,
-                        index: 5,
-                        line: 0,
-                        column: 5,
-                    },
+                    &Location::new_position(0, 5, 0, 5,),
                     5
                 ),
             ]
@@ -2975,13 +2860,14 @@ mod tests {
         // err: invalid char for hex number
         assert!(matches!(
             lex_str_to_vec("0x1234xyz"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 6,
                     line: 0,
-                    column: 6
+                    column: 6,
+                    length: 0
                 }
             ))
         ));
@@ -2989,9 +2875,9 @@ mod tests {
         // err: hex number overflow
         assert!(matches!(
             lex_str_to_vec("0x1_0000_0000"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -3004,9 +2890,9 @@ mod tests {
         // err: empty hex number
         assert!(matches!(
             lex_str_to_vec("0x"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -3045,12 +2931,12 @@ mod tests {
                 vec![
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I16(0x101)),
-                        &Position::new(0, 0, 0, 0),
+                        &Location::new_position(0, 0, 0, 0),
                         9
                     ),
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::U32(0x103)),
-                        &Position::new(0, 10, 0, 10),
+                        &Location::new_position(0, 10, 0, 10),
                         9
                     ),
                 ]
@@ -3072,9 +2958,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("0x1_ff_u8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -3100,9 +2986,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("0x1_ffff_u16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -3128,9 +3014,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("0x1_ffff_ffff_u32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -3158,9 +3044,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("0x1_ffff_ffff_ffff_ffff_u64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -3219,7 +3105,7 @@ mod tests {
             lex_str_to_vec_with_range("0x1.4p3").unwrap(),
             vec![TokenWithRange::from_position_and_length(
                 Token::Number(NumberToken::F64(10f64)),
-                &Position::new(0, 0, 0, 0),
+                &Location::new_position(0, 0, 0, 0),
                 7
             )]
         );
@@ -3227,9 +3113,9 @@ mod tests {
         // err: missing the exponent
         assert!(matches!(
             lex_str_to_vec("0x1.23"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -3242,13 +3128,14 @@ mod tests {
         // err: multiple '.' (point)
         assert!(matches!(
             lex_str_to_vec("0x1.2.3"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 5,
                     line: 0,
                     column: 5,
+                    length: 0
                 }
             ))
         ));
@@ -3256,13 +3143,14 @@ mod tests {
         // err: multiple 'p' (exponent)
         assert!(matches!(
             lex_str_to_vec("0x1.2p3p4"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 7,
                     line: 0,
                     column: 7,
+                    length: 0
                 }
             ))
         ));
@@ -3270,13 +3158,14 @@ mod tests {
         // err: incorrect type (invalid dot '.' after 'p')
         assert!(matches!(
             lex_str_to_vec("0x1.23p4.5"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 8,
                     line: 0,
                     column: 8,
+                    length: 0
                 }
             ))
         ));
@@ -3284,13 +3173,14 @@ mod tests {
         // err: incorrect type (invalid char 'i' after 'p')
         assert!(matches!(
             lex_str_to_vec("0x1.23p4_i32"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 9,
                     line: 0,
                     column: 9,
+                    length: 0
                 }
             ))
         ));
@@ -3320,22 +3210,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(0b10)),
-                    &Position {
-                        unit: 0,
-                        index: 0,
-                        line: 0,
-                        column: 0,
-                    },
+                    &Location::new_position(0, 0, 0, 0,),
                     4
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(0b0101)),
-                    &Position {
-                        unit: 0,
-                        index: 5,
-                        line: 0,
-                        column: 5,
-                    },
+                    &Location::new_position(0, 5, 0, 5,),
                     6
                 ),
             ]
@@ -3344,13 +3224,14 @@ mod tests {
         // err: does not support binary floating point
         assert!(matches!(
             lex_str_to_vec("0b11.10"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 4,
                     line: 0,
-                    column: 4
+                    column: 4,
+                    length: 0
                 }
             ))
         ));
@@ -3358,9 +3239,9 @@ mod tests {
         // err: binary number overflow
         assert!(matches!(
             lex_str_to_vec("0b1_0000_0000_0000_0000_0000_0000_0000_0000"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -3373,13 +3254,14 @@ mod tests {
         // err: invalid char for binary number
         assert!(matches!(
             lex_str_to_vec("0b101xyz"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 5,
                     line: 0,
-                    column: 5
+                    column: 5,
+                    length: 0
                 }
             ))
         ));
@@ -3387,9 +3269,9 @@ mod tests {
         // err: empty binary number
         assert!(matches!(
             lex_str_to_vec("0b"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -3428,12 +3310,12 @@ mod tests {
                 vec![
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I16(0b101)),
-                        &Position::new(0, 0, 0, 0),
+                        &Location::new_position(0, 0, 0, 0),
                         9
                     ),
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::U32(0b1010)),
-                        &Position::new(0, 10, 0, 10),
+                        &Location::new_position(0, 10, 0, 10),
                         10
                     ),
                 ]
@@ -3455,9 +3337,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("0b1_1111_1111_u8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -3483,9 +3365,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("0b1_1111_1111_1111_1111_u16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -3511,9 +3393,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("0b1_1111_1111_1111_1111__1111_1111_1111_1111_u32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -3539,9 +3421,9 @@ mod tests {
             // err: unsigned overflow
             assert!(matches!(
                 lex_str_to_vec("0b1_1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111__1111_1111_1111_1111_u64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -3555,13 +3437,14 @@ mod tests {
         // err: does not support binary floating pointer number (invalid char 'f' for binary number)
         assert!(matches!(
             lex_str_to_vec("0b11_f32"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 5,
                     line: 0,
                     column: 5,
+                    length: 0
                 }
             ))
         ));
@@ -3624,12 +3507,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Char('a'),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Char('文'),
-                    &Position::new(0, 4, 0, 4),
+                    &Location::new_position(0, 4, 0, 4),
                     3
                 )
             ]
@@ -3639,7 +3522,7 @@ mod tests {
             lex_str_to_vec_with_range("'\\t'").unwrap(),
             vec![TokenWithRange::from_position_and_length(
                 Token::Char('\t'),
-                &Position::new(0, 0, 0, 0),
+                &Location::new_position(0, 0, 0, 0),
                 4
             )]
         );
@@ -3648,7 +3531,7 @@ mod tests {
             lex_str_to_vec_with_range("'\\u{6587}'").unwrap(),
             vec![TokenWithRange::from_position_and_length(
                 Token::Char('文'),
-                &Position::new(0, 0, 0, 0),
+                &Location::new_position(0, 0, 0, 0),
                 10
             )]
         );
@@ -3656,9 +3539,9 @@ mod tests {
         // err: empty char
         assert!(matches!(
             lex_str_to_vec("''"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -3683,13 +3566,14 @@ mod tests {
         // err: invalid char, expect the right quote, encounter another char
         assert!(matches!(
             lex_str_to_vec("'ab"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 2,
                     line: 0,
-                    column: 2
+                    column: 2,
+                    length: 0
                 }
             ))
         ));
@@ -3697,41 +3581,44 @@ mod tests {
         // err: invalid char, expect the right quote, encounter another char
         assert!(matches!(
             lex_str_to_vec("'ab'"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 2,
                     line: 0,
-                    column: 2
+                    column: 2,
+                    length: 0
                 }
             ))
         ));
 
         // err: unsupported escape char \v
         assert!(matches!(
-            lex_str_to_vec("'\\v'"),
-            Err(Error::MessageWithPosition(
+            lex_str_to_vec(r#"'\v'"#),
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
-                    index: 2,
+                    index: 1,
                     line: 0,
-                    column: 2
+                    column: 1,
+                    length: 2
                 }
             ))
         ));
 
         // err: unsupported hex escape "\x.."
         assert!(matches!(
-            lex_str_to_vec("'\\x33'"),
-            Err(Error::MessageWithPosition(
+            lex_str_to_vec(r#"'\x33'"#),
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
-                    index: 2,
+                    index: 1,
                     line: 0,
-                    column: 2
+                    column: 1,
+                    length: 2
                 }
             ))
         ));
@@ -3741,9 +3628,9 @@ mod tests {
         //  01 2345     // index
         assert!(matches!(
             lex_str_to_vec("'\\u{}'"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 3,
                     line: 0,
@@ -3758,9 +3645,9 @@ mod tests {
         //  01 234567890    // index
         assert!(matches!(
             lex_str_to_vec("'\\u{1000111}'"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 3,
                     line: 0,
@@ -3775,9 +3662,9 @@ mod tests {
         //  01 2345678901
         assert!(matches!(
             lex_str_to_vec("'\\u{123456}'"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 3,
                     line: 0,
@@ -3790,13 +3677,14 @@ mod tests {
         // err: invalid char in the unicode escape sequence
         assert!(matches!(
             lex_str_to_vec("'\\u{12mn}''"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 6,
                     line: 0,
-                    column: 6
+                    column: 6,
+                    length: 0
                 }
             ))
         ));
@@ -3804,13 +3692,14 @@ mod tests {
         // err: missing the closed brace for unicode escape sequence
         assert!(matches!(
             lex_str_to_vec("'\\u{1234'"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 8,
                     line: 0,
-                    column: 8
+                    column: 8,
+                    length: 0
                 }
             ))
         ));
@@ -3824,13 +3713,14 @@ mod tests {
         // err: missing left brace for unicode escape sequence
         assert!(matches!(
             lex_str_to_vec("'\\u1234}'"),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 3,
                     line: 0,
-                    column: 3
+                    column: 3,
+                    length: 0
                 }
             ))
         ));
@@ -3909,12 +3799,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_string("abc"),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     5
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_string("文字😊"),
-                    &Position::new(0, 6, 0, 6),
+                    &Location::new_position(0, 6, 0, 6),
                     5
                 ),
             ]
@@ -3941,13 +3831,14 @@ mod tests {
         // err: unsupported escape char \v
         assert!(matches!(
             lex_str_to_vec(r#""abc\vxyz""#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
-                    index: 5,
+                    index: 4,
                     line: 0,
-                    column: 5
+                    column: 4,
+                    length: 2
                 }
             ))
         ));
@@ -3955,13 +3846,14 @@ mod tests {
         // err: unsupported hex escape "\x.."
         assert!(matches!(
             lex_str_to_vec(r#""abc\x33xyz""#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
-                    index: 5,
+                    index: 4,
                     line: 0,
-                    column: 5
+                    column: 4,
+                    length: 2
                 }
             ))
         ));
@@ -3971,9 +3863,9 @@ mod tests {
         // 012345678    // index
         assert!(matches!(
             lex_str_to_vec(r#""abc\u{}xyz""#),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 6,
                     line: 0,
@@ -3988,9 +3880,9 @@ mod tests {
         // 0123456789023456789    // index
         assert!(matches!(
             lex_str_to_vec(r#""abc\u{1000111}xyz""#),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 6,
                     line: 0,
@@ -4005,9 +3897,9 @@ mod tests {
         // 012345678901234567
         assert!(matches!(
             lex_str_to_vec(r#""abc\u{123456}xyz""#),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 6,
                     line: 0,
@@ -4020,13 +3912,14 @@ mod tests {
         // err: invalid char in the unicode escape sequence
         assert!(matches!(
             lex_str_to_vec(r#""abc\u{12mn}xyz""#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 9,
                     line: 0,
-                    column: 9
+                    column: 9,
+                    length: 0
                 }
             ))
         ));
@@ -4034,13 +3927,14 @@ mod tests {
         // err: missing the right brace for unicode escape sequence
         assert!(matches!(
             lex_str_to_vec(r#""abc\u{1234""#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 11,
                     line: 0,
-                    column: 11
+                    column: 11,
+                    length: 0
                 }
             ))
         ));
@@ -4054,13 +3948,14 @@ mod tests {
         // err: missing left brace for unicode escape sequence
         assert!(matches!(
             lex_str_to_vec(r#""abc\u1234}xyz""#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 6,
                     line: 0,
-                    column: 6
+                    column: 6,
+                    length: 0
                 }
             ))
         ));
@@ -4085,12 +3980,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_string("abc\n    xyz\n"),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     14
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_string("foo\nbar"),
-                    &Position::new(0, 15, 2, 2),
+                    &Location::new_position(0, 15, 2, 2),
                     9
                 )
             ]
@@ -4130,12 +4025,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_string("abcxyz"),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     16
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_string(""),
-                    &Position::new(0, 17, 2, 9),
+                    &Location::new_position(0, 17, 2, 9),
                     4
                 )
             ]
@@ -4173,12 +4068,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_string("abc\n    xyz"),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     14
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_string("foo\\nbar"),
-                    &Position::new(0, 15, 1, 9),
+                    &Location::new_position(0, 15, 1, 9),
                     11
                 )
             ]
@@ -4221,12 +4116,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_string("abc\n    xyz"),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     16
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_string("foo\\nbar"),
-                    &Position::new(0, 17, 1, 10),
+                    &Location::new_position(0, 17, 1, 10),
                     13
                 )
             ]
@@ -4252,7 +4147,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lex_auto_trimmed_string() {
+    fn test_lex_indented_string() {
         assert_eq!(
             lex_str_to_vec(
                 r#"
@@ -4286,11 +4181,12 @@ mod tests {
             .unwrap(),
             vec![
                 Token::NewLine,
-                Token::new_string("one\ntwo\nthree\nend"),
+                Token::new_string("    one\n  two\nthree\n    end"),
                 Token::NewLine,
             ]
         );
 
+        // contains empty lines
         assert_eq!(
             lex_str_to_vec(
                 r#"
@@ -4362,27 +4258,27 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::LeftBracket,
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_string("foo\nbar"),
-                    &Position::new(0, 1, 0, 1),
+                    &Location::new_position(0, 1, 0, 1),
                     23
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Position::new(0, 24, 3, 3),
+                    &Location::new_position(0, 24, 3, 3),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_string("hello\nworld"),
-                    &Position::new(0, 26, 3, 5),
+                    &Location::new_position(0, 26, 3, 5),
                     27
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::RightBracket,
-                    &Position::new(0, 53, 6, 3),
+                    &Location::new_position(0, 53, 6, 3),
                     1
                 ),
             ]
@@ -4396,13 +4292,14 @@ mod tests {
 """
 "#
             ),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 4,
                     line: 1,
-                    column: 3
+                    column: 3,
+                    length: 0
                 }
             ))
         ));
@@ -4497,7 +4394,7 @@ hello
             lex_str_to_vec_with_range("h\"11 13\"").unwrap(),
             vec![TokenWithRange::from_position_and_length(
                 Token::ByteData(vec![0x11, 0x13]),
-                &Position::new(0, 0, 0, 0),
+                &Location::new_position(0, 0, 0, 0),
                 8
             )]
         );
@@ -4507,12 +4404,12 @@ hello
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::ByteData(vec![0x11]),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     5
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::ByteData(vec![0x13]),
-                    &Position::new(0, 6, 0, 6),
+                    &Location::new_position(0, 6, 0, 6),
                     5
                 )
             ]
@@ -4521,13 +4418,14 @@ hello
         // err: not enough digits
         assert!(matches!(
             lex_str_to_vec("h\"11 1\""),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 6,
                     line: 0,
-                    column: 6
+                    column: 6,
+                    length: 0
                 }
             ))
         ));
@@ -4535,13 +4433,14 @@ hello
         // err: too much digits | no whitespace between two bytes
         assert!(matches!(
             lex_str_to_vec("h\"11 1317\""),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 7,
                     line: 0,
-                    column: 7
+                    column: 7,
+                    length: 0
                 }
             ))
         ));
@@ -4549,13 +4448,14 @@ hello
         // err: invalid char for byte string
         assert!(matches!(
             lex_str_to_vec("h\"11 1x\""),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 6,
                     line: 0,
-                    column: 6
+                    column: 6,
+                    length: 0
                 }
             ))
         ));
@@ -4563,13 +4463,14 @@ hello
         // err: invalid separator
         assert!(matches!(
             lex_str_to_vec("h\"11-13\""),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 4,
                     line: 0,
-                    column: 4
+                    column: 4,
+                    length: 0
                 }
             ))
         ));
@@ -4629,12 +4530,12 @@ hello
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Identifier("foo".to_owned()),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Line(" bar".to_owned())),
-                    &Position::new(0, 4, 0, 4),
+                    &Location::new_position(0, 4, 0, 4),
                     6
                 ),
             ]
@@ -4645,27 +4546,27 @@ hello
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Identifier("abc".to_owned()),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Line(" def".to_owned())),
-                    &Position::new(0, 4, 0, 4),
+                    &Location::new_position(0, 4, 0, 4),
                     6
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Position::new(0, 10, 0, 10),
+                    &Location::new_position(0, 10, 0, 10),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Line(" xyz".to_owned())),
-                    &Position::new(0, 11, 1, 0),
+                    &Location::new_position(0, 11, 1, 0),
                     6
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Position::new(0, 17, 1, 6),
+                    &Location::new_position(0, 17, 1, 6),
                     1
                 ),
             ]
@@ -4731,17 +4632,17 @@ hello
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Identifier("foo".to_owned()),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Block(" hello ".to_owned())),
-                    &Position::new(0, 4, 0, 4),
+                    &Location::new_position(0, 4, 0, 4),
                     11
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Identifier("bar".to_owned()),
-                    &Position::new(0, 16, 0, 16),
+                    &Location::new_position(0, 16, 0, 16),
                     3
                 ),
             ]
@@ -4752,12 +4653,12 @@ hello
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Block(" abc\nxyz ".to_owned())),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     13
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Block(" hello ".to_owned())),
-                    &Position::new(0, 14, 1, 7),
+                    &Location::new_position(0, 14, 1, 7),
                     11
                 ),
             ]
@@ -4836,12 +4737,12 @@ hello
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Date(expect_date1),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     13
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Date(expect_date3),
-                    &Position::new(0, 14, 0, 14),
+                    &Location::new_position(0, 14, 0, 14),
                     28
                 ),
             ]
@@ -4850,9 +4751,9 @@ hello
         // err: syntex error, should be YYYY-MM-DD HH:mm:ss
         assert!(matches!(
             lex_str_to_vec("d\"2024-3-16 4:30:50\""),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -4865,9 +4766,9 @@ hello
         // err: missing date part
         assert!(matches!(
             lex_str_to_vec("d\"16:30:50\""),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -4880,13 +4781,14 @@ hello
         // err: invalid char
         assert!(matches!(
             lex_str_to_vec("d\"Aug 8, 2024\""),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 2,
                     line: 0,
-                    column: 2
+                    column: 2,
+                    length: 0
                 }
             ))
         ));

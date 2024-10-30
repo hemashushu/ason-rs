@@ -91,7 +91,12 @@ where
             None => None,
             Some(Err(e)) => Some(Err(e)),
             Some(Ok(first)) => {
-                // ref: https://en.wikipedia.org/wiki/UTF-8
+                // 1 byte:  0_bbb_aaaa
+                // 2 bytes: 110_ccc_bb, 10_bb_aaaa
+                // 3 bytes: 1110_dddd, 10_cccc_bb, 10_bb_aaaa
+                // 4 bytes: 11110_f_ee, 10_ee_dddd, 10_cccc_bb, 10_bb_aaaa
+                // ref:
+                // https://en.wikipedia.org/wiki/UTF-8
                 match first.leading_ones() {
                     0 => {
                         // 0_bbb_aaaa

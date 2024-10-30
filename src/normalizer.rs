@@ -8,9 +8,9 @@ use std::ops::Neg;
 
 use crate::{
     error::Error,
-    lexer::{NumberToken, Token, TokenWithRange},
-    location::Range,
+    location::Location,
     peekableiter::PeekableIter,
+    token::{NumberToken, Token, TokenWithRange},
 };
 
 pub struct ClearTokenIter<'a> {
@@ -75,15 +75,19 @@ impl<'a> Iterator for NormalizedTokenIter<'a> {
 
 // - combine multiple continuous newlines into one newline.
 //   rules:
-//     + blanks -> blank
-//     + comma + blanks -> comma
-//     + blanks + comma -> comma
-//     + blanks + comma + blanks -> comma
-//     + comma + comment + comma -> comma + comma
-//     + blanks + comment + blanks -> blank
-// - remove the '+' tokens in front of numbers (includes `Inf`).
-// - apple the '-' tokens to numbers (includes `Inf`).
-// - checks if the signed number is overflowed
+//     + blanks => blank
+//     + comma + blank(s) => comma
+//     + blank(s) + comma => comma
+//     + blank(s) + comma + blank(s) => comma
+//
+//   because the comments have been removed, the following conclusions
+//   can be inferred:
+//     + comma + comment(s) + comma => comma + comma
+//     + blank(s) + comment(s) + blank(s) => blank
+//
+// - remove the '+' tokens in front of numbers (includes `+Inf`).
+// - apple the '-' tokens to numbers (includes `-Inf`).
+// - checks if the signed number is overflowed.
 //   note that the lexer does not check the valid range of a signed integer
 //   because in the lexing phase the lexer only extracts tokens and does not
 //   check the validity of a combination of tokens.
@@ -100,7 +104,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                     range: current_range,
                 } = token_with_range;
 
-                let mut start_range = Some(*current_range);
+                let mut start_range = *current_range;
                 let mut end_range = start_range;
 
                 match token {
@@ -111,7 +115,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                             range: current_range,
                         })) = iter.upstream.peek(0)
                         {
-                            end_range = Some(*current_range);
+                            end_range = *current_range;
                             iter.upstream.next();
                         }
 
@@ -122,7 +126,7 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                         })) = iter.upstream.peek(0)
                         {
                             // consume comma
-                            start_range = Some(*current_range);
+                            start_range = *current_range;
                             end_range = start_range;
                             iter.upstream.next();
 
@@ -137,17 +141,17 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
 
                             Some(Ok(TokenWithRange::new(
                                 Token::Comma,
-                                Range::from_range_pair(&start_range.unwrap(), &end_range.unwrap()),
+                                Location::from_range_pair(&start_range, &end_range),
                             )))
                         } else {
                             Some(Ok(TokenWithRange::new(
                                 Token::NewLine,
-                                Range::from_range_pair(&start_range.unwrap(), &end_range.unwrap()),
+                                Location::from_range_pair(&start_range, &end_range),
                             )))
                         }
                     }
                     Token::Comma => {
-                        // consume continuous newlines
+                        // consume trailing continuous newlines
                         while let Some(Ok(TokenWithRange {
                             token: Token::NewLine,
                             range: _,
@@ -158,91 +162,74 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
 
                         Some(Ok(TokenWithRange::new(
                             Token::Comma,
-                            Range::from_range_pair(&start_range.unwrap(), &end_range.unwrap()),
+                            Location::from_range_pair(&start_range, &end_range),
                         )))
                     }
                     Token::Plus => {
                         match iter.upstream.peek(0) {
                             Some(Ok(TokenWithRange {
-                                token: token @ Token::Number(num),
+                                token: Token::Number(num),
                                 range: current_range,
                             })) => {
                                 match num {
                                     NumberToken::F32(f) if f.is_nan() => {
                                         // combines two token ranges.
-                                        Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithLocation(
                                             "The plus sign cannot be applied to NaN.".to_owned(),
-                                            Range::from_range_pair(
-                                                &start_range.unwrap(),
-                                                current_range,
-                                            ),
+                                            Location::from_range_pair(&start_range, current_range),
                                         )))
                                     }
                                     NumberToken::F64(f) if f.is_nan() => {
                                         // combines two token ranges.
-                                        Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithLocation(
                                             "The plus sign cannot be applied to NaN.".to_owned(),
-                                            Range::from_range_pair(
-                                                &start_range.unwrap(),
-                                                current_range,
-                                            ),
+                                            Location::from_range_pair(&start_range, current_range),
                                         )))
                                     }
                                     NumberToken::I8(v) if *v > i8::MAX as u8 => {
                                         // check signed number overflow
-                                        Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithLocation(
                                             format!("The i8  number {} is overflowed.", v),
-                                            Range::from_range_pair(
-                                                &start_range.unwrap(),
-                                                current_range,
-                                            ),
+                                            Location::from_range_pair(&start_range, current_range),
                                         )))
                                     }
                                     NumberToken::I16(v) if *v > i16::MAX as u16 => {
                                         // check signed number overflow
-                                        Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithLocation(
                                             format!("The i16 number {} is overflowed.", v),
-                                            Range::from_range_pair(
-                                                &start_range.unwrap(),
-                                                current_range,
-                                            ),
+                                            Location::from_range_pair(&start_range, current_range),
                                         )))
                                     }
                                     NumberToken::I32(v) if *v > i32::MAX as u32 => {
                                         // check signed number overflow
-                                        Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithLocation(
                                             format!("The i32 number {} is overflowed.", v),
-                                            Range::from_range_pair(
-                                                &start_range.unwrap(),
-                                                current_range,
-                                            ),
+                                            Location::from_range_pair(&start_range, current_range),
                                         )))
                                     }
                                     NumberToken::I64(v) if *v > i64::MAX as u64 => {
                                         // check signed number overflow
-                                        Some(Err(Error::MessageWithRange(
+                                        Some(Err(Error::MessageWithLocation(
                                             format!("The i64 number {} is overflowed.", v),
-                                            Range::from_range_pair(
-                                                &start_range.unwrap(),
-                                                current_range,
-                                            ),
+                                            Location::from_range_pair(&start_range, current_range),
                                         )))
                                     }
                                     _ => {
-                                        // combines two token ranges and constructs new number token.
-                                        let ret_val = Some(Ok(TokenWithRange {
-                                            token: token.clone(),
-                                            range: Range::from_range_pair(
-                                                &start_range.unwrap(),
-                                                current_range,
-                                            ),
-                                        }));
-
                                         // consumes the the plus sign (it's already done) and the
                                         // number token.
-                                        iter.upstream.next();
+                                        let TokenWithRange {
+                                            token: combined_token,
+                                            range: end_range,
+                                        } = iter.upstream.next().unwrap().unwrap();
 
-                                        ret_val
+                                        // combines two token ranges and constructs new number token.
+                                        Some(Ok(TokenWithRange {
+                                            token: combined_token,
+                                            range: Location::from_range_pair(
+                                                &start_range,
+                                                &end_range,
+                                            ),
+                                        }))
                                     }
                                 }
                             }
@@ -251,9 +238,9 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                 range: current_range,
                             })) => {
                                 // combines two token ranges.
-                                Some(Err(Error::MessageWithRange(
+                                Some(Err(Error::MessageWithLocation(
                                     "The plus sign can only be applied to numbers.".to_owned(),
-                                    Range::from_range_pair(&start_range.unwrap(), current_range),
+                                    Location::from_range_pair(&start_range, current_range),
                                 )))
                             }
                             Some(Err(e)) => Some(Err(e.clone())),
@@ -275,11 +262,11 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     NumberToken::F32(v) => {
                                         if v.is_nan() {
                                             // combines two token ranges.
-                                            Some(Err(Error::MessageWithRange(
+                                            Some(Err(Error::MessageWithLocation(
                                                 "The minus sign cannot be applied to NaN."
                                                     .to_owned(),
-                                                Range::from_range_pair(
-                                                    &start_range.unwrap(),
+                                                Location::from_range_pair(
+                                                    &start_range,
                                                     current_range,
                                                 ),
                                             )))
@@ -287,8 +274,8 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             // combines two token ranges and constructs new number token.
                                             let ret_val = Some(Ok(TokenWithRange {
                                                 token: Token::Number(NumberToken::F32(v.neg())),
-                                                range: Range::from_range_pair(
-                                                    &start_range.unwrap(),
+                                                range: Location::from_range_pair(
+                                                    &start_range,
                                                     current_range,
                                                 ),
                                             }));
@@ -303,11 +290,11 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     NumberToken::F64(v) => {
                                         if v.is_nan() {
                                             // combines two token ranges.
-                                            Some(Err(Error::MessageWithRange(
+                                            Some(Err(Error::MessageWithLocation(
                                                 "The minus sign cannot be applied to NaN."
                                                     .to_owned(),
-                                                Range::from_range_pair(
-                                                    &start_range.unwrap(),
+                                                Location::from_range_pair(
+                                                    &start_range,
                                                     current_range,
                                                 ),
                                             )))
@@ -315,8 +302,8 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                             // combines two token ranges and constructs new number token.
                                             let ret_val = Some(Ok(TokenWithRange {
                                                 token: Token::Number(NumberToken::F64(v.neg())),
-                                                range: Range::from_range_pair(
-                                                    &start_range.unwrap(),
+                                                range: Location::from_range_pair(
+                                                    &start_range,
                                                     current_range,
                                                 ),
                                             }));
@@ -329,14 +316,12 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         }
                                     }
                                     NumberToken::I8(v) => {
-                                        let combined_range = Range::from_range_pair(
-                                            &start_range.unwrap(),
-                                            current_range,
-                                        );
+                                        let combined_range =
+                                            Location::from_range_pair(&start_range, current_range);
 
                                         let parse_result =
                                             format!("-{}", v).parse::<i8>().map_err(|_| {
-                                                Error::MessageWithRange(
+                                                Error::MessageWithLocation(
                                                     format!(
                                                         "Can not convert \"{}\" to negative i8",
                                                         v
@@ -361,14 +346,12 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         }
                                     }
                                     NumberToken::I16(v) => {
-                                        let combined_range = Range::from_range_pair(
-                                            &start_range.unwrap(),
-                                            current_range,
-                                        );
+                                        let combined_range =
+                                            Location::from_range_pair(&start_range, current_range);
 
                                         let parse_result =
                                             format!("-{}", v).parse::<i16>().map_err(|_| {
-                                                Error::MessageWithRange(
+                                                Error::MessageWithLocation(
                                                     format!(
                                                         "Can not convert \"{}\" to negative i16.",
                                                         v
@@ -393,14 +376,12 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         }
                                     }
                                     NumberToken::I32(v) => {
-                                        let combined_range = Range::from_range_pair(
-                                            &start_range.unwrap(),
-                                            current_range,
-                                        );
+                                        let combined_range =
+                                            Location::from_range_pair(&start_range, current_range);
 
                                         let parse_result =
                                             format!("-{}", v).parse::<i32>().map_err(|_| {
-                                                Error::MessageWithRange(
+                                                Error::MessageWithLocation(
                                                     format!(
                                                         "Can not convert \"{}\" to negative i32.",
                                                         v
@@ -425,14 +406,12 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                         }
                                     }
                                     NumberToken::I64(v) => {
-                                        let combined_range = Range::from_range_pair(
-                                            &start_range.unwrap(),
-                                            current_range,
-                                        );
+                                        let combined_range =
+                                            Location::from_range_pair(&start_range, current_range);
 
                                         let parse_result =
                                             format!("-{}", v).parse::<i64>().map_err(|_| {
-                                                Error::MessageWithRange(
+                                                Error::MessageWithLocation(
                                                     format!(
                                                         "Can not convert \"{}\" to negative i64.",
                                                         v
@@ -459,13 +438,10 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                     NumberToken::U8(_)
                                     | NumberToken::U16(_)
                                     | NumberToken::U32(_)
-                                    | NumberToken::U64(_) => Some(Err(Error::MessageWithRange(
+                                    | NumberToken::U64(_) => Some(Err(Error::MessageWithLocation(
                                         "The minus sign cannot be applied to unsigned numbers."
                                             .to_owned(),
-                                        Range::from_range_pair(
-                                            &start_range.unwrap(),
-                                            current_range,
-                                        ),
+                                        Location::from_range_pair(&start_range, current_range),
                                     ))),
                                 }
                             }
@@ -474,9 +450,9 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                                 range: current_range,
                             })) => {
                                 // combines two token ranges.
-                                Some(Err(Error::MessageWithRange(
+                                Some(Err(Error::MessageWithLocation(
                                     "The minus sign can only be applied to numbers.".to_owned(),
-                                    Range::from_range_pair(&start_range.unwrap(), current_range),
+                                    Location::from_range_pair(&start_range, current_range),
                                 )))
                             }
                             Some(Err(e)) => Some(Err(e.clone())),
@@ -490,30 +466,30 @@ fn normalize(iter: &mut NormalizedTokenIter) -> Option<Result<TokenWithRange, Er
                     }
                     Token::Number(NumberToken::I8(v)) if *v > i8::MAX as u8 => {
                         // check signed number overflow
-                        Some(Err(Error::MessageWithRange(
+                        Some(Err(Error::MessageWithLocation(
                             format!("The i8 number {} is overflowed.", v),
-                            start_range.unwrap(),
+                            start_range,
                         )))
                     }
                     Token::Number(NumberToken::I16(v)) if *v > i16::MAX as u16 => {
                         // check signed number overflow
-                        Some(Err(Error::MessageWithRange(
+                        Some(Err(Error::MessageWithLocation(
                             format!("The i16 number {} is overflowed.", v),
-                            start_range.unwrap(),
+                            start_range,
                         )))
                     }
                     Token::Number(NumberToken::I32(v)) if *v > i32::MAX as u32 => {
                         // check signed number overflow
-                        Some(Err(Error::MessageWithRange(
+                        Some(Err(Error::MessageWithLocation(
                             format!("The i32 number {} is overflowed.", v),
-                            start_range.unwrap(),
+                            start_range,
                         )))
                     }
                     Token::Number(NumberToken::I64(v)) if *v > i64::MAX as u64 => {
                         // check signed number overflow
-                        Some(Err(Error::MessageWithRange(
+                        Some(Err(Error::MessageWithLocation(
                             format!("The i64 number {} is overflowed.", v),
-                            start_range.unwrap(),
+                            start_range,
                         )))
                     }
                     _ => Some(result),
@@ -582,9 +558,10 @@ mod tests {
         charposition::CharsWithPositionIter,
         charstream::CharStreamFromCharIter,
         error::Error,
-        lexer::{NumberToken, Token, TokenIter, TokenWithRange},
-        location::{Position, Range},
+        lexer::TokenIter,
+        location::Location,
         peekableiter::PeekableIter,
+        token::{NumberToken, Token, TokenWithRange},
     };
 
     use super::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter};
@@ -617,8 +594,8 @@ mod tests {
 
     fn lex_str_to_vec(s: &str) -> Result<Vec<Token>, Error> {
         let tokens = lex_str_to_vec_with_range(s)?
-            .iter()
-            .map(|e| e.token.to_owned())
+            .into_iter()
+            .map(|e| e.token)
             .collect::<Vec<Token>>();
         Ok(tokens)
     }
@@ -650,14 +627,22 @@ mod tests {
     #[test]
     fn test_normalize_blanks_commas_and_comments() {
         assert_eq!(
-            // test:
-            // - comma -> comma
-            // - comma + blanks -> comma
-            // - blanks + comma -> comma
-            // - blanks + comma + blanks -> comma
-            // - comma + comment + comma -> comma + comma
-            // - blanks + comment + blanks -> blank
-            // - blanks -> blank
+            // test items:
+            //
+            // unchaged:
+            // - comma => comma
+            //
+            // normalized:
+            // - comma + blank(s) => comma
+            // - blank(s) + comma => comma
+            // - blank(s) + comma + blank(s) => comma
+            //
+            // inferred:
+            // - comma + comment(s) + comma => comma + comma
+            // - blank(s) + comment(s) + blank(s) => blank
+            //
+            // normalization:
+            // - blanks => blank
             lex_str_to_vec(
                 r#"
                     [1,2,
@@ -714,17 +699,17 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     2
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Position::new(0, 2, 0, 2),
+                    &Location::new_position(0, 2, 0, 2),
                     6
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(13)),
-                    &Position::new(0, 8, 3, 0),
+                    &Location::new_position(0, 8, 3, 0),
                     2
                 ),
             ]
@@ -736,12 +721,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Position::new(0, 4, 3, 0),
+                    &Location::new_position(0, 4, 3, 0),
                     2
                 ),
             ]
@@ -753,12 +738,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     2
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Position::new(0, 5, 3, 0),
+                    &Location::new_position(0, 5, 3, 0),
                     1
                 ),
             ]
@@ -770,17 +755,17 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     2
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Position::new(0, 4, 2, 0),
+                    &Location::new_position(0, 4, 2, 0),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(13)),
-                    &Position::new(0, 7, 4, 0),
+                    &Location::new_position(0, 7, 4, 0),
                     2
                 ),
             ]
@@ -792,12 +777,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Position::new(0, 7, 1, 0),
+                    &Location::new_position(0, 7, 1, 0),
                     1
                 ),
             ]
@@ -809,17 +794,17 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     2
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Position::new(0, 2, 0, 2),
+                    &Location::new_position(0, 2, 0, 2),
                     9
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(13)),
-                    &Position::new(0, 11, 4, 0),
+                    &Location::new_position(0, 11, 4, 0),
                     2
                 ),
             ]
@@ -865,9 +850,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+2_147_483_648"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -880,9 +865,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-2_147_483_649"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -908,9 +893,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+128_i8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -923,9 +908,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-129_i8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -938,9 +923,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-1_u8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -966,9 +951,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+32768_i16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -981,9 +966,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-32769_i16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -996,9 +981,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-1_u16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1024,9 +1009,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+2_147_483_648_i32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1039,9 +1024,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-2_147_483_649_i32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1054,9 +1039,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-1_u32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1086,9 +1071,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+9_223_372_036_854_775_808_i64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1101,9 +1086,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-9_223_372_036_854_775_809_i64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1116,9 +1101,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-1_u64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1136,7 +1121,7 @@ mod tests {
                 lex_str_to_vec_with_range("+11").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(11)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     3
                 ),]
             );
@@ -1145,7 +1130,7 @@ mod tests {
                 lex_str_to_vec_with_range("-13").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(-13_i32 as u32)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     3
                 ),]
             );
@@ -1155,17 +1140,17 @@ mod tests {
                 vec![
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I32(11)),
-                        &Position::new(0, 0, 0, 0),
+                        &Location::new_position(0, 0, 0, 0),
                         3
                     ),
                     TokenWithRange::from_position_and_length(
                         Token::Comma,
-                        &Position::new(0, 3, 0, 3),
+                        &Location::new_position(0, 3, 0, 3),
                         1
                     ),
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I32(-13_i32 as u32)),
-                        &Position::new(0, 4, 0, 4),
+                        &Location::new_position(0, 4, 0, 4),
                         3
                     ),
                 ]
@@ -1187,9 +1172,9 @@ mod tests {
         // err: plus sign is added to non-numbers
         assert!(matches!(
             lex_str_to_vec("+true"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1202,9 +1187,9 @@ mod tests {
         // err: minus sign is added to non-numbers
         assert!(matches!(
             lex_str_to_vec("-true"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1219,9 +1204,9 @@ mod tests {
     fn test_normalize_signed_integer_overflow_decimal() {
         assert!(matches!(
             lex_str_to_vec("2_147_483_648"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1233,9 +1218,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("128_i8"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1247,9 +1232,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("32768_i16"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1261,9 +1246,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("2_147_483_648_i32"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1275,9 +1260,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("9_223_372_036_854_775_808_i64"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1295,7 +1280,7 @@ mod tests {
             lex_str_to_vec_with_range("+3.402_823_5e+38").unwrap(),
             vec![TokenWithRange::from_position_and_length(
                 Token::Number(NumberToken::F64(3.402_823_5e38f64)),
-                &Position::new(0, 0, 0, 0),
+                &Location::new_position(0, 0, 0, 0),
                 16
             )]
         );
@@ -1304,7 +1289,7 @@ mod tests {
             lex_str_to_vec_with_range("-3.402_823_5e+38").unwrap(),
             vec![TokenWithRange::from_position_and_length(
                 Token::Number(NumberToken::F64(-3.402_823_5e38f64)),
-                &Position::new(0, 0, 0, 0),
+                &Location::new_position(0, 0, 0, 0),
                 16
             )]
         );
@@ -1320,7 +1305,7 @@ mod tests {
                 lex_str_to_vec_with_range("+0.0").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(0f64)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     4
                 )]
             );
@@ -1330,7 +1315,7 @@ mod tests {
                 lex_str_to_vec_with_range("-0.0").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(0f64)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     4
                 )]
             );
@@ -1353,7 +1338,7 @@ mod tests {
                 lex_str_to_vec_with_range("+Inf").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(f64::INFINITY)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     4
                 )]
             );
@@ -1362,7 +1347,7 @@ mod tests {
                 lex_str_to_vec_with_range("-Inf").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(f64::NEG_INFINITY)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     4
                 )]
             );
@@ -1371,9 +1356,9 @@ mod tests {
         // err: +NaN
         assert!(matches!(
             lex_str_to_vec("+NaN"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1386,9 +1371,9 @@ mod tests {
         // err: -NaN
         assert!(matches!(
             lex_str_to_vec("-NaN"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1407,7 +1392,7 @@ mod tests {
                 lex_str_to_vec_with_range("+1.602_176_6e-19_f32").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F32(1.602_176_6e-19f32)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     20
                 )]
             );
@@ -1416,7 +1401,7 @@ mod tests {
                 lex_str_to_vec_with_range("-1.602_176_6e-19_f32").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F32(-1.602_176_6e-19f32)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     20
                 )]
             );
@@ -1430,7 +1415,7 @@ mod tests {
                 lex_str_to_vec_with_range("+0_f32").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F32(0f32)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     6
                 )]
             );
@@ -1440,7 +1425,7 @@ mod tests {
                 lex_str_to_vec_with_range("-0_f32").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F32(0f32)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     6
                 )]
             );
@@ -1457,7 +1442,7 @@ mod tests {
                 lex_str_to_vec_with_range("+Inf_f32").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F32(f32::INFINITY)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     8
                 )]
             );
@@ -1466,7 +1451,7 @@ mod tests {
                 lex_str_to_vec_with_range("-Inf_f32").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F32(f32::NEG_INFINITY)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     8
                 )]
             );
@@ -1474,9 +1459,9 @@ mod tests {
             // err: +NaN
             assert!(matches!(
                 lex_str_to_vec("+NaN_f32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1489,9 +1474,9 @@ mod tests {
             // err: -NaN
             assert!(matches!(
                 lex_str_to_vec("-NaN_f32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1508,7 +1493,7 @@ mod tests {
                 lex_str_to_vec_with_range("+1.797_693_134_862_315_7e+308_f64").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(1.797_693_134_862_315_7e308_f64)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     33
                 )]
             );
@@ -1517,7 +1502,7 @@ mod tests {
                 lex_str_to_vec_with_range("-1.797_693_134_862_315_7e+308_f64").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(-1.797_693_134_862_315_7e308_f64)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     33
                 )]
             );
@@ -1531,7 +1516,7 @@ mod tests {
                 lex_str_to_vec_with_range("+0_f64").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(0f64)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     6
                 )]
             );
@@ -1541,7 +1526,7 @@ mod tests {
                 lex_str_to_vec_with_range("-0_f64").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(0f64)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     6
                 )]
             );
@@ -1558,7 +1543,7 @@ mod tests {
                 lex_str_to_vec_with_range("+Inf_f64").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(f64::INFINITY)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     8
                 )]
             );
@@ -1567,7 +1552,7 @@ mod tests {
                 lex_str_to_vec_with_range("-Inf_f64").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(f64::NEG_INFINITY)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     8
                 )]
             );
@@ -1575,9 +1560,9 @@ mod tests {
             // err: +NaN
             assert!(matches!(
                 lex_str_to_vec("+NaN_f64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1590,9 +1575,9 @@ mod tests {
             // err: -NaN
             assert!(matches!(
                 lex_str_to_vec("-NaN_f64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1622,9 +1607,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+0x8000_0000"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1637,9 +1622,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x8000_0001"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1665,9 +1650,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+0x80_i8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1680,9 +1665,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x81_i8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1695,9 +1680,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0x1_u8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1723,9 +1708,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+0x8000_i16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1738,9 +1723,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x8001_i16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1753,9 +1738,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0x1_u16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1781,9 +1766,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+0x8000_0000_i32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1796,9 +1781,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x8000_0001_i32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1811,9 +1796,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0x1_u32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1843,9 +1828,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+0x8000_0000_0000_0000_i64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1858,9 +1843,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0x8000_0000_0000_0001_i64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1873,9 +1858,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0x1_u64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -1893,7 +1878,7 @@ mod tests {
                 lex_str_to_vec_with_range("+0x11").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(0x11)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     5
                 ),]
             );
@@ -1902,7 +1887,7 @@ mod tests {
                 lex_str_to_vec_with_range("-0x13").unwrap(),
                 vec![TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::I32(-0x13_i32 as u32)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     5
                 ),]
             );
@@ -1912,17 +1897,17 @@ mod tests {
                 vec![
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I32(0x11)),
-                        &Position::new(0, 0, 0, 0),
+                        &Location::new_position(0, 0, 0, 0),
                         5
                     ),
                     TokenWithRange::from_position_and_length(
                         Token::Comma,
-                        &Position::new(0, 5, 0, 5),
+                        &Location::new_position(0, 5, 0, 5),
                         1
                     ),
                     TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I32(-0x13_i32 as u32)),
-                        &Position::new(0, 6, 0, 6),
+                        &Location::new_position(0, 6, 0, 6),
                         5
                     ),
                 ]
@@ -1934,9 +1919,9 @@ mod tests {
     fn test_normalize_signed_integer_overflow_hex() {
         assert!(matches!(
             lex_str_to_vec("0x8000_0000"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1948,9 +1933,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("0x80_i8"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1962,9 +1947,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("0x8000_i16"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1976,9 +1961,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("0x8000_0000_i32"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -1990,9 +1975,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("0x8000_0000_0000_0000_i64"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -2024,17 +2009,17 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F32(std::f32::consts::PI)),
-                    &Position::new(0, 0, 0, 0),
+                    &Location::new_position(0, 0, 0, 0),
                     16
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Position::new(0, 16, 0, 16),
+                    &Location::new_position(0, 16, 0, 16),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(NumberToken::F64(-std::f64::consts::E)),
-                    &Position::new(0, 17, 0, 17),
+                    &Location::new_position(0, 17, 0, 17),
                     25
                 ),
             ]
@@ -2059,9 +2044,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+0b1000_0000_0000_0000__0000_0000_0000_0000"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2074,9 +2059,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0000_0000_0000__0000_0000_0000_0001"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2102,9 +2087,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+0b1000_0000_i8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2117,9 +2102,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0001_i8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2132,9 +2117,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0b1_u8"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2160,9 +2145,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec("+0b1000_0000_0000_0000_i16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2175,9 +2160,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0000_0000_0001_i16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2190,9 +2175,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0b1_u16"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2218,9 +2203,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec_with_range("+0b1000_0000_0000_0000__0000_0000_0000_0000_i32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2233,9 +2218,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0000_0000_0000__0000_0000_0000_0001_i32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2248,9 +2233,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0b1_u32"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2276,9 +2261,9 @@ mod tests {
             // err: positive overflow
             assert!(matches!(
                 lex_str_to_vec_with_range("+0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000_i64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2291,9 +2276,9 @@ mod tests {
             // err: negative overflow
             assert!(matches!(
                 lex_str_to_vec("-0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0001_i64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2307,9 +2292,9 @@ mod tests {
             // err: unsigned number with minus sign
             assert!(matches!(
                 lex_str_to_vec("-0b1_u64"),
-                Err(Error::MessageWithRange(
+                Err(Error::MessageWithLocation(
                     _,
-                    Range {
+                    Location {
                         unit: 0,
                         index: 0,
                         line: 0,
@@ -2326,7 +2311,7 @@ mod tests {
                     lex_str_to_vec_with_range("+0b101").unwrap(),
                     vec![TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I32(0b101_i32 as u32)),
-                        &Position::new(0, 0, 0, 0),
+                        &Location::new_position(0, 0, 0, 0),
                         6
                     )]
                 );
@@ -2335,7 +2320,7 @@ mod tests {
                     lex_str_to_vec_with_range("-0b010").unwrap(),
                     vec![TokenWithRange::from_position_and_length(
                         Token::Number(NumberToken::I32(-0b010_i32 as u32)),
-                        &Position::new(0, 0, 0, 0),
+                        &Location::new_position(0, 0, 0, 0),
                         6
                     )]
                 );
@@ -2345,17 +2330,17 @@ mod tests {
                     vec![
                         TokenWithRange::from_position_and_length(
                             Token::Number(NumberToken::I32(0b101_i32 as u32)),
-                            &Position::new(0, 0, 0, 0),
+                            &Location::new_position(0, 0, 0, 0),
                             6
                         ),
                         TokenWithRange::from_position_and_length(
                             Token::Comma,
-                            &Position::new(0, 6, 0, 6),
+                            &Location::new_position(0, 6, 0, 6),
                             1
                         ),
                         TokenWithRange::from_position_and_length(
                             Token::Number(NumberToken::I32(-0b010_i32 as u32)),
-                            &Position::new(0, 7, 0, 7),
+                            &Location::new_position(0, 7, 0, 7),
                             6
                         )
                     ]
@@ -2368,9 +2353,9 @@ mod tests {
     fn test_normalize_signed_integer_overflow_binary() {
         assert!(matches!(
             lex_str_to_vec("0b1000_0000_0000_0000__0000_0000_0000_0000"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -2382,9 +2367,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("0b1000_0000_i8"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -2396,9 +2381,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec("0b1000_0000_0000_0000_i16"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -2410,9 +2395,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec_with_range("0b1000_0000_0000_0000__0000_0000_0000_0000_i32"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,
@@ -2424,9 +2409,9 @@ mod tests {
 
         assert!(matches!(
             lex_str_to_vec_with_range("0b1000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000__0000_0000_0000_0000_i64"),
-            Err(Error::MessageWithRange(
+            Err(Error::MessageWithLocation(
                 _,
-                Range {
+                Location {
                     unit: 0,
                     index: 0,
                     line: 0,

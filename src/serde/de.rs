@@ -12,10 +12,11 @@ use crate::{
     charposition::CharsWithPositionIter,
     charstream::{CharStreamFromCharIter, CharStreamFromReader},
     error::Error,
-    lexer::{NumberToken, Token, TokenIter, TokenWithRange},
-    location::{Position, Range},
+    lexer::TokenIter,
+    location::Location,
     normalizer::{ClearTokenIter, NormalizedTokenIter, TrimmedTokenIter},
     peekableiter::PeekableIter,
+    token::{NumberToken, Token, TokenWithRange},
 };
 
 use super::Result;
@@ -63,9 +64,9 @@ where
     let value = T::deserialize(&mut deserializer)?;
 
     match deserializer.upstream.peek(0) {
-        Some(Ok(TokenWithRange { range, .. })) => Err(Error::MessageWithPosition(
+        Some(Ok(TokenWithRange { range, .. })) => Err(Error::MessageWithLocation(
             "Document has more than one node.".to_owned(),
-            Position::from_range_start(range),
+            range.get_position_by_range_start(),
         )),
         Some(Err(e)) => Err(e.clone()),
         None => {
@@ -77,7 +78,7 @@ where
 
 pub struct Deserializer<'de> {
     upstream: &'de mut PeekableIter<'de, Result<TokenWithRange>>,
-    last_range: Range,
+    last_range: Location,
 }
 
 impl<'de> Deserializer<'de> {
@@ -86,7 +87,7 @@ impl<'de> Deserializer<'de> {
     ) -> Self {
         Self {
             upstream,
-            last_range: Range::new(0, 0, 0, 0, 0),
+            last_range: Location::new_range(0, 0, 0, 0, 0),
         }
     }
 
@@ -109,57 +110,18 @@ impl<'de> Deserializer<'de> {
         }
     }
 
-    fn peek_range(&self, offset: usize) -> Result<Option<&Range>> {
-        match self.upstream.peek(offset) {
-            Some(Ok(TokenWithRange { range, .. })) => Ok(Some(range)),
-            Some(Err(e)) => Err(e.clone()),
-            None => Ok(None),
-        }
-    }
-
     fn peek_token_and_equals(&self, offset: usize, expected_token: &Token) -> bool {
         matches!(
             self.upstream.peek(offset),
             Some(Ok(TokenWithRange { token, .. })) if token == expected_token)
     }
 
-    fn consume_token(&mut self, expected_token: &Token) -> Result<()> {
-        match self.next_token()? {
-            Some(token) => {
-                if &token == expected_token {
-                    Ok(())
-                } else {
-                    Err(Error::MessageWithPosition(
-                        format!("Expect token: {}.", expected_token.get_description()),
-                        self.last_range.get_position_start(),
-                    ))
-                }
-            }
-            None => Err(Error::UnexpectedEndOfDocument(format!(
-                "Expect token: \"{}\".",
-                expected_token.get_description()
-            ))),
+    fn peek_range(&self, offset: usize) -> Result<Option<&Location>> {
+        match self.upstream.peek(offset) {
+            Some(Ok(TokenWithRange { range, .. })) => Ok(Some(range)),
+            Some(Err(e)) => Err(e.clone()),
+            None => Ok(None),
         }
-    }
-
-    // consume ':'
-    fn consume_colon(&mut self) -> Result<()> {
-        self.consume_token(&Token::Colon)
-    }
-
-    // consume ')'
-    fn consume_right_paren(&mut self) -> Result<()> {
-        self.consume_token(&Token::RightParen)
-    }
-
-    // consume ']'
-    fn consume_right_bracket(&mut self) -> Result<()> {
-        self.consume_token(&Token::RightBracket)
-    }
-
-    // consume '}'
-    fn consume_right_brace(&mut self) -> Result<()> {
-        self.consume_token(&Token::RightBrace)
     }
 
     // consume '\n' if it exists.
@@ -185,6 +147,45 @@ impl<'de> Deserializer<'de> {
             None => Ok(None),
         }
     }
+
+    fn expect_token(&mut self, expected_token: &Token, token_description: &str) -> Result<()> {
+        match self.next_token()? {
+            Some(token) => {
+                if &token == expected_token {
+                    Ok(())
+                } else {
+                    Err(Error::MessageWithLocation(
+                        format!("Expect token: {}.", token_description),
+                        self.last_range.get_position_by_range_start(),
+                    ))
+                }
+            }
+            None => Err(Error::UnexpectedEndOfDocument(format!(
+                "Expect token: \"{}\".",
+                token_description
+            ))),
+        }
+    }
+
+    // consume ':'
+    fn expect_colon(&mut self) -> Result<()> {
+        self.expect_token(&Token::Colon, "colon \":\"")
+    }
+
+    // consume ')'
+    fn expect_right_paren(&mut self) -> Result<()> {
+        self.expect_token(&Token::RightParen, "close parenthese \")\"")
+    }
+
+    // consume ']'
+    fn expect_right_bracket(&mut self) -> Result<()> {
+        self.expect_token(&Token::RightBracket, "close bracket \"]\"")
+    }
+
+    // consume '}'
+    fn expect_right_brace(&mut self) -> Result<()> {
+        self.expect_token(&Token::RightBrace, "close brace \"}\"")
+    }
 }
 
 impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
@@ -203,9 +204,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Boolean(v)) => visitor.visit_bool(v),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"Boolean\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"Boolean\" value.".to_owned(),
@@ -219,9 +220,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::I8(v))) => visitor.visit_i8(v as i8),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"i8\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"i8\" value.".to_owned(),
@@ -235,9 +236,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::I16(v))) => visitor.visit_i16(v as i16),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"i16\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"i16\" value.".to_owned(),
@@ -251,9 +252,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::I32(v))) => visitor.visit_i32(v as i32),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"i32\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"i32\" value.".to_owned(),
@@ -267,9 +268,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::I64(v))) => visitor.visit_i64(v as i64),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"i64\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"i64\" value.".to_owned(),
@@ -283,9 +284,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::U8(v))) => visitor.visit_u8(v),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"u8\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"u8\" value.".to_owned(),
@@ -299,9 +300,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::U16(v))) => visitor.visit_u16(v),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"u16\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"u16\" value.".to_owned(),
@@ -315,9 +316,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::U32(v))) => visitor.visit_u32(v),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"u32\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"u32\" value.".to_owned(),
@@ -331,9 +332,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::U64(v))) => visitor.visit_u64(v),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"u64\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"u64\" value.".to_owned(),
@@ -347,9 +348,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::F32(v))) => visitor.visit_f32(v),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"f32\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"f32\" value.".to_owned(),
@@ -363,9 +364,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Number(NumberToken::F64(v))) => visitor.visit_f64(v),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"f64\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"f64\" value.".to_owned(),
@@ -379,9 +380,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::Char(c)) => visitor.visit_char(c),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"Char\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"Char\" value.".to_owned(),
@@ -394,10 +395,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: de::Visitor<'de>,
     {
         match self.next_token()? {
-            Some(Token::String_(s)) => visitor.visit_str(&s),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(Token::String(s)) => visitor.visit_str(&s),
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"String\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"String\" value.".to_owned(),
@@ -410,10 +411,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: de::Visitor<'de>,
     {
         match self.next_token()? {
-            Some(Token::String_(s)) => visitor.visit_string(s),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(Token::String(s)) => visitor.visit_string(s),
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"String\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"String\" value.".to_owned(),
@@ -427,9 +428,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::ByteData(d)) => visitor.visit_bytes(&d),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"Bytes\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"Bytes\" value.".to_owned(),
@@ -443,9 +444,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         match self.next_token()? {
             Some(Token::ByteData(d)) => visitor.visit_byte_buf(d),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"Bytes\" value.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"Bytes\" value.".to_owned(),
@@ -467,24 +468,24 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                     {
                         self.next_token()?; // consume '('
                         let v = visitor.visit_some(&mut *self);
-                        self.consume_right_paren()?;
+                        self.expect_right_paren()?;
                         v
                     } else {
-                        Err(Error::MessageWithRange(
+                        Err(Error::MessageWithLocation(
                             "Invalid member of variant \"Option\".".to_owned(),
                             *self.peek_range(0)?.unwrap(),
                         ))
                     }
                 } else {
-                    Err(Error::MessageWithRange(
+                    Err(Error::MessageWithLocation(
                         "Expect the \"Option\" type of variant.".to_owned(),
                         self.last_range,
                     ))
                 }
             }
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect the \"Option\" type of variant.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect the \"Option\" type of variant.".to_owned(),
@@ -532,13 +533,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             Some(Token::LeftBracket) => {
                 let value = visitor.visit_seq(ArrayAccessor::new(self))?;
 
-                self.consume_right_bracket()?; // consume ']'
+                self.expect_right_bracket()?; // consume ']'
 
                 Ok(value)
             }
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"List\".".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"List\".".to_owned(),
@@ -558,13 +559,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 // because the deserializer knows the number of members of the
                 // target tuple, so it will jump out early and leave the comma.
                 self.consume_new_line_or_comma_if_exist()?;
-                self.consume_right_paren()?; // consume ')'
+                self.expect_right_paren()?; // consume ')'
 
                 Ok(value)
             }
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"Tuple\".".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"Tuple\".".to_owned(),
@@ -613,13 +614,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         match self.next_token()? {
             Some(Token::LeftBrace) => {
                 let value = visitor.visit_map(ObjectAccessor::new(self))?;
-                self.consume_right_brace()?; // consume '}'
+                self.expect_right_brace()?; // consume '}'
 
                 Ok(value)
             }
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an \"Object\".".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an \"Object\".".to_owned(),
@@ -653,15 +654,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                         visitor.visit_enum(member_name.into_deserializer())
                     }
                 } else {
-                    Err(Error::MessageWithRange(
+                    Err(Error::MessageWithLocation(
                         format!("Expect the type \"{}\" of variant.", name,),
                         self.last_range,
                     ))
                 }
             }
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect a \"Variant\".".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect a \"Variant\".".to_owned(),
@@ -678,9 +679,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
 
         match self.next_token()? {
             Some(Token::Identifier(id)) => visitor.visit_string(id),
-            Some(_) => Err(Error::MessageWithPosition(
+            Some(_) => Err(Error::MessageWithLocation(
                 "Expect an identifier for object.".to_owned(),
-                self.last_range.get_position_start(),
+                self.last_range.get_position_by_range_start(),
             )),
             None => Err(Error::UnexpectedEndOfDocument(
                 "Expect an identifier for object.".to_owned(),
@@ -730,9 +731,12 @@ impl<'de, 'a> SeqAccess<'de> for ArrayAccessor<'a, 'de> {
 
         if !self.is_first_element && !matches!(exists_separator, Some(true)) {
             if let Some(false) = exists_separator {
-                return Err(Error::MessageWithPosition(
+                return Err(Error::MessageWithLocation(
                     "Expect a comma or new-line.".to_owned(),
-                    self.de.peek_range(0)?.unwrap().get_position_start(),
+                    self.de
+                        .peek_range(0)?
+                        .unwrap()
+                        .get_position_by_range_start(),
                 ));
             } else {
                 return Err(Error::UnexpectedEndOfDocument(
@@ -780,9 +784,12 @@ impl<'de, 'a> SeqAccess<'de> for TupleAccessor<'a, 'de> {
 
         if !self.is_first_element && !matches!(exists_separator, Some(true)) {
             if let Some(false) = exists_separator {
-                return Err(Error::MessageWithPosition(
+                return Err(Error::MessageWithLocation(
                     "Expect a comma or new-line.".to_owned(),
-                    self.de.peek_range(0)?.unwrap().get_position_start(),
+                    self.de
+                        .peek_range(0)?
+                        .unwrap()
+                        .get_position_by_range_start(),
                 ));
             } else {
                 return Err(Error::UnexpectedEndOfDocument(
@@ -906,9 +913,12 @@ impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
 
         if !self.is_first_element && !matches!(exists_separator, Some(true)) {
             if let Some(false) = exists_separator {
-                return Err(Error::MessageWithPosition(
+                return Err(Error::MessageWithLocation(
                     "Expect a comma or new-line.".to_owned(),
-                    self.de.peek_range(0)?.unwrap().get_position_start(),
+                    self.de
+                        .peek_range(0)?
+                        .unwrap()
+                        .get_position_by_range_start(),
                 ));
             } else {
                 return Err(Error::UnexpectedEndOfDocument(
@@ -931,7 +941,7 @@ impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
         V: de::DeserializeSeed<'de>,
     {
         self.de.consume_new_line_if_exist()?;
-        self.de.consume_colon()?;
+        self.de.expect_colon()?;
         self.de.consume_new_line_if_exist()?;
 
         // Deserialize a field value.
@@ -941,7 +951,7 @@ impl<'de, 'a> MapAccess<'de> for ObjectAccessor<'a, 'de> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{error::Error, location::Position, serde::de::from_str};
+    use crate::{error::Error, location::Location, serde::de::from_str};
 
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
@@ -1179,13 +1189,14 @@ mod tests {
         // err: missing a separator (comma or new-line)
         assert!(matches!(
             from_str::<Vec<i32>>(r#"[11 13]"#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 4,
                     line: 0,
-                    column: 4
+                    column: 4,
+                    length: 0
                 }
             ))
         ));
@@ -1280,13 +1291,14 @@ mod tests {
         // err: missing a separator (comma or new-line)
         assert!(matches!(
             from_str::<(i32, i32, i32, i32)>(r#"(11 13)"#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 4,
                     line: 0,
-                    column: 4
+                    column: 4,
+                    length: 0
                 }
             ))
         ));
@@ -1403,13 +1415,14 @@ mod tests {
         // err: missing a separator (comma or new-line)
         assert!(matches!(
             from_str::<Object>(r#"{id: 123 name: "foo"}"#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 9,
                     line: 0,
-                    column: 9
+                    column: 9,
+                    length: 0
                 }
             ))
         ));
@@ -1570,13 +1583,14 @@ mod tests {
         // err: missing a separator (comma or new-line)
         assert!(matches!(
             from_str::<Color>(r#"Color::RGB(255_u8 127_u8 63_u8)"#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 18,
                     line: 0,
-                    column: 18
+                    column: 18,
+                    length: 0
                 }
             ))
         ));
@@ -1654,13 +1668,14 @@ mod tests {
         // err: missing a separator (comma or new-line)
         assert!(matches!(
             from_str::<Shape>(r#"Shape::Rect{width: 200 height: 100}"#),
-            Err(Error::MessageWithPosition(
+            Err(Error::MessageWithLocation(
                 _,
-                Position {
+                Location {
                     unit: 0,
                     index: 23,
                     line: 0,
-                    column: 23
+                    column: 23,
+                    length: 0
                 }
             ))
         ));
